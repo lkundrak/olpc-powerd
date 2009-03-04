@@ -5,10 +5,15 @@ mydir=/var/run
 mydir=/tmp
 
 IMAGES=/home/olpc/powerb
-PPMTOFB=$IMAGES/ppmtofb
+PPMTOFB=/home/olpc/bin/ppmtofb
 
-FIFO=$mydir/shutfifo
+FIFO=$mydir/powerevents
 
+CAPACITY_LEVEL=/sys/class/power_supply/olpc-battery/capacity_level
+
+CONFIGFILE=/etc/powerd.conf
+
+set -u
 
 #splash()
 #{
@@ -74,10 +79,27 @@ gotosleep()
 	unsplash
 }
 
+setup_wakeups()
+{
+    for source in all ac_power battery_error battery_soc battery_state \
+    	ebook_mode_change ps2event wlan
+    do
+	echo 1 > $WAKEUP_EVENTS/$source
+    done
+
+}
+
+read_config()
+{
+    source $CONFIGFILE
+}
+
 be_daemon()
 {
+
  set -x
  exec 2>/home/olpc/powerb/pbd.log
+
 	trap "unsplash; exit" 1 2 3 15
 	unsplash
 
@@ -91,13 +113,17 @@ be_daemon()
 
 	while :
 	do
-		while read which more
+		while :
 		do
+		    if ! read -t 15 which more
+		    then
+			which=timeout
+		    fi
 		    case $which in
 		    button)
 			now=$(date +%s)
-			# echo subtracting $now - $(cat $mydir/wasthen)
-			if [ $(( $now - $(cat $mydir/wasthen) )) -ge 5 ]
+			read wasthen < $mydir/wasthen
+			if [ $(( $now - $wasthen )) -ge 5 ]
 			then # first press
 			    pleaseconfirm &
     			    splashpid=$!
@@ -114,10 +140,39 @@ be_daemon()
 			echo $now >$mydir/wasthen
 			;;
 
-    #	    	    batterylow)
-    #			notify_of_shutdown "\n\nBattery Level Critical"
-    #			do_shutdown
-    #	    		;;
+		    lidclosed)
+			xset dpms force off
+			backlight off
+			gotosleep
+			;;
+
+		    lidopen)
+			xset dpms 0 0 0
+			xset dpms force on
+			backlight restore
+			;;
+
+		    ac_connect)
+			if [ ! $SOLAR ]
+			then
+			    runmode=wastepower
+			fi
+			;;
+
+		    ac_disconnect)
+			runmode=wastepower
+			;;
+
+
+     	    	    timeout)
+			read capacity < $CAPACITY_LEVEL
+			case $capacity in
+			*critical*)
+     			    notify_of_shutdown "\n\nBattery Level Critical"
+     			    do_shutdown
+			    ;;
+			esac
+     	    		;;
 
 		    esac
 		done <> $FIFO
@@ -133,6 +188,9 @@ case $1 in
     exit
     ;;
 esac
+
+
+setup_wakeups
 
 be_daemon
 
