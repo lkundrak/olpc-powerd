@@ -1,0 +1,138 @@
+#!/bin/sh
+
+
+mydir=/var/run
+mydir=/tmp
+
+IMAGES=/home/olpc/powerb
+PPMTOFB=$IMAGES/ppmtofb
+
+FIFO=$mydir/shutfifo
+
+
+#splash()
+#{
+#
+#    timeoutarg="$1"
+#    shift
+#    dialog --stdout $timeoutarg \
+#	    --visit-items \
+#	    --menu \
+#	    "$1" \
+#	    11 40 3 \
+#	    "foo" ""
+#}
+
+pleaseconfirm()
+{
+    $PPMTOFB --center --sigusr2 --delay 6 \
+	    $IMAGES/pleaseconfirm.pgm \
+	    $IMAGES/shuttingdown.pgm &&
+    gotosleep
+}
+
+shuttingdown()
+{
+    nextsplash
+    do_shutdown
+}
+
+unsplash()
+{
+    mv $mydir/pwrdown_unsplash $mydir/pwrdown_unsplash.$$ 2>/dev/null
+    sh -x $mydir/pwrdown_unsplash.$$ 2>/dev/null 
+    rm -f $mydir/pwrdown_unsplash.$$
+}
+
+nextsplash()
+{
+    mv $mydir/pwrdown_nextsplash $mydir/pwrdown_nextsplash.$$ 2>/dev/null
+    sh -x $mydir/pwrdown_nextsplash.$$ 2>/dev/null 
+    rm -f $mydir/pwrdown_nextsplash.$$
+}
+
+do_shutdown()
+{
+    # echo would shutdown -h now
+    /sbin/shutdown -h now
+}
+
+#notify_of_shutdown()
+#{
+#	splash_powerdown "$@"
+#	touch /tmp/suppress_shutdown  # no user intervention
+#	touch /tmp/rcS_abort # in case this is happening during powerup
+#	sleep 5
+#}
+
+
+gotosleep()
+{
+	echo 1   >/sys/devices/platform/dcon/sleep 
+	echo mem >/sys/power/state
+	echo 0   >/sys/devices/platform/dcon/sleep 
+	unsplash
+}
+
+be_daemon()
+{
+ set -x
+ exec 2>/home/olpc/powerb/pbd.log
+	trap "unsplash; exit" 1 2 3 15
+	unsplash
+
+	if [ ! -p $FIFO ]
+	then
+	    rm -f $FIFO
+	    mkfifo $FIFO
+	fi
+
+	echo 0 >$mydir/wasthen
+
+	while :
+	do
+		while read which more
+		do
+		    case $which in
+		    button)
+			now=$(date +%s)
+			# echo subtracting $now - $(cat $mydir/wasthen)
+			if [ $(( $now - $(cat $mydir/wasthen) )) -ge 5 ]
+			then # first press
+			    pleaseconfirm &
+    			    splashpid=$!
+			    echo "killall -USR1 ppmtofb" \
+					>$mydir/pwrdown_unsplash
+			    echo "killall -USR2 ppmtofb" \
+					>$mydir/pwrdown_nextsplash
+			    ps axf >/tmp/pslist
+			else # second press
+			    #rm -f $mydir/pwrdown_unsplash
+			    #unsplash
+			    shuttingdown
+			fi
+			echo $now >$mydir/wasthen
+			;;
+
+    #	    	    batterylow)
+    #			notify_of_shutdown "\n\nBattery Level Critical"
+    #			do_shutdown
+    #	    		;;
+
+		    esac
+		done <> $FIFO
+		sleep 2
+	done
+}
+
+# rm -f $mydir/pwrdown_*
+
+case $1 in
+*confirm)
+    pleaseconfirm
+    exit
+    ;;
+esac
+
+be_daemon
+
