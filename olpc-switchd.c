@@ -1,0 +1,511 @@
+/*
+ *
+ * olpc-switchd.c -- low-level support for XO switches (power, lid, ebook)
+ *
+ * Copyright (C) 2009, Paul G Fox, inspired in places
+ *  by code from mouseemu, by Colin Leroy and others.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be
+ * useful, but WITHOUT ANY WARRANTY; without even the implied
+ * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE.  See the GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public
+ * License along with this program; if not, write to the Free
+ * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139,
+ * USA.
+ *
+ */
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <unistd.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <signal.h>
+#include <wait.h>
+#include <syslog.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <linux/input.h>
+#include <linux/uinput.h>
+#include <time.h>
+#include <utime.h>
+
+/* are we still in the foreground? */
+int daemonized;
+
+/* log to syslog (instead of stderr) */
+int logtosyslog;
+
+/* higher values for more debug */
+int debug;
+
+/* suppress any actual tranmission or injection of data */
+int noxmit;
+
+/* output event fifo */
+char *output_fifo;
+
+/* sysactive path -- touched once a second for kbd/tpad activity */
+char *sysactive_path;
+
+extern char *optarg;
+extern int optind, opterr, optopt;
+
+/* output event fifo */
+int fifo_fd = -1;
+
+/* input event devices */
+int pwr_fd = -1;
+int lid_fd = -1;
+int ebk_fd = -1;
+
+int maxfd = -1;  /* for select */
+
+/* bit array ops */
+#define bits2bytes(x) ((((x)-1)/8)+1)
+#define test_bit(bit, array) ( array[(bit)/8] & (1 << (bit)%8) )
+
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+
+typedef struct input_id input_id_t;
+
+
+char *me;
+
+void
+usage(void)
+{
+    fprintf(stderr,
+        "usage: %s [options]\n"
+        "   '-F <fifoname>'  Gives the name of the output fifo\n"
+        "\n"
+        " Daemon options:\n"
+        "   '-f' to keep program in foreground.\n"
+        "   '-l' use syslog, rather than stderr, for messages.\n"
+        "   '-d' for debugging (repeate for more verbosity).\n"
+        "   '-X' don't actually pass on received keystrokes (for debug).\n"
+        "\n"
+        "   '-A <activity_indicator>'  If set, gives path to file whose\n"
+        "        modification time will indicate (approximate) recent\n"
+        "        switch/button activity.\n"
+        "(olpc-switchd version %d)\n"
+        , me, VERSION);
+    exit(1);
+}
+
+static void
+report(const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    if (logtosyslog && debug <= 1) {
+        vsyslog(LOG_NOTICE, fmt, ap);
+    } else {
+        fprintf(stderr, "%s: ", me);
+        vfprintf(stderr, fmt, ap);
+        fputc('\n', stderr);
+    }
+}
+
+static void
+dbg(int level, const char *fmt, ...)
+{
+    va_list ap;
+
+    if (debug < level) return;
+
+    va_start(ap, fmt);
+    if (logtosyslog && debug <= 1) {
+        vsyslog(LOG_NOTICE, fmt, ap);
+    } else {
+        fputc(' ', stderr);
+        vfprintf(stderr, fmt, ap);
+        fputc('\n', stderr);
+    }
+}
+
+void
+die(const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    if (logtosyslog && debug <= 1) {
+        vsyslog(LOG_ERR, fmt, ap);
+        syslog(LOG_ERR, "exiting -- %m");
+    } else {
+        fprintf(stderr, "%s: ", me);
+        vfprintf(stderr, fmt, ap);
+        fprintf(stderr, " - %s", strerror(errno));
+        fputc('\n', stderr);
+    }
+    exit(1);
+}
+
+/* Manage the uinput device */
+
+
+int
+setup_input()
+{
+    int i, ret;
+    int dfd;
+    char devname[128];
+    unsigned char bit[bits2bytes(EV_MAX)];
+    struct input_id id;
+
+    for (i = 0; i < 3; i++) {
+
+        snprintf(devname, sizeof(devname), "/dev/input/event%d", i);
+        if ((dfd = open(devname, O_RDONLY)) < 0)
+            continue;
+
+        if (ioctl(dfd, EVIOCGID, &id) < 0) {
+            report("failed ioctl EVIOCGID on %d", i);
+	    close(dfd);
+            continue;
+        }
+
+        if (ioctl(dfd, EVIOCGBIT(0, EV_MAX), bit) < 0) {
+            report("failed ioctl EVIOCGBIT on %d", i);
+	    close(dfd);
+            continue;
+        }
+
+	if (i == 0)  pwr_fd = dfd;
+	if (i == 1)  lid_fd = dfd;
+	if (i == 2)  ebk_fd = dfd;
+
+	maxfd = MAX(maxfd, dfd);
+
+    }
+
+    ret = -1;
+    if (pwr_fd == -1) report("didn't find power button");
+    else if (lid_fd == -1) report("didn't find lid");
+    else if (ebk_fd == -1) report("didn't find ebook");
+    else ret = 0;
+
+    return ret;
+}
+
+void
+indicate_activity(void)
+{
+
+    static time_t lastactivity;
+    time_t now;
+
+    now = time(0);
+
+    if (now - lastactivity < 5)
+        return;
+
+    if (utime(sysactive_path, NULL)) {
+        if (errno == ENOENT) {  /* try to create it */
+            int fd = open(sysactive_path, O_RDWR | O_CREAT,
+                      S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH |
+                      S_IWOTH);
+            if (fd >= 0)
+                close(fd);
+        } else {
+            static int reported;
+            if (!reported) {
+                report("touch of %s failed: %s",
+                    sysactive_path, strerror(errno));
+                reported = 1;
+            }
+        }
+    }
+    lastactivity = now;
+}
+
+void open_fifo(void);
+
+void
+send_event(char *evt)
+{
+    if (fifo_fd < 0) open_fifo();
+    if (fifo_fd < 0) return;
+
+    if (write(fifo_fd, evt, strlen(evt)) < 0) {
+	if (errno != EPIPE)
+	    die("fifo write failed");
+	dbg(1, "got write signal");
+    } else {
+	dbg(1, "sending %s", evt);
+    }
+
+}
+
+void power_event()
+{
+    struct input_event ev[1];
+
+    if (read(pwr_fd, ev, sizeof(ev)) != sizeof(ev))
+        die("bad read from power button");
+
+    dbg(3, "pwr: ev sec %d usec %d type %d code %d value %d",
+	ev->time.tv_sec, ev->time.tv_usec,
+	ev->type, ev->code, ev->value);
+
+    if (ev->type == EV_KEY && ev->code == KEY_POWER && ev->value == 1)
+	send_event("power\n");
+
+
+}
+
+void lid_event()
+{
+    struct input_event ev[1];
+
+    if (read(lid_fd, ev, sizeof(ev)) != sizeof(ev))
+        die("bad read from lid switch");
+
+    dbg(3, "lid: ev sec %d usec %d type %d code %d value %d",
+	ev->time.tv_sec, ev->time.tv_usec,
+	ev->type, ev->code, ev->value);
+
+    if (ev->type == EV_SW && ev->code == 0) {
+	if (ev->value)
+	    send_event("lidclose\n");
+	else
+	    send_event("lidopen\n");
+    }
+
+}
+
+void ebook_event()
+{
+    struct input_event ev[1];
+
+    if (read(ebk_fd, ev, sizeof(ev)) != sizeof(ev))
+        die("bad read from ebook switch");
+
+    dbg(3, "ebk: ev sec %d usec %d type %d code %d value %d",
+	ev->time.tv_sec, ev->time.tv_usec,
+	ev->type, ev->code, ev->value);
+
+    if (ev->type == EV_SW && ev->code == 1) {
+	if (ev->value)
+	    send_event("ebookclose\n");
+	else
+	    send_event("ebookopen\n");
+    }
+}
+
+
+void
+data_loop(void)
+{
+    fd_set inputs, errors;
+
+
+    while (1) {
+
+
+        FD_ZERO(&inputs);
+        FD_SET(pwr_fd, &inputs);
+        FD_SET(lid_fd, &inputs);
+        FD_SET(ebk_fd, &inputs);
+
+        FD_ZERO(&errors);
+        FD_SET(pwr_fd, &errors);
+        FD_SET(lid_fd, &errors);
+        FD_SET(ebk_fd, &errors);
+
+        if (select(maxfd+1, &inputs, NULL, &errors, 0) <= 0)
+            die("select failed");
+
+        if (FD_ISSET(pwr_fd, &errors))
+            die("select reports error on power button");
+
+        if (FD_ISSET(lid_fd, &errors))
+            die("select reports error on lid switch");
+
+        if (FD_ISSET(ebk_fd, &errors))
+            die("select reports error on ebook switch");
+
+        if (FD_ISSET(pwr_fd, &inputs))
+            power_event();
+        
+        if (FD_ISSET(lid_fd, &inputs))
+            lid_event();
+        
+        if (FD_ISSET(ebk_fd, &inputs))
+            ebook_event();
+
+        if (sysactive_path)
+            indicate_activity();
+
+    }
+
+}
+
+int
+init_fifo()
+{
+    struct stat sbuf;
+
+#define fifomode 0644  /* allow anyone to read */
+
+    if (mkfifo(output_fifo, fifomode)) {
+        if (errno != EEXIST) {
+            report("mkfifo of %s failed", output_fifo);
+            return -1;
+        }
+
+        /* the path exists.  is it a fifo? */
+        if (stat(output_fifo, &sbuf) < 0) {
+            report("stat of %s failed", output_fifo);
+            return -1;
+        }
+
+        /* if not, remove and recreate */
+        if (!S_ISFIFO(sbuf.st_mode)) {
+            unlink(output_fifo);
+            if (mkfifo(output_fifo, fifomode)) {
+                report("recreate of %s failed", output_fifo);
+                return -1;
+            }
+        }
+    }
+
+    /* mkfifo was affected by umask */
+    if (chmod(output_fifo, fifomode)) {
+	report("chmod of %s to 0%o failed", output_fifo, fifomode);
+        return -1;
+    }
+
+    return 0;
+}
+
+
+void
+open_fifo(void)
+{
+    fifo_fd = open(output_fifo, O_WRONLY|O_NONBLOCK);
+}
+
+void
+deinit_fifo(void)
+{
+    close(fifo_fd);
+    fifo_fd = -1;
+    unlink(output_fifo);
+}
+
+
+void
+sighandler(int sig)
+{
+    deinit_fifo();
+    die("got signal %d", sig);
+}
+
+void
+sigpipehandler(int sig)
+{
+    close(fifo_fd);
+    fifo_fd = -1;
+}
+
+int
+main(int argc, char *argv[])
+{
+    int foreground = 0;
+    int sched_realtime = 0;
+    char *cp;
+    int c;
+
+    me = argv[0];
+    cp = strrchr(argv[0], '/');
+    if (cp) me = cp + 1;
+
+    while ((c = getopt(argc, argv, "flrdXF:A:")) != -1) {
+        switch (c) {
+
+        /* daemon options */
+        case 'f':
+            foreground = 1;
+            break;
+        case 'l':
+            logtosyslog = 1;
+            break;
+        case 's':
+            sched_realtime = 1;
+            break;
+        case 'd':
+            debug++;   /* if > 1, syslog will not be used */
+            break;
+        case 'X':
+            noxmit = 1;
+            break;
+
+        case 'F':
+            output_fifo = optarg;
+            break;
+
+        case 'A':
+            sysactive_path = optarg;
+            break;
+
+        default:
+            usage();
+            break;
+        }
+    }
+
+    if (optind < argc) {
+        report("found non-option argument(s)");
+        usage();
+    }
+
+    if (!output_fifo) {
+	report("output fifo is required");
+	usage();
+    }
+
+    report("starting %s version %d", me, VERSION);
+
+    if (setup_input() < 0)
+        die("%s: unable to find input devices\n", me);
+
+    
+    if (init_fifo() < 0)
+	die("couldn't open fifo for output events");
+
+    signal(SIGTERM, sighandler);
+    signal(SIGHUP, sighandler);
+    signal(SIGINT, sighandler);
+    signal(SIGQUIT, sighandler);
+    signal(SIGABRT, sighandler);
+    signal(SIGUSR1, sighandler);
+    signal(SIGUSR2, sighandler);
+
+    signal(SIGPIPE, SIG_IGN);
+
+    if (!foreground) {
+        if (daemon(0, 0) < 0)
+            die("failed to daemonize");
+        daemonized = 1;
+    }
+
+    data_loop();
+
+    return 0;
+}
+
