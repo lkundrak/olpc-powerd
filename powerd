@@ -4,14 +4,17 @@
 mydir=/var/run
 mydir=/tmp
 
-IMAGES=/home/olpc/powerb
+PROJECTDIR=/home/olpc/powerb
+IMAGES=$PROJECTDIR
 PPMTOFB=/home/olpc/bin/ppmtofb
 
 FIFO=$mydir/powerevents
 
 CAPACITY_LEVEL=/sys/class/power_supply/olpc-battery/capacity_level
+AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1 / 0
 
 CONFIGFILE=/etc/powerd.conf
+CONFIGFILE=$PROJECTDIR/powerd.conf
 
 set -u
 
@@ -28,12 +31,23 @@ set -u
 #	    "foo" ""
 #}
 
+yes_or_true()
+{
+    test $# = 0 && return 1
+
+    case $1 in
+    [yYtT]*) return 0 ;;
+    *)     return 1 ;;
+    esac
+}
+
+
 pleaseconfirm()
 {
     $PPMTOFB --center --sigusr2 --delay 6 \
 	    $IMAGES/pleaseconfirm.pgm \
 	    $IMAGES/shuttingdown.pgm &&
-    gotosleep
+    slumber
 }
 
 shuttingdown()
@@ -70,13 +84,53 @@ do_shutdown()
 #	sleep 5
 #}
 
-
-gotosleep()
+check_battery()
 {
-	echo 1   >/sys/devices/platform/dcon/sleep 
-	echo mem >/sys/power/state
-	echo 0   >/sys/devices/platform/dcon/sleep 
-	unsplash
+    read capacity < $CAPACITY_LEVEL
+    case $capacity in
+    *critical*)
+	notify_of_shutdown "\n\nBattery Level Critical"
+	do_shutdown
+	;;
+    esac
+}
+
+user_activity()
+{
+    local now wasactive
+    now=$(date +%s)
+    wasactive=$(stat --format=%Y $USER_ACTIVITY)
+    (( $now - $wasactive < $idletime ))
+}
+
+cpu_activity()
+{
+    return 0
+}
+
+network_activity()
+{
+    return 0
+}
+
+check_activity()
+{
+    if !user_activity && !cpu_activity && !network_activity
+    then
+	catnap
+    fi
+}
+
+slumber()
+{
+    echo 1   >/sys/devices/platform/dcon/sleep 
+    echo mem >/sys/power/state
+    echo 0   >/sys/devices/platform/dcon/sleep 
+    unsplash
+}
+
+catnap()
+{
 }
 
 setup_wakeups()
@@ -100,95 +154,102 @@ be_daemon()
  set -x
  exec 2>/home/olpc/powerb/pbd.log
 
-	trap "unsplash; exit" 1 2 3 15
-	unsplash
+    trap "unsplash; exit" 1 2 3 15
+    unsplash
 
-	if [ ! -p $FIFO ]
-	then
-	    rm -f $FIFO
-	    mkfifo $FIFO
-	fi
+    if [ ! -p $FIFO ]
+    then
+	rm -f $FIFO
+	mkfifo $FIFO
+    fi
 
-	echo 0 >$mydir/wasthen
+    echo 0 >$mydir/wasthen
 
+    while :
+    do
 	while :
 	do
-		while :
-		do
-		    if ! read -t 15 which more
-		    then
-			which=timeout
-		    fi
-		    case $which in
-		    button)
-			now=$(date +%s)
-			read wasthen < $mydir/wasthen
-			if [ $(( $now - $wasthen )) -ge 5 ]
-			then # first press
-			    pleaseconfirm &
-    			    splashpid=$!
-			    echo "killall -USR1 ppmtofb" \
-					>$mydir/pwrdown_unsplash
-			    echo "killall -USR2 ppmtofb" \
-					>$mydir/pwrdown_nextsplash
-			    ps axf >/tmp/pslist
-			else # second press
-			    #rm -f $mydir/pwrdown_unsplash
-			    #unsplash
-			    shuttingdown
-			fi
-			echo $now >$mydir/wasthen
-			;;
+	    if ! read -t 10 which more
+	    then
+		which=timeout
+	    fi
+	    case $which in
+	    button)
+		now=$(date +%s)
+		read wasthen < $mydir/wasthen
+		if [ $(( $now - $wasthen )) -ge 5 ]
+		then # first press
+		    pleaseconfirm &
+		    splashpid=$!
+		    echo "killall -USR1 ppmtofb" \
+				>$mydir/pwrdown_unsplash
+		    echo "killall -USR2 ppmtofb" \
+				>$mydir/pwrdown_nextsplash
+		    ps axf >/tmp/pslist
+		else # second press
+		    #rm -f $mydir/pwrdown_unsplash
+		    #unsplash
+		    shuttingdown
+		fi
+		echo $now >$mydir/wasthen
+		;;
 
-		    lidclosed)
-			xset dpms force off
-			backlight off
-			gotosleep
-			;;
+	    lidclosed)
+		xset dpms force off
+		backlight off
+		slumber
+		;;
 
-		    lidopen)
-			xset dpms 0 0 0
-			xset dpms force on
-			backlight restore
-			;;
+	    lidopen)
+		xset dpms 0 0 0
+		xset dpms force on
+		backlight restore
+		;;
 
-		    ac_connect)
-			if [ ! $SOLAR ]
-			then
-			    runmode=wastepower
-			fi
-			;;
+	    ebookform)
+		am_ebook=true
+		idletime=config_EBOOK_IDLETIME
+		;;
 
-		    ac_disconnect)
-			runmode=wastepower
-			;;
+	    not_ebookform)
+		am_ebook=;
+		idletime=config_IDLETIME
+		;;
+
+	    ac_connect)
+		savepower=;
+		yesortrue $config_SOLAR && savepower=true;
+		yesortrue $config_ALWAYSON && savepower=;
+		;;
+
+	    ac_disconnect)
+		savepower=true;
+		yesortrue $config_ALWAYSON && savepower=;
+		;;
 
 
-     	    	    timeout)
-			read capacity < $CAPACITY_LEVEL
-			case $capacity in
-			*critical*)
-     			    notify_of_shutdown "\n\nBattery Level Critical"
-     			    do_shutdown
-			    ;;
-			esac
-     	    		;;
+	    timeout)
+		check_battery
+		if [ "$savepower" ]
+		then
+		    check_activity
+		fi
+		;;
 
-		    esac
-		done <> $FIFO
-		sleep 2
-	done
+	    esac
+	done <> $FIFO
+	sleep 2
+    done
 }
 
 # rm -f $mydir/pwrdown_*
 
-case $1 in
-*confirm)
-    pleaseconfirm
-    exit
-    ;;
-esac
-
+#case $1 in
+#*confirm)
+#    pleaseconfirm
+#    exit
+#    ;;
+#esac
 
 setup_wakeups
 
