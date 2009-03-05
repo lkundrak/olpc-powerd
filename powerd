@@ -8,13 +8,15 @@ PROJECTDIR=/home/olpc/powerb
 IMAGES=$PROJECTDIR
 PPMTOFB=/home/olpc/bin/ppmtofb
 
-FIFO=$TMPDIR/powerevents
+FIFO=$TMPDIR/switchd-powerevents
 
 CAPACITY_LEVEL=/sys/class/power_supply/olpc-battery/capacity_level
 AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1 / 0
 
 CONFIGFILE=/etc/powerd.conf
 CONFIGFILE=$PROJECTDIR/powerd.conf
+
+USER_ACTIVITY=/var/run/olpc-kbdshim_activity
 
 set -u
 
@@ -127,6 +129,7 @@ slumber()
     echo mem >/sys/power/state
     echo 0   >/sys/devices/platform/dcon/sleep 
     unsplash
+    reevaluate
 }
 
 catnap()
@@ -146,6 +149,43 @@ setup_wakeups()
 read_config()
 {
     source $CONFIGFILE
+}
+
+check_acstate()
+{
+    read on_ac $AC_ONLINE
+    if [ "$on_ac" = 1 ]
+    then
+	savepower=;
+	yesortrue $config_SOLAR && savepower=true;
+	yesortrue $config_ALWAYSON && savepower=;
+    else
+	savepower=true;
+	yesortrue $config_ALWAYSON && savepower=;
+    fi
+}
+
+check_lidstate()
+{
+}
+
+check_ebookstate()
+{
+    if am_ebook
+    then
+	idletime=config_EBOOK_IDLETIME
+    else
+	idletime=config_IDLETIME
+    fi
+
+}
+
+
+reevaluate()
+{
+    check_acstate
+    check_lidstate
+    check_ebookstate
 }
 
 be_daemon()
@@ -174,7 +214,7 @@ be_daemon()
 		which=timeout
 	    fi
 	    case $which in
-	    button)
+	    power)
 		now=$(date +%s)
 		read wasthen < $TMPDIR/wasthen
 		if [ $(( $now - $wasthen )) -ge 5 ]
@@ -192,7 +232,7 @@ be_daemon()
 		echo $now >$TMPDIR/wasthen
 		;;
 
-	    lidclosed)
+	    lidclose)
 		xset dpms force off
 		backlight off
 		slumber
@@ -204,27 +244,17 @@ be_daemon()
 		backlight restore
 		;;
 
-	    ebookform)
-		am_ebook=true
+	    ebookclose)
 		idletime=config_EBOOK_IDLETIME
 		;;
 
-	    not_ebookform)
-		am_ebook=;
+	    ebookopen)
 		idletime=config_IDLETIME
 		;;
 
-	    ac_connect)
-		savepower=;
-		yesortrue $config_SOLAR && savepower=true;
-		yesortrue $config_ALWAYSON && savepower=;
+	    ac_connect|ac_disconnect|ac_changed)
+		check_acstate
 		;;
-
-	    ac_disconnect)
-		savepower=true;
-		yesortrue $config_ALWAYSON && savepower=;
-		;;
-
 
 	    timeout)
 		check_battery
