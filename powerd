@@ -1,14 +1,14 @@
 #!/bin/sh
 
 
-mydir=/var/run
-mydir=/tmp
+TMPDIR=/var/run
+TMPDIR=/tmp
 
 PROJECTDIR=/home/olpc/powerb
 IMAGES=$PROJECTDIR
 PPMTOFB=/home/olpc/bin/ppmtofb
 
-FIFO=$mydir/powerevents
+FIFO=$TMPDIR/powerevents
 
 CAPACITY_LEVEL=/sys/class/power_supply/olpc-battery/capacity_level
 AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1 / 0
@@ -58,16 +58,16 @@ shuttingdown()
 
 unsplash()
 {
-    mv $mydir/pwrdown_unsplash $mydir/pwrdown_unsplash.$$ 2>/dev/null
-    sh -x $mydir/pwrdown_unsplash.$$ 2>/dev/null 
-    rm -f $mydir/pwrdown_unsplash.$$
+    mv $TMPDIR/pwrdown_unsplash $TMPDIR/pwrdown_unsplash.$$ 2>/dev/null
+    sh -x $TMPDIR/pwrdown_unsplash.$$ 2>/dev/null 
+    rm -f $TMPDIR/pwrdown_unsplash.$$
 }
 
 nextsplash()
 {
-    mv $mydir/pwrdown_nextsplash $mydir/pwrdown_nextsplash.$$ 2>/dev/null
-    sh -x $mydir/pwrdown_nextsplash.$$ 2>/dev/null 
-    rm -f $mydir/pwrdown_nextsplash.$$
+    mv $TMPDIR/pwrdown_nextsplash $TMPDIR/pwrdown_nextsplash.$$ 2>/dev/null
+    sh -x $TMPDIR/pwrdown_nextsplash.$$ 2>/dev/null 
+    rm -f $TMPDIR/pwrdown_nextsplash.$$
 }
 
 do_shutdown()
@@ -163,7 +163,7 @@ be_daemon()
 	mkfifo $FIFO
     fi
 
-    echo 0 >$mydir/wasthen
+    echo 0 >$TMPDIR/wasthen
 
     while :
     do
@@ -176,22 +176,20 @@ be_daemon()
 	    case $which in
 	    button)
 		now=$(date +%s)
-		read wasthen < $mydir/wasthen
+		read wasthen < $TMPDIR/wasthen
 		if [ $(( $now - $wasthen )) -ge 5 ]
 		then # first press
 		    pleaseconfirm &
 		    splashpid=$!
 		    echo "killall -USR1 ppmtofb" \
-				>$mydir/pwrdown_unsplash
+				>$TMPDIR/pwrdown_unsplash
 		    echo "killall -USR2 ppmtofb" \
-				>$mydir/pwrdown_nextsplash
+				>$TMPDIR/pwrdown_nextsplash
 		    ps axf >/tmp/pslist
 		else # second press
-		    #rm -f $mydir/pwrdown_unsplash
-		    #unsplash
 		    shuttingdown
 		fi
-		echo $now >$mydir/wasthen
+		echo $now >$TMPDIR/wasthen
 		;;
 
 	    lidclosed)
@@ -242,7 +240,7 @@ be_daemon()
     done
 }
 
-# rm -f $mydir/pwrdown_*
+# rm -f $TMPDIR/pwrdown_*
 
 #case $1 in
 #*confirm)
