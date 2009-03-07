@@ -175,21 +175,21 @@ setup_input()
 
         if (ioctl(dfd, EVIOCGID, &id) < 0) {
             report("failed ioctl EVIOCGID on %d", i);
-	    close(dfd);
+            close(dfd);
             continue;
         }
 
         if (ioctl(dfd, EVIOCGBIT(0, EV_MAX), bit) < 0) {
             report("failed ioctl EVIOCGBIT on %d", i);
-	    close(dfd);
+            close(dfd);
             continue;
         }
 
-	if (i == 0)  pwr_fd = dfd;
-	if (i == 1)  lid_fd = dfd;
-	if (i == 2)  ebk_fd = dfd;
+        if (i == 0)  pwr_fd = dfd;
+        if (i == 1)  lid_fd = dfd;
+        if (i == 2)  ebk_fd = dfd;
 
-	maxfd = MAX(maxfd, dfd);
+        maxfd = MAX(maxfd, dfd);
 
     }
 
@@ -233,21 +233,29 @@ indicate_activity(void)
     lastactivity = now;
 }
 
-void open_fifo(void);
-
 void
-send_event(char *evt)
+send_event(char *evt, int seconds)
 {
-    if (fifo_fd < 0) open_fifo();
-    if (fifo_fd < 0) return;
+    char evtbuf[128];
+    int n;
+    
+    n = snprintf(evtbuf, 128, "%s %d\n", evt, seconds);
 
-    if (write(fifo_fd, evt, strlen(evt)) < 0) {
-	if (errno != EPIPE)
-	    die("fifo write failed");
-	dbg(1, "got write signal");
+    if (fifo_fd < 0)
+        fifo_fd = open(output_fifo, O_WRONLY|O_NONBLOCK);
+    if (fifo_fd < 0)
+        return;
+
+    if (write(fifo_fd, evtbuf, n) < 0) {
+        if (errno != EPIPE)
+            die("fifo write failed");
+        dbg(1, "got write signal");
     } else {
-	dbg(1, "sending %s", evt);
+        dbg(1, "sending %s", evtbuf);
     }
+
+    close(fifo_fd);
+    fifo_fd = -1;
 
 }
 
@@ -259,11 +267,11 @@ void power_event()
         die("bad read from power button");
 
     dbg(3, "pwr: ev sec %d usec %d type %d code %d value %d",
-	ev->time.tv_sec, ev->time.tv_usec,
-	ev->type, ev->code, ev->value);
+        ev->time.tv_sec, ev->time.tv_usec,
+        ev->type, ev->code, ev->value);
 
     if (ev->type == EV_KEY && ev->code == KEY_POWER && ev->value == 1)
-	send_event("power\n");
+        send_event("power", ev->time.tv_sec);
 
 
 }
@@ -276,14 +284,14 @@ void lid_event()
         die("bad read from lid switch");
 
     dbg(3, "lid: ev sec %d usec %d type %d code %d value %d",
-	ev->time.tv_sec, ev->time.tv_usec,
-	ev->type, ev->code, ev->value);
+        ev->time.tv_sec, ev->time.tv_usec,
+        ev->type, ev->code, ev->value);
 
     if (ev->type == EV_SW && ev->code == 0) {
-	if (ev->value)
-	    send_event("lidclose\n");
-	else
-	    send_event("lidopen\n");
+        if (ev->value)
+            send_event("lidclose", ev->time.tv_sec);
+        else
+            send_event("lidopen", ev->time.tv_sec);
     }
 
 }
@@ -296,14 +304,14 @@ void ebook_event()
         die("bad read from ebook switch");
 
     dbg(3, "ebk: ev sec %d usec %d type %d code %d value %d",
-	ev->time.tv_sec, ev->time.tv_usec,
-	ev->type, ev->code, ev->value);
+        ev->time.tv_sec, ev->time.tv_usec,
+        ev->type, ev->code, ev->value);
 
     if (ev->type == EV_SW && ev->code == 1) {
-	if (ev->value)
-	    send_event("ebookclose\n");
-	else
-	    send_event("ebookopen\n");
+        if (ev->value)
+            send_event("ebookclose", ev->time.tv_sec);
+        else
+            send_event("ebookopen", ev->time.tv_sec);
     }
 }
 
@@ -355,64 +363,10 @@ data_loop(void)
 
 }
 
-int
-init_fifo()
-{
-    struct stat sbuf;
-
-#define fifomode 0644  /* allow anyone to read */
-
-    if (mkfifo(output_fifo, fifomode)) {
-        if (errno != EEXIST) {
-            report("mkfifo of %s failed", output_fifo);
-            return -1;
-        }
-
-        /* the path exists.  is it a fifo? */
-        if (stat(output_fifo, &sbuf) < 0) {
-            report("stat of %s failed", output_fifo);
-            return -1;
-        }
-
-        /* if not, remove and recreate */
-        if (!S_ISFIFO(sbuf.st_mode)) {
-            unlink(output_fifo);
-            if (mkfifo(output_fifo, fifomode)) {
-                report("recreate of %s failed", output_fifo);
-                return -1;
-            }
-        }
-    }
-
-    /* mkfifo was affected by umask */
-    if (chmod(output_fifo, fifomode)) {
-	report("chmod of %s to 0%o failed", output_fifo, fifomode);
-        return -1;
-    }
-
-    return 0;
-}
-
-
-void
-open_fifo(void)
-{
-    fifo_fd = open(output_fifo, O_WRONLY|O_NONBLOCK);
-}
-
-void
-deinit_fifo(void)
-{
-    close(fifo_fd);
-    fifo_fd = -1;
-    unlink(output_fifo);
-}
-
 
 void
 sighandler(int sig)
 {
-    deinit_fifo();
     die("got signal %d", sig);
 }
 
@@ -475,8 +429,8 @@ main(int argc, char *argv[])
     }
 
     if (!output_fifo) {
-	report("output fifo is required");
-	usage();
+        report("output fifo is required");
+        usage();
     }
 
     report("starting %s version %d", me, VERSION);
@@ -485,8 +439,10 @@ main(int argc, char *argv[])
         die("%s: unable to find input devices\n", me);
 
     
+#if 0
     if (init_fifo() < 0)
-	die("couldn't open fifo for output events");
+        die("couldn't open fifo for output events");
+#endif
 
     signal(SIGTERM, sighandler);
     signal(SIGHUP, sighandler);
