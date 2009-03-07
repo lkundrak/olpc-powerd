@@ -1,17 +1,24 @@
 #!/bin/sh
 
 
-TMPDIR=/var/run
-TMPDIR=/tmp
+RUNDIR=/var/run
 
-PROJECTDIR=/home/olpc/powerb
+PROJECTDIR=/home/olpc/src/powerd
 IMAGES=$PROJECTDIR
 PPMTOFB=/home/olpc/bin/ppmtofb
+LOGFILE=$PROJECTDIR/powerd.log
 
-FIFO=$TMPDIR/switchd-powerevents
+FIFO=$RUNDIR/powerevents
 
-CAPACITY_LEVEL=/sys/class/power_supply/olpc-battery/capacity_level
+# i'd use /sys/.../capacity_level here, but we never hit "critical" --
+# we only get to "low", which then lasts for another half hour.
+# using /sys/.../capacity (which gives a percentage), and cutting
+# off at 5% means we're shutting down with (on my machine and
+# battery under 2 minutes of runtime left.  close enough for jazz...
+CAPACITY=/sys/class/power_supply/olpc-battery/capacity
 AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1 / 0
+WAKEUP_EVENTS=/sys/power/wakeup_events
+WAKEUP_SOURCE=/sys/power/wakeup-source
 
 CONFIGFILE=/etc/powerd.conf
 CONFIGFILE=$PROJECTDIR/powerd.conf
@@ -20,22 +27,10 @@ USER_ACTIVITY=/var/run/olpc-kbdshim_activity
 
 set -u
 
-#splash()
-#{
-#
-#    timeoutarg="$1"
-#    shift
-#    dialog --stdout $timeoutarg \
-#	    --visit-items \
-#	    --menu \
-#	    "$1" \
-#	    11 40 3 \
-#	    "foo" ""
-#}
 
 yes_or_true()
 {
-    test $# = 0 && return 1
+    test "$1" || return 1
 
     case $1 in
     [yYtT]*) return 0 ;;
@@ -43,33 +38,24 @@ yes_or_true()
     esac
 }
 
-
-pleaseconfirm()
+splash()
 {
-    $PPMTOFB --center --sigusr2 --delay 6 \
-	    $IMAGES/pleaseconfirm.pgm \
-	    $IMAGES/shuttingdown.pgm &&
-    slumber
-}
+    case $1 in
+    confirm)  text="Please confirm: will suspend in 5 seconds, press the power button again to power off" ;;
+    shutting) text="Shutting down, please wait..." ;;
+    critical) text="Battery level CRITICAL, shutting down..." ;;
+    esac
 
-shuttingdown()
-{
-    nextsplash
-    do_shutdown
+    unsplash
+    openvt -s -w -- dialog --sleep 999999 --infobox "$text" 11 40 &
+    #chvt 4
+    #dialog --sleep 999999 --infobox "$text" 11 40 &
+
 }
 
 unsplash()
 {
-    mv $TMPDIR/pwrdown_unsplash $TMPDIR/pwrdown_unsplash.$$ 2>/dev/null
-    sh -x $TMPDIR/pwrdown_unsplash.$$ 2>/dev/null 
-    rm -f $TMPDIR/pwrdown_unsplash.$$
-}
-
-nextsplash()
-{
-    mv $TMPDIR/pwrdown_nextsplash $TMPDIR/pwrdown_nextsplash.$$ 2>/dev/null
-    sh -x $TMPDIR/pwrdown_nextsplash.$$ 2>/dev/null 
-    rm -f $TMPDIR/pwrdown_nextsplash.$$
+    killall -q dialog
 }
 
 do_shutdown()
@@ -78,31 +64,15 @@ do_shutdown()
     /sbin/shutdown -h now
 }
 
-#notify_of_shutdown()
-#{
-#	splash_powerdown "$@"
-#	touch /tmp/suppress_shutdown  # no user intervention
-#	touch /tmp/rcS_abort # in case this is happening during powerup
-#	sleep 5
-#}
-
 check_battery()
 {
-    read capacity < $CAPACITY_LEVEL
+    read capacity < $CAPACITY
     case $capacity in
-    *critical*)
-	notify_of_shutdown "\n\nBattery Level Critical"
-	do_shutdown
-	;;
+    [54321])
+        splash critical
+        do_shutdown
+        ;;
     esac
-}
-
-user_activity()
-{
-    local now wasactive
-    now=$(date +%s)
-    wasactive=$(stat --format=%Y $USER_ACTIVITY)
-    (( $now - $wasactive < $idletime ))
 }
 
 cpu_activity()
@@ -115,34 +85,116 @@ network_activity()
     return 0
 }
 
-check_activity()
+laptop_idle()
 {
-    if !user_activity && !cpu_activity && !network_activity
+    if ! cpu_activity && ! network_activity
     then
-	catnap
+        catnap
+    fi
+}
+
+wlan_power()
+{
+    local wlp
+    echo  1
+    return
+    if [ "${1:-}" ]
+    then
+	echo $1 >/sys/power/wlan-enabled
+    else
+	read wlp < /sys/power/wlan-enabled
+	echo $wlp
     fi
 }
 
 slumber()
 {
+    set_wakeups none
+    wlp=$(wlan_power)
+    wlan_power 0
     echo 1   >/sys/devices/platform/dcon/sleep 
     echo mem >/sys/power/state
+    set_wakeups all
     echo 0   >/sys/devices/platform/dcon/sleep 
+    wlan_power $wlp
     unsplash
     reevaluate
+    set_idletimes
 }
 
 catnap()
 {
+    wlp=$(wlan_power)
+    yes_or_true "$config_MESH_or_WAKE_ON_WAN" || wlan_power $wlp
+    while :
+    do
+        echo mem >/sys/power/state
+        read wakeupsource <$WAKEUP_SOURCE
+        : wakeupsource is $wakeupsource
+        case $wakeupsource in
+        "lid") 
+            selfinject useractive
+            break
+            ;;
+
+        "key press")
+            selfinject useractive
+            break
+            ;;
+
+        "power button")
+            selfinject power $(date +%s)
+            break
+            ;;
+
+        "ebook")
+            selfinject useractive
+            ;;
+
+        "wlan packet")
+            if yes_or_true "$config_MESH_or_WAKE_ON_WAN"
+            then
+        	selfinject useractive
+                break
+            fi
+            ;;
+        esac
+    done
+    wlan_power $wlp
+    set_idletimes
 }
 
-setup_wakeups()
+backlight()
 {
-    for source in all ac_power battery_error battery_soc battery_state \
-    	ebook_mode_change ps2event wlan
-    do
-	echo 1 > $WAKEUP_EVENTS/$source
-    done
+    case $1 in
+    restore)
+        test "${curbright:-}" && brightness $curbright
+        ;;
+    off)
+        curbright=$(brightness)
+        ;;
+    dim)
+        curbright=$(brightness)
+        i=$curbright
+        while (( i-- > ${config_IDLEDIM:-5} ))
+        do
+            brightness $i
+        done
+        ;;
+    esac
+}
+
+set_wakeups()
+{
+    case $1 in
+    # setting "all" to 1/0 sets/clears everything else at once,
+    # i.e.,  ac_power battery_error battery_soc battery_state 
+    #       ebook_mode_change ps2event wlan"
+    all) val=1 ;;
+    none) val=0 ;;
+    esac
+
+    echo $val >$WAKEUP_EVENTS/all
 
 }
 
@@ -153,133 +205,194 @@ read_config()
 
 check_acstate()
 {
-    read on_ac $AC_ONLINE
+    read on_ac < $AC_ONLINE
     if [ "$on_ac" = 1 ]
     then
-	savepower=;
-	yesortrue $config_SOLAR && savepower=true;
-	yesortrue $config_ALWAYSON && savepower=;
+        savepower=;
+        yes_or_true ${config_SOLAR:-false} && savepower=true;
+        yes_or_true ${config_ALWAYSON:-false} && savepower=;
     else
-	savepower=true;
-	yesortrue $config_ALWAYSON && savepower=;
+        savepower=true;
+        yes_or_true ${config_ALWAYSON:-false} && savepower=;
     fi
 }
 
-check_lidstate()
+set_idletimes()
 {
-}
-
-check_ebookstate()
-{
-    if am_ebook
+    if [ "$am_ebook" ]
     then
-	idletime=config_EBOOK_IDLETIME
+            idletimes=${config_EBOOK_IDLETIMES:-"10 15 240"}
     else
-	idletime=config_IDLETIME
+            idletimes=${config_IDLETIMES:-"120 130 240"}
     fi
-
+    if [ "${1:-}" != ifchanged -o "$idletimes" != "${last_idletimes:-}" ]
+    then
+        echo "I $idletimes" >/var/run/olpc-kbdshim_rotate
+    fi
+    last_idletimes="$idletimes"
 }
-
 
 reevaluate()
 {
     check_acstate
-    check_lidstate
-    check_ebookstate
 }
 
-be_daemon()
+selfinject()
 {
+    echo $* >$FIFO
+}
 
- set -x
- exec 2>/home/olpc/powerb/pbd.log
+kickme()
+{
+    (sleep $1; shift 1; selfinject kickme $*) &
+}
+
+
+dcon_freeze()
+{
+    echo $1 > /sys/devices/platform/dcon/freeze
+}
+
+event_loop()
+{
+    local which more idletimes lastpowerpress kickseq
+
+    lastpowerpress=0;
+    kickseq=0;
+
+    idletimes=${config_IDLETIMES:-"120 130 240"}
+
+    set -x
+    exec 2>>$LOGFILE
+    : starting eventloop
+
+    check_acstate
+    set_idletimes
 
     trap "unsplash; exit" 1 2 3 15
     unsplash
 
-    if [ ! -p $FIFO ]
-    then
-	rm -f $FIFO
-	mkfifo $FIFO
-    fi
-
-    echo 0 >$TMPDIR/wasthen
+    # recreate to flush, and to make sure it's a fifo
+    rm -f $FIFO
+    mkfifo $FIFO
 
     while :
     do
-	while :
-	do
-	    if ! read -t 10 which more
-	    then
-		which=timeout
-	    fi
-	    case $which in
-	    power)
-		now=$(date +%s)
-		read wasthen < $TMPDIR/wasthen
-		if [ $(( $now - $wasthen )) -ge 5 ]
-		then # first press
-		    pleaseconfirm &
-		    splashpid=$!
-		    echo "killall -USR1 ppmtofb" \
-				>$TMPDIR/pwrdown_unsplash
-		    echo "killall -USR2 ppmtofb" \
-				>$TMPDIR/pwrdown_nextsplash
-		    ps axf >/tmp/pslist
-		else # second press
-		    shuttingdown
-		fi
-		echo $now >$TMPDIR/wasthen
-		;;
+	set_idletimes ifchanged
 
-	    lidclose)
-		xset dpms force off
-		backlight off
-		slumber
-		;;
+        if ! read -t 10 which arg more
+        then
+            which=timeout
+        fi
 
-	    lidopen)
-		xset dpms 0 0 0
-		xset dpms force on
-		backlight restore
-		;;
+        : -------------------------
+        : got $which arg ${arg:-n/a}
 
-	    ebookclose)
-		idletime=config_EBOOK_IDLETIME
-		;;
+        case $which in
 
-	    ebookopen)
-		idletime=config_IDLETIME
-		;;
+        power)
+            am_idle=;
+            now=$arg
+            if [ $(( $now - $lastpowerpress )) -ge 5 ]
+            then # first press
+                splash confirm
+                set_idletimes   # reprime for "useractivity"
+                let kickseq=kickseq+1
+                kickme 6 $kickseq gotosleep
+            else # second press
+                splash shutting
+                dcon_freeze 1
+                do_shutdown
+            fi
+            lastpowerpress=$now
+            ;;
 
-	    ac_connect|ac_disconnect|ac_changed)
-		check_acstate
-		;;
+        kickme)
+            if [ "$kickseq" = "$arg" ]
+            then
+                echo $more >$FIFO
+            fi
+            ;;
 
-	    timeout)
-		check_battery
-		if [ "$savepower" ]
-		then
-		    check_activity
-		fi
-		;;
+        lidclose|gotosleep)
+            am_idle=;
+            unsplash
+            xset dpms force off
+            backlight off
+            slumber
+            ;;
 
-	    esac
-	done <> $FIFO
-	sleep 2
-    done
+        lidopen)
+            am_idle=;
+            unsplash
+            xset dpms 0 0 0
+            xset dpms force on
+            backlight restore
+            ;;
+
+        ebookclose)
+            am_idle=;
+            am_ebook=true
+            ;;
+
+        ebookopen)
+            am_idle=;
+            am_ebook=;
+            ;;
+
+        useractive)
+            lastpowerpress=0  #invalidate outstanding power button timers
+            let kickseq=kickseq+1  # and timed kickme messages
+            unsplash
+            backlight restore
+            am_idle=;
+            ;;
+
+        useridle1)
+            am_idle=1
+            if [ "$savepower" -a ! "$am_ebook" ]
+            then
+                backlight dim
+            fi
+            ;;
+
+        useridle2)
+            am_idle=2
+            if [ "$savepower" ] && laptop_idle
+            then
+                catnap
+            fi
+            ;;
+
+        useridle3)
+            am_idle=3
+            ;;
+
+        timeout)
+            osavepower=$savepower
+            check_battery
+            check_acstate
+            if [ "$savepower" -a ! "$osavepower" ]
+            then
+                # this will force a restart of the timers,
+                # so we'll go through the useridle1/2 cycle again
+                set_idletimes
+            fi
+            ;;
+
+	reconfig)
+	    read_config
+	    ;;
+
+        esac
+    done <> $FIFO
 }
 
-# rm -f $TMPDIR/pwrdown_*
 
-#case $1 in
-#*confirm)
-#    pleaseconfirm
-#    exit
-#    ;;
-#esac
+read_config
+am_ebook=;
 
-setup_wakeups
+set_wakeups all
 
-be_daemon
+event_loop
 
