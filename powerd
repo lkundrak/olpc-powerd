@@ -157,12 +157,12 @@ catnap()
         : wakeupsource is $wakeupsource
         case $wakeupsource in
         "lid") 
-            selfinject useractive
+            selfinject useractive2
             break
             ;;
 
         "key press")
-            selfinject useractive
+            selfinject useractive2
             break
             ;;
 
@@ -172,13 +172,13 @@ catnap()
             ;;
 
         "ebook")
-            selfinject useractive
+            selfinject useractive2
             ;;
 
         "wlan packet")
             if yes_or_true "$config_MESH_or_WAKE_ON_WAN"
             then
-        	selfinject useractive
+        	selfinject useractive2
                 break
             fi
             ;;
@@ -192,18 +192,27 @@ backlight()
 {
     case $1 in
     restore)
-        test "${curbright:-}" && brightness $curbright
+        if [ "$dimmed" -a "$curbright" ]
+	then
+	    brightness $curbright
+	fi
         ;;
     off)
-        curbright=$(brightness)
+        if [ ! "${dimmed}" ]
+	then
+	    curbright=$(brightness)
+	fi
         ;;
     dim)
-        curbright=$(brightness)
-        i=$curbright
-        while (( i-- > ${config_IDLEDIM} ))
-        do
-            brightness $i
-        done
+        if [ ! "${dimmed}" ]
+	then
+	    curbright=$(brightness)
+	    i=$curbright
+	    while (( i-- > ${config_IDLEDIM} ))
+	    do
+		brightness $i
+	    done
+	fi
         ;;
     esac
 }
@@ -261,7 +270,7 @@ set_idletimes()
     else
             idletimes=${config_IDLETIMES}
     fi
-    if [ "${1:-}" != ifchanged -o "$idletimes" != "${last_idletimes:-}" ]
+    if [ "${1:-}" != ifchanged -o "$idletimes" != "${last_idletimes}" ]
     then
         echo "I $idletimes" >/var/run/olpc-kbdshim_rotate
     fi
@@ -291,10 +300,10 @@ dcon_freeze()
 
 event_loop()
 {
-    local which more idletimes lastpowerpress kickseq
+    local event arg1 arg2 more idletimes lastpowerpress timerseqno
 
     lastpowerpress=0;
-    kickseq=0;
+    timerseqno=0;
 
     idletimes=${config_IDLETIMES:-"120 130 240"}
 
@@ -316,25 +325,25 @@ event_loop()
     do
 	set_idletimes ifchanged
 
-        if ! read -t 10 which arg more
+        if ! read -t 10 event arg1 arg2 more
         then
-            which=timeout
+            event=timeout
         fi
 
         : -------------------------
-        : got $which arg ${arg:-n/a}
+        : got $event arg1 ${arg1:-n/a}
 
-        case $which in
+        case $event in
 
         power)
             am_idle=;
-            now=$arg
+            now=$arg1
             if [ $(( $now - $lastpowerpress )) -ge 5 ]
             then # first press
                 splash confirm
                 set_idletimes   # reprime for "useractivity"
-                let kickseq=kickseq+1
-                sched_timer 6 $kickseq gotosleep
+                let timerseqno=timerseqno+1
+                sched_timer 6 $timerseqno gotosleep
             else # second press
                 splash shutting
                 dcon_freeze 1
@@ -344,9 +353,9 @@ event_loop()
             ;;
 
         timerdone)
-            if [ "$kickseq" = "$arg" ]
+            if [ "$timerseqno" = "$arg1" ]
             then
-                echo $more >$FIFO
+                echo $arg2 >$FIFO
             fi
             ;;
 
@@ -376,12 +385,13 @@ event_loop()
             am_ebook=;
             ;;
 
-        useractive)
+        useractive*)
             lastpowerpress=0  #invalidate outstanding power button timers
-            let kickseq=kickseq+1  # as well as timerdone messages
+            let timerseqno=timerseqno+1  # as well as timerdone messages
             unsplash
             backlight restore
             am_idle=;
+	    test "$event" = useractive2 && set_idletimes
             ;;
 
         useridle1)
@@ -428,6 +438,9 @@ event_loop()
 default_config
 read_config
 am_ebook=;
+dimmed=;
+curbright=;
+last_idletimes=;
 
 set_wakeups all
 
