@@ -220,6 +220,7 @@ backlight()
 	    while (( i-- > ${config_IDLEDIM} ))
 	    do
 		brightness $i
+		usleep 20000
 	    done
 	    dimmed=true
 	fi
