@@ -52,6 +52,7 @@ CONFIGFILE=$PROJECTDIR/powerd.conf
 USER_ACTIVITY=/var/run/olpc-kbdshim_activity
 
 BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness
+WLAN_ENABLED=/sys/power/wlan-enabled
 
 set -u
 
@@ -121,40 +122,38 @@ laptop_idle()
     fi
 }
 
-wlan_power()
+set_wlan_power()
 {
-    local wlp
-    echo  1
-    return
-    if [ "${1:-}" ]
-    then
-        echo $1 >/sys/power/wlan-enabled
-    else
-        read wlp < /sys/power/wlan-enabled
-        echo $wlp
-    fi
+    echo $1 > $WLAN_ENABLED
+}
+
+read_wlan_power()
+{
+    local x
+    read x < $WLAN_ENABLED
+    eval $1=\"$x\"
 }
 
 slumber()
 {
-    set_wakeups none
-    wlp=$(wlan_power)
-    wlan_power 0
+    set_wakeupevents none
+    read_wlan_power wlp
+    set_wlan_power 0
     echo 1   >/sys/devices/platform/dcon/sleep 
     echo mem >/sys/power/state
     #read wakeupsource < $WAKEUP_SOURCE
     #: wakeupsource from slumber is $wakeupsource
     #date >&2
     selfinject useractive2
-    set_wakeups all
+    set_wakeupevents all
     echo 0   >/sys/devices/platform/dcon/sleep 
-    wlan_power $wlp
+    set_wlan_power $wlp
     unsplash
     reevaluate
     set_idletimes
 }
 
-set_wakeups()
+set_wakeupevents()
 {
     case $1 in
     # setting "all" to 1/0 sets/clears everything else at once,
@@ -172,34 +171,27 @@ set_wakeups()
     esac
 }
 
+read_wakeupsource()
+{
+    local x
+    read x < $WAKEUP_SOURCE
+    eval $1=\"$x\"
+}
+
 catnap()
 {
-    wlp=$(wlan_power)
-    yes_or_true "$config_MESH_or_WAKE_ON_WAN" || wlan_power $wlp
+    read wlp < $WLAN_ENABLED
+    yes_or_true "$config_MESH_or_WAKE_ON_WAN" || set_wlan_power $wlp
     while :
     do
         echo mem >/sys/power/state
-        read wakeupsource < $WAKEUP_SOURCE
+        read_wakeupsource wakeupsource
         : wakeupsource is $wakeupsource
         #date >&2
         case $wakeupsource in
-        "lid"|"empty sci") 
-            selfinject useractive2
-            break
-            ;;
-
-        "key press")
-            selfinject useractive2
-            break
-            ;;
-
         "power button")
             selfinject power $(date +%s)
             break
-            ;;
-
-        "ebook")
-            selfinject useractive2
             ;;
 
         "wlan packet")
@@ -209,13 +201,17 @@ catnap()
                 break
             fi
             ;;
+        *)   #"lid"|"empty sci"|"key press"|"ebook")
+            selfinject useractive2
+            break
+            ;;
         esac
     done
-    wlan_power $wlp
+    set_wlan_power $wlp
     set_idletimes
 }
 
-brightness()
+set_brightness()
 {
     echo $1 >$BRIGHTNESS
 }
@@ -232,10 +228,17 @@ brightness_ramp()
     while :
     do
         let i=i+$incr
-        brightness $i
+        set_brightness $i
         test $i = $2 && break
         usleep 20000
     done
+}
+
+read_brightness()
+{
+    local x
+    read x < $BRIGHTNESS
+    eval $1=\"$x\"
 }
 
 backlight()
@@ -244,13 +247,12 @@ backlight()
     restore)
         if [ "$dimmed" -a "$savebright" ]
         then
-            #brightness $savebright
-            read curbright < $BRIGHTNESS
+            read_brightness curbright
             if [ $curbright -lt $savebright ]
             then
                 # could ramp here, but it wastes time while
                 # the user is starting to work again
-                brightness $savebright
+                set_brightness $savebright
             fi
             dimmed=;
         fi
@@ -258,7 +260,7 @@ backlight()
     dim)
         if [ ! "${dimmed}" ]
         then
-            read savebright < $BRIGHTNESS
+            read_brightness savebright
             if [ $savebright -gt $config_IDLEDIM ]
             then
                 brightness_ramp $savebright $config_IDLEDIM
@@ -269,8 +271,8 @@ backlight()
     off)
         if [ ! "${dimmed}" ]
         then
-            read savebright <$BRIGHTNESS
-            brightness 0
+            read_brightness savebright
+            set_brightness 0
             dimmed=true
         fi
         ;;
@@ -354,7 +356,7 @@ event_loop()
     idletimes=${config_IDLETIMES:-"120 130 240"}
 
     set -x
-    exec 2>$LOGFILE
+    exec 2>>$LOGFILE
     : starting eventloop
 
     check_acstate
@@ -487,7 +489,7 @@ dimmed=;
 savebright=;
 last_idletimes=;
 
-set_wakeups all
+set_wakeupevents all
 
 event_loop
 
