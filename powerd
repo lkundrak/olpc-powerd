@@ -6,10 +6,12 @@
 #       power button
 #       ebook
 #       lid
+#   (it's unfortunate that these have no corresponding /sys state indicators)
 #
 #   conditions:
 #       AC input (boolean)
 #       battery level (numeric)
+#   (it's unfortunate that these have no corresponding events)
 #
 #   wakeups
 #       ac_power
@@ -126,10 +128,10 @@ wlan_power()
     return
     if [ "${1:-}" ]
     then
-	echo $1 >/sys/power/wlan-enabled
+        echo $1 >/sys/power/wlan-enabled
     else
-	read wlp < /sys/power/wlan-enabled
-	echo $wlp
+        read wlp < /sys/power/wlan-enabled
+        echo $wlp
     fi
 }
 
@@ -140,12 +142,34 @@ slumber()
     wlan_power 0
     echo 1   >/sys/devices/platform/dcon/sleep 
     echo mem >/sys/power/state
+    #read wakeupsource < $WAKEUP_SOURCE
+    #: wakeupsource from slumber is $wakeupsource
+    #date >&2
+    selfinject useractive2
     set_wakeups all
     echo 0   >/sys/devices/platform/dcon/sleep 
     wlan_power $wlp
     unsplash
     reevaluate
     set_idletimes
+}
+
+set_wakeups()
+{
+    case $1 in
+    # setting "all" to 1/0 sets/clears everything else at once,
+    # i.e.,  ac_power battery_error battery_soc battery_state 
+    #       ebook_mode_change ps2event wlan"
+    all)
+        echo 1 >$WAKEUP_EVENTS/all
+        echo 0 >$WAKEUP_EVENTS/battery_soc
+        echo 0 >$WAKEUP_EVENTS/battery_state
+        echo 0 >$WAKEUP_EVENTS/ac_power
+        ;;
+    none)
+        echo 0 >$WAKEUP_EVENTS/all
+        ;;
+    esac
 }
 
 catnap()
@@ -155,10 +179,11 @@ catnap()
     while :
     do
         echo mem >/sys/power/state
-        read wakeupsource <$WAKEUP_SOURCE
+        read wakeupsource < $WAKEUP_SOURCE
         : wakeupsource is $wakeupsource
+        #date >&2
         case $wakeupsource in
-        "lid") 
+        "lid"|"empty sci") 
             selfinject useractive2
             break
             ;;
@@ -180,7 +205,7 @@ catnap()
         "wlan packet")
             if yes_or_true "$config_MESH_or_WAKE_ON_WAN"
             then
-        	selfinject useractive2
+                selfinject useractive2
                 break
             fi
             ;;
@@ -206,10 +231,10 @@ brightness_ramp()
     i=$1
     while :
     do
-	let i=i+$incr
-	test $i = $2 && break
-	brightness $i
-	usleep 20000
+        let i=i+$incr
+        brightness $i
+        test $i = $2 && break
+        usleep 20000
     done
 }
 
@@ -218,43 +243,38 @@ backlight()
     case $1 in
     restore)
         if [ "$dimmed" -a "$savebright" ]
-	then
-	    #brightness $savebright
-	    read curbright <$BRIGHTNESS
-	    brightness_ramp $curbright $savebright
-	    dimmed=;
-	fi
+        then
+            #brightness $savebright
+            read curbright < $BRIGHTNESS
+            if [ $curbright -lt $savebright ]
+            then
+                # could ramp here, but it wastes time while
+                # the user is starting to work again
+                brightness $savebright
+            fi
+            dimmed=;
+        fi
         ;;
     dim)
         if [ ! "${dimmed}" ]
-	then
-	    read savebright <$BRIGHTNESS
-	    brightness_ramp $savebright $config_IDLEDIM
-	    dimmed=true
-	fi
+        then
+            read savebright < $BRIGHTNESS
+            if [ $savebright -gt $config_IDLEDIM ]
+            then
+                brightness_ramp $savebright $config_IDLEDIM
+            fi
+            dimmed=true
+        fi
         ;;
     off)
         if [ ! "${dimmed}" ]
-	then
-	    read savebright <$BRIGHTNESS
-	    brightness 0
-	fi
+        then
+            read savebright <$BRIGHTNESS
+            brightness 0
+            dimmed=true
+        fi
         ;;
     esac
-}
-
-set_wakeups()
-{
-    case $1 in
-    # setting "all" to 1/0 sets/clears everything else at once,
-    # i.e.,  ac_power battery_error battery_soc battery_state 
-    #       ebook_mode_change ps2event wlan"
-    all) val=1 ;;
-    none) val=0 ;;
-    esac
-
-    echo $val >$WAKEUP_EVENTS/all
-
 }
 
 default_config()
@@ -334,7 +354,7 @@ event_loop()
     idletimes=${config_IDLETIMES:-"120 130 240"}
 
     set -x
-    exec 2>>$LOGFILE
+    exec 2>$LOGFILE
     : starting eventloop
 
     check_acstate
@@ -349,7 +369,7 @@ event_loop()
 
     while :
     do
-	set_idletimes ifchanged
+        set_idletimes ifchanged
 
         if ! read -t 10 event arg1 arg2 more
         then
@@ -358,6 +378,7 @@ event_loop()
 
         : -------------------------
         : got $event arg1 ${arg1:-n/a}
+        #date >&2
 
         case $event in
 
@@ -370,6 +391,7 @@ event_loop()
                 set_idletimes   # reprime for "useractivity"
                 let timerseqno=timerseqno+1
                 sched_timer 6 $timerseqno gotosleep
+                backlight restore
             else # second press
                 splash shutting
                 dcon_freeze 1
@@ -388,7 +410,6 @@ event_loop()
         lidclose|gotosleep)
             am_idle=;
             unsplash
-            # xset dpms force off
             backlight off
             slumber
             ;;
@@ -396,8 +417,6 @@ event_loop()
         lidopen)
             am_idle=;
             unsplash
-            # xset dpms 0 0 0
-            # xset dpms force on
             backlight restore
             ;;
 
@@ -417,7 +436,7 @@ event_loop()
             unsplash
             backlight restore
             am_idle=;
-	    test "$event" = useractive2 && set_idletimes
+            test "$event" = useractive2 && set_idletimes
             ;;
 
         useridle1)
@@ -452,9 +471,9 @@ event_loop()
             fi
             ;;
 
-	reconfig)
-	    read_config
-	    ;;
+        reconfig)
+            read_config
+            ;;
 
         esac
     done <> $FIFO
