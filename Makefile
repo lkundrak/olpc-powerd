@@ -17,4 +17,4 @@ all: $(PROG)
 OBJS =  $(PROG).o
 
 clean:
-        rm -f *.o $(PROG)
+	rm -f *.o $(PROG)
