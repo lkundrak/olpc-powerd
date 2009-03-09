@@ -49,6 +49,8 @@ CONFIGFILE=$PROJECTDIR/powerd.conf
 
 USER_ACTIVITY=/var/run/olpc-kbdshim_activity
 
+BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness
+
 set -u
 
 
@@ -188,30 +190,38 @@ catnap()
     set_idletimes
 }
 
+brightness()
+{
+    echo $1 >$BRIGHTNESS
+}
+
 backlight()
 {
     case $1 in
     restore)
-        if [ "$dimmed" -a "$curbright" ]
+        if [ "$dimmed" -a "$savebright" ]
 	then
-	    brightness $curbright
+	    brightness $savebright
+	    dimmed=;
 	fi
         ;;
     off)
         if [ ! "${dimmed}" ]
 	then
-	    curbright=$(brightness)
+	    read savebright <$BRIGHTNESS
+	    brightness 0
 	fi
         ;;
     dim)
         if [ ! "${dimmed}" ]
 	then
-	    curbright=$(brightness)
-	    i=$curbright
+	    read savebright <$BRIGHTNESS
+	    i=$savebright
 	    while (( i-- > ${config_IDLEDIM} ))
 	    do
 		brightness $i
 	    done
+	    dimmed=true
 	fi
         ;;
     esac
@@ -439,7 +449,7 @@ default_config
 read_config
 am_ebook=;
 dimmed=;
-curbright=;
+savebright=;
 last_idletimes=;
 
 set_wakeups all
