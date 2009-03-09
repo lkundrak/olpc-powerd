@@ -1,6 +1,30 @@
 #!/bin/sh
 
 
+# the inputs that contribute to power management are:
+#   switches (which appear as events on /dev/input/event[012]:
+#       power button
+#       ebook
+#       lid
+#
+#   conditions:
+#       AC input (boolean)
+#       battery level (numeric)
+#
+#   wakeups
+#       ac_power
+#       battery_error
+#       battery_soc
+#       battery_state
+#       ebook_mode_change
+#       ps2event
+#       wlan
+#
+#   user activity/idleness
+#
+#   other system activity (cpu load, network load, etc)
+
+
 RUNDIR=/var/run
 
 PROJECTDIR=/home/olpc/src/powerd
@@ -176,7 +200,7 @@ backlight()
     dim)
         curbright=$(brightness)
         i=$curbright
-        while (( i-- > ${config_IDLEDIM:-5} ))
+        while (( i-- > ${config_IDLEDIM} ))
         do
             brightness $i
         done
@@ -198,9 +222,21 @@ set_wakeups()
 
 }
 
+default_config()
+{
+    config_EBOOK_IDLETIMES="10 15 240"
+    config_IDLETIMES="120 130 240"
+    config_IDLEDIM=5
+    config_SOLAR=no
+    config_ALWAYSON=no
+    config_MESH_or_WAKE_ON_WAN=yes
+} 
+
 read_config()
 {
+
     source $CONFIGFILE
+
 }
 
 check_acstate()
@@ -209,11 +245,11 @@ check_acstate()
     if [ "$on_ac" = 1 ]
     then
         savepower=;
-        yes_or_true ${config_SOLAR:-false} && savepower=true;
-        yes_or_true ${config_ALWAYSON:-false} && savepower=;
+        yes_or_true ${config_SOLAR} && savepower=true;
+        yes_or_true ${config_ALWAYSON} && savepower=;
     else
         savepower=true;
-        yes_or_true ${config_ALWAYSON:-false} && savepower=;
+        yes_or_true ${config_ALWAYSON} && savepower=;
     fi
 }
 
@@ -221,9 +257,9 @@ set_idletimes()
 {
     if [ "$am_ebook" ]
     then
-            idletimes=${config_EBOOK_IDLETIMES:-"10 15 240"}
+            idletimes=${config_EBOOK_IDLETIMES}
     else
-            idletimes=${config_IDLETIMES:-"120 130 240"}
+            idletimes=${config_IDLETIMES}
     fi
     if [ "${1:-}" != ifchanged -o "$idletimes" != "${last_idletimes:-}" ]
     then
@@ -242,9 +278,9 @@ selfinject()
     echo $* >$FIFO
 }
 
-kickme()
+sched_timer()
 {
-    (sleep $1; shift 1; selfinject kickme $*) &
+    (sleep $1; shift 1; selfinject timerdone $*) &
 }
 
 
@@ -298,7 +334,7 @@ event_loop()
                 splash confirm
                 set_idletimes   # reprime for "useractivity"
                 let kickseq=kickseq+1
-                kickme 6 $kickseq gotosleep
+                sched_timer 6 $kickseq gotosleep
             else # second press
                 splash shutting
                 dcon_freeze 1
@@ -307,7 +343,7 @@ event_loop()
             lastpowerpress=$now
             ;;
 
-        kickme)
+        timerdone)
             if [ "$kickseq" = "$arg" ]
             then
                 echo $more >$FIFO
@@ -317,7 +353,7 @@ event_loop()
         lidclose|gotosleep)
             am_idle=;
             unsplash
-            xset dpms force off
+            # xset dpms force off
             backlight off
             slumber
             ;;
@@ -325,8 +361,8 @@ event_loop()
         lidopen)
             am_idle=;
             unsplash
-            xset dpms 0 0 0
-            xset dpms force on
+            # xset dpms 0 0 0
+            # xset dpms force on
             backlight restore
             ;;
 
@@ -342,7 +378,7 @@ event_loop()
 
         useractive)
             lastpowerpress=0  #invalidate outstanding power button timers
-            let kickseq=kickseq+1  # and timed kickme messages
+            let kickseq=kickseq+1  # as well as timerdone messages
             unsplash
             backlight restore
             am_idle=;
@@ -389,6 +425,7 @@ event_loop()
 }
 
 
+default_config
 read_config
 am_ebook=;
 
