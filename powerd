@@ -124,7 +124,17 @@ laptop_idle()
 
 set_wlan_power()
 {
-    echo $1 > $WLAN_ENABLED
+    # very important not to do extra writes to wlan-enabled --
+    # the node is sort of misnamed.  writing a 0 puts the
+    # wlan into reset.  writing a 1 puts it into reset, and
+    # immediately releases the reset.  so a reset is always
+    # involved, even if brief.
+    read_wlan_power w
+    if [ "$w" != "$1" ]
+    then
+	test "$w" = 1 && echo WARNING:  blipping wlan-reset
+	echo $1 > $WLAN_ENABLED
+    fi
 }
 
 read_wlan_power()
@@ -180,8 +190,8 @@ read_wakeupsource()
 
 catnap()
 {
-    read wlp < $WLAN_ENABLED
-    yes_or_true "$config_MESH_or_WAKE_ON_WAN" || set_wlan_power $wlp
+    read_wlan_power wlp
+    yes_or_true "$config_MESH_or_WAKE_ON_WAN" || set_wlan_power 0
     while :
     do
         echo mem >/sys/power/state
@@ -216,6 +226,13 @@ set_brightness()
     echo $1 >$BRIGHTNESS
 }
 
+read_brightness()
+{
+    local x
+    read x < $BRIGHTNESS
+    eval $1=\"$x\"
+}
+
 brightness_ramp()
 {
     local i
@@ -232,13 +249,6 @@ brightness_ramp()
         test $i = $2 && break
         usleep 20000
     done
-}
-
-read_brightness()
-{
-    local x
-    read x < $BRIGHTNESS
-    eval $1=\"$x\"
 }
 
 backlight()
@@ -356,7 +366,7 @@ event_loop()
     idletimes=${config_IDLETIMES:-"120 130 240"}
 
     set -x
-    exec 2>>$LOGFILE
+    exec 2>$LOGFILE
     : starting eventloop
 
     check_acstate
