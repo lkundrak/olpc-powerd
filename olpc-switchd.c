@@ -186,8 +186,8 @@ setup_input()
         }
 
         if (i == 0)  pwr_fd = dfd;
-        if (i == 1)  lid_fd = dfd;
-        if (i == 2)  ebk_fd = dfd;
+        else if (i == 1)  lid_fd = dfd;
+        else if (i == 2)  ebk_fd = dfd;
 
         maxfd = MAX(maxfd, dfd);
 
