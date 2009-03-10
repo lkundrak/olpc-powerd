@@ -77,26 +77,26 @@ splash()
         ;;
     esac
 
-    $PROJECTDIR/pnmto565 -s 9999999 -c -f $args &
+    $PROJECTDIR/pnmto565fb -s 9999999 -c -f $args &
     splashpid=$!
 }
 
 nextsplash()
 {
-    # kill -INT will cause pnmto565 to display next image
+    # kill -USR1 will cause pnmto565fb to display next image
     test "${splashpid:-}" && kill -USR1 $splashpid
 }
 
 unsplash()
 {
-    # kill -INT will cause pnmto565 to restore original VT
+    # kill -INT will cause pnmto565fb to restore original VT
     test "${splashpid:-}" && kill -INT $splashpid
     splashpid=;
 }
 
 leavesplash()
 {
-    # kill -TERM will cause pnmto565 to just die
+    # kill -TERM will cause pnmto565fb to just die
     test "${splashpid:-}" && kill -TERM $splashpid
     splashpid=;
 }
