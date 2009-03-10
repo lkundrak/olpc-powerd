@@ -370,6 +370,14 @@ dcon_freeze()
     echo $1 > /sys/devices/platform/dcon/freeze
 }
 
+gotactivity()
+{
+    am_idle=;
+    lastpowerpress=0  #invalidate outstanding power button timers
+    let timerseqno=timerseqno+1  # as well as timerdone messages
+    unsplash
+}
+
 event_loop()
 {
     local event arg1 arg2 more idletimes lastpowerpress timerseqno
@@ -436,15 +444,12 @@ event_loop()
             ;;
 
         lidclose|gotosleep)
-            am_idle=;
-            unsplash
             backlight off
             slumber
             ;;
 
         lidopen)
-            am_idle=;
-            unsplash
+            gotactivity
             backlight restore
             ;;
 
@@ -459,11 +464,8 @@ event_loop()
             ;;
 
         useractive*)
-            lastpowerpress=0  #invalidate outstanding power button timers
-            let timerseqno=timerseqno+1  # as well as timerdone messages
-            unsplash
+            gotactivity
             backlight restore
-            am_idle=;
             test "$event" = useractive2 && set_idletimes
             ;;
 
