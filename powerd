@@ -444,6 +444,7 @@ event_loop()
             ;;
 
         lidclose|gotosleep)
+            gotactivity
             backlight off
             slumber
             ;;
