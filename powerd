@@ -2,18 +2,31 @@
 
 
 # the inputs that contribute to power management are:
-#   switches (which appear as events on /dev/input/event[012]:
+#
+# switches:
 #       power button
 #       ebook
 #       lid
-#   (it's unfortunate that these have no corresponding /sys state indicators)
+# actions on these switches appear as events on
+# /dev/input/event[012].  this script relies on the companion
+# program "olpc-switchd" to report these events via the
+# /var/run/powerevents fifo it creates for the purpose.  it's
+# unfortunate that these events have no corresponding /sys state
+# indicators, since knowing the state of the lid, or of ebook
+# mode, would be useful in the absence of events (at startup, for
+# instance).  in addition, it seems that the ebook switch may
+# suffer from the lid switch symptoms described in
+# http://dev.laptop.org/ticket/5703 .  the lid switch events seem
+# to be reliable (but see below re:  wakeup source reporting).
 #
-#   conditions:
+# conditions:
 #       AC input (boolean)
 #       battery level (numeric)
-#   (it's unfortunate that these have no corresponding events)
+# it's unfortunate that these have no corresponding events, since
+# otherwise no polling would be necessary.
 #
-#   wakeups
+# wakeups:
+#
 #       ac_power
 #       battery_error
 #       battery_soc
@@ -21,37 +34,73 @@
 #       ebook_mode_change
 #       ps2event
 #       wlan
+#       lid (or sometimes "empty sci")
+# when the system wakes from sleep, /sys/power/wakeup-source reports
+# the cause.  lid reporting is not reliable -- sometimes "empty sci"
+# is reported instead.  (i've not yet seen a case where "empty sci"
+# is reported for lid close, or for ebook_mode_change, but i'm not
+# ruling it out.)
 #
-#   user activity/idleness
+# user activity/idleness:
+#       useractivity
+#       useridle1
+#       useridle2
+#       useridle3
+# powerd expects user activity and user idle events to be delivered by
+# the olpc-kbdshim daemon, invoked with "-A /var/run/powerevents"
+# 
 #
-#   other system activity (cpu load, network load, etc)
+# other system activity (cpu load, network load, etc)
+#       unimplemented
+#
+# -----------------------------------------------
+# Copyright (C) 2009, Paul G Fox
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 2 of
+# the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+# PURPOSE.  See the GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; if not, write to the Free
+# Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139,
+# USA.
+#
 
-
-RUNDIR=/var/run
-
-PROJECTDIR=/home/olpc/src/powerd
-IMAGES=$PROJECTDIR
+PROJECTDIR=/etc/powerd
+CONFIGFILE=$PROJECTDIR/powerd.conf
 LOGFILE=$PROJECTDIR/powerd.log
 
-FIFO=$RUNDIR/powerevents
+CONFIRMSPLASH=$PROJECTDIR/pleaseconfirm.pgm
+SHUTSPLASH=$PROJECTDIR/shuttingdown.pgm
+BATTSHUTSPLASH=$PROJECTDIR/shuttingdown.pgm
 
-# i'd use /sys/.../capacity_level here, but we never hit "critical" --
-# we only get to "low", which then lasts for another half hour.
-# using /sys/.../capacity (which gives a percentage), and cutting
-# off at 5% means we're shutting down with (on my machine and
-# battery under 2 minutes of runtime left.  close enough for jazz...
-CAPACITY=/sys/class/power_supply/olpc-battery/capacity
-AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1 / 0
-WAKEUP_EVENTS=/sys/power/wakeup_events
-WAKEUP_SOURCE=/sys/power/wakeup-source
+FIFO=/var/run/powerevents
 
-CONFIGFILE=/etc/powerd.conf
-CONFIGFILE=$PROJECTDIR/powerd.conf
+# note re: battery capacity:
+# i'd use /sys/.../capacity_level here, but we never hit
+# "critical" -- we only get to "low", which then lasts for
+# another half hour.  using /sys/.../capacity (which gives a
+# percentage), and cutting off at 5% means we're shutting down
+# with (on my machine and battery under 2 minutes of runtime
+# left.  close enough for jazz...
+CAPACITY=/sys/class/power_supply/olpc-battery/capacity  # percentage
 
+AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1/0
+BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness  # 0-15
+WLAN_ENABLED=/sys/power/wlan-enabled # 1/0 (see comment at set_wlan_power())
+
+WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
+WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
+
+# command fifo for olpc-kbdshim
 USER_ACTIVITY=/var/run/olpc-kbdshim_activity
 
-BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness
-WLAN_ENABLED=/sys/power/wlan-enabled
 
 set -u
 
@@ -70,10 +119,10 @@ splash()
 {
     case $1 in
     confirm)
-        args="$PROJECTDIR/pleaseconfirm.pgm $PROJECTDIR/shuttingdown.pgm"
+        args="$CONFIRMSPLASH $SHUTSPLASH"
         ;;
     critical)
-        args=$PROJECTDIR/shuttingdown.pgm
+        args="$BATTSHUTSPLASH"
         ;;
     esac
 
@@ -120,20 +169,21 @@ check_battery()
 
 cpu_activity()
 {
+    # TBD
     return 0
 }
 
 network_activity()
 {
+    # TBD
     return 0
 }
 
 laptop_idle()
 {
-    if ! cpu_activity && ! network_activity
-    then
-        catnap
-    fi
+    cpu_activity && return 1
+    network_activity && return 1
+    return 0
 }
 
 set_wlan_power()
@@ -165,9 +215,6 @@ slumber()
     yes_or_true "$config_MESH_or_WAKE_ON_WAN" || set_wlan_power 0
     echo 1   >/sys/devices/platform/dcon/sleep 
     echo mem >/sys/power/state
-    #read wakeupsource < $WAKEUP_SOURCE
-    #: wakeupsource from slumber is $wakeupsource
-    #date >&2
     selfinject useractive2
     set_wakeupevents all
     echo 0   >/sys/devices/platform/dcon/sleep 
@@ -211,7 +258,6 @@ catnap()
         echo mem >/sys/power/state
         read_wakeupsource wakeupsource
         : wakeupsource is $wakeupsource
-        #date >&2
         case $wakeupsource in
         "power button")
             selfinject power $(date +%s)
@@ -252,6 +298,7 @@ brightness_ramp()
     local i
     test $1 = $2 && return
 
+    # ramp in either direction
     incr=1
     test $1 -gt $2 && incr=-1
 
@@ -361,9 +408,17 @@ selfinject()
 
 sched_timer()
 {
+    # we can't cancel timers, so give them sequence numbers
+    let timerseqno=timerseqno+1
     (sleep $1; shift 1; selfinject timerdone $*) &
 }
 
+invalidate_timer()
+{
+    # bump the seq number so we won't match a scheduled timer
+    # when it arrives.
+    let timerseqno=timerseqno+1
+}
 
 dcon_freeze()
 {
@@ -373,22 +428,19 @@ dcon_freeze()
 gotactivity()
 {
     am_idle=;
-    lastpowerpress=0  #invalidate outstanding power button timers
-    let timerseqno=timerseqno+1  # as well as timerdone messages
+    lastpowerpress=0  #invalidate outstanding power button timer
+    invalidate_timer  # and invalidate timerdone messages
     unsplash
 }
 
 event_loop()
 {
-    local event arg1 arg2 more idletimes lastpowerpress timerseqno
-
-    lastpowerpress=0;
-    timerseqno=0;
+    local event arg1 arg2 more
 
     idletimes=${config_IDLETIMES:-"120 130 240"}
 
-    set -x
-    exec 2>>$LOGFILE
+    #set -x
+    #exec 2>>$LOGFILE
     : starting eventloop
 
     check_acstate
@@ -412,8 +464,7 @@ event_loop()
         fi
 
         : -------------------------
-        : got $event arg1 ${arg1:-n/a}
-        #date >&2
+        : got $event, arg1: ${arg1:-n/a} arg2: ${arg2:-n/a}
 
         case $event in
 
@@ -424,7 +475,6 @@ event_loop()
             then # first press
                 splash confirm
                 set_idletimes   # reprime for "useractivity"
-                let timerseqno=timerseqno+1
                 sched_timer 6 $timerseqno gotosleep
                 backlight restore
             else # second press
@@ -438,6 +488,7 @@ event_loop()
             ;;
 
         timerdone)
+            # are we still waiting for this timer?
             if [ "$timerseqno" = "$arg1" ]
             then
                 echo $arg2 >$FIFO
@@ -518,6 +569,8 @@ am_ebook=;
 dimmed=;
 savebright=;
 last_idletimes=;
+timerseqno=0;
+lastpowerpress=0;
 
 set_wakeupevents all
 
