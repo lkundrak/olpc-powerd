@@ -285,7 +285,6 @@ main(int argc, char *argv[])
 	prog = argv[0];
 
 	while ((c = getopt(argc, argv, "cfs:")) != -1) {
-	fprintf(stderr, "optind is %d\n", optind);
             switch (c) {
 		case 'c':
 		    center_it = 1;
@@ -301,7 +300,6 @@ main(int argc, char *argv[])
 		    break;
 	    }
 	}
-	fprintf(stderr, "final optind is %d, argc is %d\n", optind, argc);
 
 	if (optind > argc) {
 	    usage();
