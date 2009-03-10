@@ -1,6 +1,7 @@
 #!/bin/sh
-
-
+#
+# powerd -- experimental power management for the XO
+#
 # the inputs that contribute to power management are:
 #
 # * switches:
