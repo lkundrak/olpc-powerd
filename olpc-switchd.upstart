@@ -1,0 +1,12 @@
+#
+
+description     "XO hw switch handler"
+author          "Paul Fox"
+
+start on starting olpc-kbdshim
+
+console output
+
+exec /usr/bin/olpc-switchd -f -l -F /var/run/powerevents
+
+respawn

@@ -1,0 +1,11 @@
+#
+description     "XO experimental power daemon "
+author          "Paul Fox"
+
+start on starting olpc-switchd
+
+console output
+
+exec /usr/bin/powerd
+
+respawn
