@@ -3,7 +3,7 @@
 
 # the inputs that contribute to power management are:
 #
-# switches:
+# * switches:
 #       power button
 #       ebook
 #       lid
@@ -19,13 +19,13 @@
 # http://dev.laptop.org/ticket/5703 .  the lid switch events seem
 # to be reliable (but see below re:  wakeup source reporting).
 #
-# conditions:
+# * conditions:
 #       AC input (boolean)
 #       battery level (numeric)
 # it's unfortunate that these have no corresponding events, since
 # otherwise no polling would be necessary.
 #
-# wakeups:
+# * wakeups:
 #
 #       ac_power
 #       battery_error
@@ -41,17 +41,22 @@
 # is reported for lid close, or for ebook_mode_change, but i'm not
 # ruling it out.)
 #
-# user activity/idleness:
+# * user activity/idleness:
 #       useractivity
-#       useridle1
-#       useridle2
-#       useridle3
-# powerd expects user activity and user idle events to be delivered by
-# the olpc-kbdshim daemon, invoked with "-A /var/run/powerevents"
-# 
+#       useridle1 (screen dims)
+#       useridle2 (laptop sleeps)
+#       useridle3 (currently unused, but if we could schedule a
+#            wakeup from sleep, we could use this for an idle shutdown)
+# powerd expects user activity and user idle events to be delivered via
+# the olpc-kbdshim daemon, when invoked with "-A /var/run/powerevents"
 #
-# other system activity (cpu load, network load, etc)
+# * other system activity (cpu load, network load, etc):
 #       unimplemented
+#
+# note that X11 DPMS is neither consulted nor configured, and it
+# may still be used to blank the display after some period of
+# inactivity.  (this can't happen unless the DPMS "standby" time
+# is longer than powerd's "useridle2" time.
 #
 # -----------------------------------------------
 # Copyright (C) 2009, Paul G Fox
