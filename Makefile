@@ -10,11 +10,10 @@ CWD=$(shell pwd)
 
 # --- simple rules for local make -------
 CFLAGS = -Wall -O2 -g -DVERSION=$(VERSION)
-PROG = olpc-switchd
+PROG1 = olpc-switchd
+PROG2 = pnmto565fb
 
-all: $(PROG)
-
-OBJS =  $(PROG).o
+all: $(PROG1) $(PROG2)
 
 clean:
 	rm -f *.o $(PROG)
