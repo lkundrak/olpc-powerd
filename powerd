@@ -31,7 +31,6 @@ RUNDIR=/var/run
 
 PROJECTDIR=/home/olpc/src/powerd
 IMAGES=$PROJECTDIR
-PPMTOFB=/home/olpc/bin/ppmtofb
 LOGFILE=$PROJECTDIR/powerd.log
 
 FIFO=$RUNDIR/powerevents
@@ -70,21 +69,36 @@ yes_or_true()
 splash()
 {
     case $1 in
-    confirm)  text="Please confirm: will suspend in 5 seconds, press the power button again to power off" ;;
-    shutting) text="Shutting down, please wait..." ;;
-    critical) text="Battery level CRITICAL, shutting down..." ;;
+    confirm)
+        args="$PROJECTDIR/pleaseconfirm.pgm $PROJECTDIR/shuttingdown.pgm"
+        ;;
+    critical)
+        args=$PROJECTDIR/shuttingdown.pgm
+        ;;
     esac
 
-    unsplash
-    openvt -s -w -- dialog --sleep 999999 --infobox "$text" 11 40 &
-    #chvt 4
-    #dialog --sleep 999999 --infobox "$text" 11 40 &
+    $PROJECTDIR/pnmto565 -s 9999999 -c -f $args &
+    splashpid=$!
+}
 
+nextsplash()
+{
+    # kill -INT will cause pnmto565 to display next image
+    test "${splashpid:-}" && kill -USR1 $splashpid
 }
 
 unsplash()
 {
-    killall -q dialog
+    # kill -INT will cause pnmto565 to restore original VT
+    test "${splashpid:-}" && kill -INT $splashpid
+    splashpid=;
+}
+
+leavesplash()
+{
+    # kill -TERM will cause pnmto565 to just die
+    test "${splashpid:-}" && kill -TERM $splashpid
+    splashpid=;
 }
 
 do_shutdown()
@@ -132,8 +146,8 @@ set_wlan_power()
     read_wlan_power w
     if [ "$w" != "$1" ]
     then
-	test "$w" = 1 && echo WARNING:  blipping wlan-reset
-	echo $1 > $WLAN_ENABLED
+        test "$w" = 1 && echo WARNING:  blipping wlan-reset
+        echo $1 > $WLAN_ENABLED
     fi
 }
 
@@ -148,7 +162,7 @@ slumber()
 {
     set_wakeupevents none
     read_wlan_power wlp
-    set_wlan_power 0
+    yes_or_true "$config_MESH_or_WAKE_ON_WAN" || set_wlan_power 0
     echo 1   >/sys/devices/platform/dcon/sleep 
     echo mem >/sys/power/state
     #read wakeupsource < $WAKEUP_SOURCE
@@ -366,7 +380,7 @@ event_loop()
     idletimes=${config_IDLETIMES:-"120 130 240"}
 
     set -x
-    exec 2>$LOGFILE
+    exec 2>>$LOGFILE
     : starting eventloop
 
     check_acstate
@@ -405,9 +419,11 @@ event_loop()
                 sched_timer 6 $timerseqno gotosleep
                 backlight restore
             else # second press
-                splash shutting
-                dcon_freeze 1
-                do_shutdown
+                nextsplash  # advance to next splash screen
+                sleep 1
+                do_shutdown &
+                leavesplash # kill the splasher (leaving splash visible)
+                sleep 9999999
             fi
             lastpowerpress=$now
             ;;
