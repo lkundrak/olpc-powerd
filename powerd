@@ -408,6 +408,7 @@ event_loop()
         if ! read -t 10 event arg1 arg2 more
         then
             event=timeout
+            arg1=; arg2=; more=;
         fi
 
         : -------------------------
