@@ -55,8 +55,8 @@ char *prog;
 extern char *optarg;
 extern int optind, opterr, optopt;
 
-int center_it = 0;
-int fill_it = -1;
+int fill_it;
+int dcon;
 
 static void vt_deinit(void);
 int consolefd;
@@ -105,6 +105,30 @@ SigNextImage(int signo)
     longjmp(nxt_jmpbuf, 1);
 }
 
+void
+dcon_control(int freeze)
+{
+    static int fd = -1;
+
+    if (!dcon) return;
+
+    if (fd < 0) {
+        fd = open("/sys/devices/platform/dcon/freeze", O_WRONLY);
+        if (fd < 0) return;
+    }
+
+    write(fd, freeze ? "1\n" : "0\n", 2);
+}
+
+void dcon_freeze(void)
+{
+    dcon_control(1);
+}
+
+void dcon_thaw(void)
+{
+    dcon_control(0);
+}
 
 /* VT init and teardown borrowed almost completely from ppmtofb, which
  * is GPL'ed, and:
@@ -130,6 +154,7 @@ vt_deinit(void)
         close(consolefd);
         consolefd = 0;
     }
+    dcon_thaw();
 }
 
 void
@@ -196,9 +221,9 @@ void
 usage(void)
 {
     fprintf(stderr,
-        "usage: %s [pnmfile] (writes 565 data to /dev/fb)\n"
-        "    -c to center the image in the framebuffer\n"
-        "    -f N to explicitly fill (with value N) around the image\n"
+        "usage: %s [-s SECS] [-d ] pnmfile ...\n"
+        " writes 565 data from successive images to /dev/fb)\n"
+        "    -d to freeze the dcon while an image is being painted\n"
         "    -s SECS  to sleep between images\n",
         prog);
     exit(1);
@@ -240,8 +265,10 @@ void
 showimage(char *name, unsigned short *fb_map)
 {
     FILE *fp = 0;
-    int a, n, xdim, ydim, maxval, magic;
+    int a, n, xdim, ydim, maxval, magic, bpp;
     int c, i, j;
+    int top = 1;
+    int pixel;
     unsigned char buf[256];
     int h = FB_HEIGHT;
     int w = FB_WIDTH;
@@ -284,47 +311,37 @@ showimage(char *name, unsigned short *fb_map)
     //  fprintf(stderr, "%d %d %d %d\n", 
     //     topfillrows, bottomfillrows, leftfillcols, rightfillcols);
 
-    if (center_it) {
-        if (fill_it != -1)
-            memset(fb_map, fill_it,
-                ((topfillrows * w) + leftfillcols) * 2);
-        fb_map += ((topfillrows * w) + leftfillcols);
-    }
-    if (magic == 6) {
-        for (j = 0; j < ydim; j++) {
-            for (i = 0; i < xdim; i++) {
-                n = fread(buf, 3, 1, fp);
-                if (n != 1)
-                    break;
-                *fb_map++ = reduce_24_to_rgb565(buf);
+    if (magic == 6)
+        bpp = 3;
+    else
+        bpp = 1;
+
+    for (j = 0; j < ydim; j++) {
+        for (i = 0; i < xdim; i++) {
+            n = fread(buf, bpp, 1, fp);
+            if (n != 1)
+                break;
+            if (bpp == 3)
+                pixel = reduce_24_to_rgb565(buf);
+            else
+                pixel = reduce_8grey_to_rgb565(buf);
+
+            if (top) {
+                // delayed fill of top margin, now we know the value
+                fill_it = pixel;
+                memset(fb_map, fill_it,
+                        ((topfillrows * w) + leftfillcols) * 2);
+                fb_map += ((topfillrows * w) + leftfillcols);
+                top = 0;
             }
-            if (center_it) {
-                if (fill_it != -1)
-                    memset(fb_map, fill_it, (w - xdim) * 2);
-                fb_map += w - xdim;
-            }
+            *fb_map++ = pixel;
         }
-    } else {
-        for (j = 0; j < ydim; j++) {
-            for (i = 0; i < xdim; i++) {
-                n = fread(buf, 1, 1, fp);
-                if (n != 1)
-                    break;
-                *fb_map++ = reduce_8grey_to_rgb565(buf);
-            }
-            if (center_it) {
-                if (fill_it != -1)
-                    memset(fb_map, fill_it, (w - xdim) * 2);
-                fb_map += w - xdim;
-            }
-        }
+        memset(fb_map, fill_it, (w - xdim) * 2);
+        fb_map += w - xdim;
     }
-    if (center_it) {
-        if (fill_it != -1)
-            memset(fb_map, fill_it,
-                ((bottomfillrows * w) - leftfillcols) * 2);
-        fb_map += ((bottomfillrows * w) - leftfillcols);
-    }
+    memset(fb_map, fill_it,
+            ((bottomfillrows * w) - leftfillcols) * 2);
+    fb_map += ((bottomfillrows * w) - leftfillcols);
     // fprintf(stderr, "%d\n", fb_map - ofb_map);
     fclose(fp);
 }
@@ -338,16 +355,13 @@ main(int argc, char *argv[])
 
     prog = argv[0];
 
-    while ((c = getopt(argc, argv, "cf:s:")) != -1) {
+    while ((c = getopt(argc, argv, "ds:")) != -1) {
         switch (c) {
-        case 'c':
-            center_it = 1;
-            break;
-        case 'f':
-            fill_it = atoi(optarg);
-            break;
         case 's':
             sleeptime = atoi(optarg);
+            break;
+        case 'd':
+            dcon = 1;
             break;
         default:
             usage();
@@ -379,18 +393,22 @@ main(int argc, char *argv[])
         exit(1);
     }
 
+    dcon_freeze();
+    atexit(dcon_thaw);
+
     fb_map = (unsigned short *) mmap(NULL, FB_SIZE_B,
                          PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
     vt_setup();
 
     while (optind < argc) {
+        dcon_freeze();
         showimage(argv[optind++], fb_map);
+        dcon_thaw();
 
         if (!sigsetjmp(nxt_jmpbuf, 1) && sleeptime) {
             sleep(sleeptime);
         }
     }
-
 
     vt_deinit();
 
