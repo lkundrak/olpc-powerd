@@ -58,5 +58,7 @@ rm -rf $RPM_BUILD_ROOT
 %post
 chkconfig ohmd off
 /etc/init.d/ohmd stop
+initctl start powerd
+initctl start olpc-switchd
 
 %changelog
