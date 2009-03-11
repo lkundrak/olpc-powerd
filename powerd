@@ -80,7 +80,7 @@
 
 PROJECTDIR=/etc/powerd
 CONFIGFILE=$PROJECTDIR/powerd.conf
-LOGFILE=$PROJECTDIR/powerd.log
+LOGFILE=$PROJECTDIR/powerd.log   # only used for debug, currently
 
 CONFIRMSPLASH=$PROJECTDIR/pleaseconfirm.pgm
 SHUTSPLASH=$PROJECTDIR/shuttingdown.pgm
