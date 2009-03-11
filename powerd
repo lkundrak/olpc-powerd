@@ -105,7 +105,7 @@ WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
 
 # command fifo for olpc-kbdshim
-USER_ACTIVITY=/var/run/olpc-kbdshim_activity
+USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_rotate
 
 
 set -u
@@ -397,7 +397,7 @@ set_idletimes()
     fi
     if [ "${1:-}" != ifchanged -o "$idletimes" != "${last_idletimes}" ]
     then
-        echo "I $idletimes" >/var/run/olpc-kbdshim_rotate
+        echo "I $idletimes" >$USER_ACTIVITY_CMDS
     fi
     last_idletimes="$idletimes"
 }
