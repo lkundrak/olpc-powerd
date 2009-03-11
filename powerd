@@ -1,10 +1,36 @@
 #!/bin/sh
 #
 # powerd -- experimental power management for the XO
+# 
+# this daemon is a more transparent and flexible (if
+# incompatible, and perhaps less robust!) replacement for ohmd on
+# the XO.  powerd is independent of X, dbus, and hald.
+#
+# powerd adds:
+# -- a power button splash screen (allowing cancel, suspend, or shutdown).
+# -- the ability to run arbitrary scripts after a resume.
+# -- configurable dim and sleep idle timeouts, and dim level. (and it ramps!)
+# -- different power management behavior when on wall power vs. battery.
+# -- different behavior when in ebook mode (may be unreliable)
+# -- ease of customization, given that its written in shell.
+#
+# unimplemented:
+# -- inhibiting idle suspend based on system or network load.
+# -- any special support for the mesh, whatsoever.
+# -- there's some support for wake-on-lan, but it's not well tested.
+# -- probably more.
+#
+# major config variables are documented in powerd.conf.
+#
+# idle suspend can be manually inhibited by creating the file
+#    /var/run/inhibit-idle-suspend
+#
+# post-resume scripts can be put in /etc/powerd/postresume.d -- the
+# scripts will be run in lexicographic order.
 #
 # the inputs that contribute to power management are:
 #
-# * switches:
+# ** switches:
 #       power button
 #       ebook
 #       lid
@@ -20,14 +46,13 @@
 # http://dev.laptop.org/ticket/5703 .  the lid switch events seem
 # to be reliable (but see below re:  wakeup source reporting).
 #
-# * conditions:
+# ** conditions:
 #       AC input (boolean)
 #       battery level (numeric)
 # it's unfortunate that these have no corresponding events, since
 # otherwise no polling would be necessary.
 #
-# * wakeups:
-#
+# ** wakeups:
 #       ac_power
 #       battery_error
 #       battery_soc
@@ -42,7 +67,7 @@
 # is reported for lid close, or for ebook_mode_change, but i'm not
 # ruling it out.)
 #
-# * user activity/idleness:
+# ** user activity/idleness:
 #       useractivity
 #       useridle1 (screen dims)
 #       useridle2 (laptop sleeps)
@@ -51,7 +76,7 @@
 # powerd expects user activity and user idle events to be delivered via
 # the olpc-kbdshim daemon, when invoked with "-A /var/run/powerevents"
 #
-# * other system activity (cpu load, network load, etc):
+# ** other system activity (cpu load, network load, etc):
 #       unimplemented
 #
 # note that X11 DPMS is neither consulted nor configured, and it
@@ -59,7 +84,11 @@
 # inactivity.  (this can't happen unless the DPMS "standby" time
 # is longer than powerd's "useridle2" time.
 #
+# my intention is that this be runnable with most any shell.  no
+# bash-specific features were used, unless by accident.
+#
 # -----------------------------------------------
+#
 # Copyright (C) 2009, Paul G Fox
 #
 # This program is free software; you can redistribute it and/or
@@ -79,6 +108,8 @@
 #
 
 PROJECTDIR=/etc/powerd
+RUNPARTSDIR=/etc/powerd/postresume.d
+
 CONFIGFILE=$PROJECTDIR/powerd.conf
 LOGFILE=$PROJECTDIR/powerd.log   # only used for debug, currently
 
@@ -187,6 +218,7 @@ network_activity()
 
 laptop_idle()
 {
+    test -f /var/run/inhibit-idle-suspend && return 1
     cpu_activity && return 1
     network_activity && return 1
     return 0
@@ -212,6 +244,39 @@ read_wlan_power()
     local x
     read x < $WLAN_ENABLED
     eval $1=\"$x\"
+}
+
+runparts()
+{
+    rc_action=$1
+    test $rc_action = "resume" || return
+
+    rc_dir=$RUNPARTSDIR
+    test -d $rc_dir || return
+
+    cd $rc_dir
+
+    for s in *[^~]
+    do
+        case $s in
+        '*[^~]') return;;  # s is the literal pattern
+        esac
+
+        if [ -x $s ]; then
+                echo "Running $s $rc_action" >&2
+                ./$s $rc_action || echo "*** $s failed"
+        elif [ -f $s ]; then
+                echo "Skipping $s (disabled, not executable)" >&2
+        else
+                if [ -L $s ]; then
+                        echo "Removing dangling symlink $s" >&2
+                        rm $s
+                else
+                        echo "Skipping $s (not an executable file)" >&2
+                fi
+        fi
+    done
+
 }
 
 slumber()
@@ -480,7 +545,8 @@ event_loop()
         power)
             am_idle=;
             now=$arg1
-            if [ $(( $now - $lastpowerpress )) -ge 5 ]
+            let delta=$now-$lastpowerpress
+            if [ $delta -ge $config_CONFIRM_SECONDS  ]
             then # first press
                 splash confirm
                 set_idletimes   # reprime for "useractivity"
@@ -508,6 +574,7 @@ event_loop()
             gotactivity
             backlight off
             slumber
+            runparts resume &
             ;;
 
         lidopen)
@@ -544,6 +611,7 @@ event_loop()
             if [ "$savepower" ] && laptop_idle
             then
                 catnap
+                runparts resume &
             fi
             ;;
 
