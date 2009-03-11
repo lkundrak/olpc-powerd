@@ -132,7 +132,7 @@ splash()
         ;;
     esac
 
-    pnmto565fb -s 9999999 -c -f 255 $args &
+    pnmto565fb -d -s 9999999 $args &
     splashpid=$!
 }
 
@@ -448,8 +448,8 @@ event_loop()
 
     idletimes=${config_IDLETIMES:-"120 130 240"}
 
-    set -x
-    exec 2>$LOGFILE
+    #set -x
+    #exec 2>>$LOGFILE
     : starting eventloop
 
     check_acstate
