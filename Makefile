@@ -2,7 +2,7 @@
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
 VERSION=1
-PACKAGE=olpc-switchd
+PACKAGE=olpc-powerd
 MOCK=./mock-wrapper -r olpc-3-i386 --resultdir=$(MOCKDIR)
 MOCKDIR=./rpms
 PKGVER=$(PACKAGE)-$(VERSION)
