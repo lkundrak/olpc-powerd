@@ -132,7 +132,7 @@ splash()
         ;;
     esac
 
-    $PROJECTDIR/pnmto565fb -s 9999999 -c -f $args &
+    pnmto565fb -s 9999999 -c -f $args &
     splashpid=$!
 }
 
