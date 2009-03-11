@@ -56,9 +56,34 @@ rm -rf $RPM_BUILD_ROOT
 /etc/powerd/powerd.conf
 
 %post
-chkconfig ohmd off
-/etc/init.d/ohmd stop
+if test -e /etc/init.d/ohmd
+then
+    /etc/init.d/ohmd stop
+    chkconfig ohmd off
+fi
 initctl start powerd
 initctl start olpc-switchd
+if test -e /etc/event.d/olpc-kbdshim
+then
+    sed -i -e 's/#\+ *-A/ -A/' etc/event.d/olpc-kbdshim
+    initctl stop olpc-kbdshim
+    initctl start olpc-kbdshim
+fi
+
+%preun
+if test -e /etc/event.d/olpc-kbdshim
+then
+    sed -i -e 's/ \+-A \/var/ #&/' /etc/event.d/olpc-kbdshim
+    initctl stop olpc-kbdshim
+    initctl start olpc-kbdshim
+fi
+initctl stop olpc-switchd
+initctl stop powerd
+rm -f /var/run/powerevents
+if test -e /etc/init.d/ohmd
+then
+    /etc/init.d/ohmd start
+    chkconfig ohmd on
+fi
 
 %changelog
