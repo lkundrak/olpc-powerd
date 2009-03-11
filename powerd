@@ -132,7 +132,7 @@ splash()
         ;;
     esac
 
-    pnmto565fb -s 9999999 -c -f $args &
+    pnmto565fb -d -s 9999999 $args &
     splashpid=$!
 }
 
@@ -358,12 +358,15 @@ backlight()
 
 default_config()
 {
+    # give all config values defaults, so we'll
+    # never find them unset
     config_EBOOK_IDLETIMES="10 15 240"
     config_IDLETIMES="120 130 240"
     config_IDLEDIM=5
     config_SOLAR=no
     config_ALWAYSON=no
     config_MESH_or_WAKE_ON_WAN=yes
+    config_CONFIRM_SECONDS=7
 } 
 
 read_config()
@@ -416,7 +419,7 @@ sched_timer()
 {
     # we can't cancel timers, so give them sequence numbers
     let timerseqno=timerseqno+1
-    (sleep $1; shift 1; selfinject timerdone $*) &
+    (sleep $1; shift 1; selfinject timerdone $timerseqno $*) &
 }
 
 invalidate_timer()
@@ -481,7 +484,7 @@ event_loop()
             then # first press
                 splash confirm
                 set_idletimes   # reprime for "useractivity"
-                sched_timer 6 $timerseqno gotosleep
+                sched_timer $config_CONFIRM_SECONDS gotosleep
                 backlight restore
             else # second press
                 nextsplash  # advance to next splash screen

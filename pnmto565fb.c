@@ -55,8 +55,8 @@ char *prog;
 extern char *optarg;
 extern int optind, opterr, optopt;
 
-int center_it = 0;
-int fill_it = 0;
+int fill_it;
+int dcon;
 
 static void vt_deinit(void);
 int consolefd;
@@ -105,6 +105,30 @@ SigNextImage(int signo)
     longjmp(nxt_jmpbuf, 1);
 }
 
+void
+dcon_control(int freeze)
+{
+    static int fd = -1;
+
+    if (!dcon) return;
+
+    if (fd < 0) {
+        fd = open("/sys/devices/platform/dcon/freeze", O_WRONLY);
+        if (fd < 0) return;
+    }
+
+    write(fd, freeze ? "1\n" : "0\n", 2);
+}
+
+void dcon_freeze(void)
+{
+    dcon_control(1);
+}
+
+void dcon_thaw(void)
+{
+    dcon_control(0);
+}
 
 /* VT init and teardown borrowed almost completely from ppmtofb, which
  * is GPL'ed, and:
@@ -118,18 +142,19 @@ vt_deinit(void)
     struct vt_mode VT;
 
     if (consolefd) {
-	ioctl(consolefd, KDSETMODE, KD_TEXT);
-	if (ioctl(consolefd, VT_GETMODE, &VT) != -1) {
-	    VT.mode = VT_AUTO;
-	    ioctl(consolefd, VT_SETMODE, &VT);
-	}
-	if (activevt >= 0) {
-	    ioctl(consolefd, VT_ACTIVATE, activevt);
-	    activevt = -1;
-	}
-	close(consolefd);
-	consolefd = 0;
+        ioctl(consolefd, KDSETMODE, KD_TEXT);
+        if (ioctl(consolefd, VT_GETMODE, &VT) != -1) {
+            VT.mode = VT_AUTO;
+            ioctl(consolefd, VT_SETMODE, &VT);
+        }
+        if (activevt >= 0) {
+            ioctl(consolefd, VT_ACTIVATE, activevt);
+            activevt = -1;
+        }
+        close(consolefd);
+        consolefd = 0;
     }
+    dcon_thaw();
 }
 
 void
@@ -141,30 +166,30 @@ vt_setup(void)
     struct vt_mode VT;
 
     if ((fd = open("/dev/tty0", O_WRONLY, 0)) < 0)
-	die("Cannot open /dev/tty0: %s\n", strerror(errno));
+        die("Cannot open /dev/tty0: %s\n", strerror(errno));
 
     if (ioctl(fd, VT_OPENQRY, &vtno) < 0 || vtno == -1)
-	die("Cannot find a free VT\n");
+        die("Cannot find a free VT\n");
 
     close(fd);
 
-    sprintf(vtname, "/dev/tty%d", vtno);	/* /dev/tty1-64 */
+    sprintf(vtname, "/dev/tty%d", vtno);        /* /dev/tty1-64 */
     if ((consolefd = open(vtname, O_RDWR | O_NDELAY, 0)) < 0)
-	die("Cannot open %s: %s\n", vtname, strerror(errno));
+        die("Cannot open %s: %s\n", vtname, strerror(errno));
 
     /*
      * Linux doesn't switch to an active vt after the last close of a vt,
      * so we do this ourselves by remembering which is active now.
      */
     if (ioctl(consolefd, VT_GETSTATE, &vts) == 0)
-	activevt = vts.v_active;
+        activevt = vts.v_active;
 
     /*
      * Detach from the controlling tty to avoid char loss
      */
     if ((i = open("/dev/tty", O_RDWR)) >= 0) {
-	ioctl(i, TIOCNOTTY, 0);
-	close(i);
+        ioctl(i, TIOCNOTTY, 0);
+        close(i);
     }
 
     /*
@@ -172,39 +197,39 @@ vt_setup(void)
      */
 
     if (ioctl(consolefd, VT_ACTIVATE, vtno) != 0)
-	Warn("ioctl VT_ACTIVATE: %s\n", strerror(errno));
+        Warn("ioctl VT_ACTIVATE: %s\n", strerror(errno));
     if (ioctl(consolefd, VT_WAITACTIVE, vtno) != 0)
-	Warn("ioctl VT_WAITACTIVE: %s\n", strerror(errno));
+        Warn("ioctl VT_WAITACTIVE: %s\n", strerror(errno));
 
     if (ioctl(consolefd, VT_GETMODE, &VT) < 0)
-	die("ioctl VT_GETMODE: %s\n", strerror(errno));
+        die("ioctl VT_GETMODE: %s\n", strerror(errno));
 
     VT.mode = VT_PROCESS;
     VT.relsig = 0;
     VT.acqsig = 0;
     if (ioctl(consolefd, VT_SETMODE, &VT) < 0)
-	die("ioctl VT_SETMODE: %s\n", strerror(errno));
+        die("ioctl VT_SETMODE: %s\n", strerror(errno));
 
     /*
      *  switch to graphics mode
      */
     if (ioctl(consolefd, KDSETMODE, KD_GRAPHICS) < 0)
-	die("ioctl KDSETMODE KD_GRAPHICS: %s\n", strerror(errno));
+        die("ioctl KDSETMODE KD_GRAPHICS: %s\n", strerror(errno));
 }
 
 void
 usage(void)
 {
     fprintf(stderr,
-	"usage: %s [pnmfile] (writes 565 data to /dev/fb)\n"
-	"    -c to center the image in the framebuffer\n"
-	"    -f to explicitly fill around the image\n"
-	"    -s SECS  to sleep between images\n",
-	prog);
+        "usage: %s [-s SECS] [-d ] pnmfile ...\n"
+        " writes 565 data from successive images to /dev/fb)\n"
+        "    -d to freeze the dcon while an image is being painted\n"
+        "    -s SECS  to sleep between images\n",
+        prog);
     exit(1);
 }
 
-unsigned short
+static inline unsigned short
 reduce_24_to_rgb565(unsigned char *sp)
 {
     unsigned short p;
@@ -220,7 +245,7 @@ reduce_24_to_rgb565(unsigned char *sp)
     return p;
 }
 
-unsigned short
+static inline unsigned short
 reduce_8grey_to_rgb565(unsigned char *sp)
 {
     unsigned short p;
@@ -240,79 +265,84 @@ void
 showimage(char *name, unsigned short *fb_map)
 {
     FILE *fp = 0;
-    int a, n, xdim, ydim, maxval, magic;
+    int a, n, xdim, ydim, maxval, magic, bpp;
     int c, i, j;
+    int top = 1;
+    int pixel;
     unsigned char buf[256];
     int h = FB_HEIGHT;
     int w = FB_WIDTH;
+    int topfillrows, leftfillcols;
+    int bottomfillrows, rightfillcols;
+    // unsigned short *ofb_map = fb_map;
 
     if (!strcmp("-", name))
-	fp = stdin;
+        fp = stdin;
     else
-	fp = fopen(name, "r");
+        fp = fopen(name, "r");
 
     if (!fp) {
-	perror(name);
-	usage();
+        perror(name);
+        usage();
     }
 
     a = fscanf(fp, "P%d\n", &magic);
     /* skip comments */
     if (magic == 5 || magic == 6) {
-	while (c = fgetc(fp), c == '#') {
-	    fgets((char *) buf, 256, fp);
-	}
-	ungetc(c, fp);
+        while (c = fgetc(fp), c == '#') {
+            fgets((char *) buf, 256, fp);
+        }
+        ungetc(c, fp);
     }
     a += fscanf(fp, "%d %d\n", &xdim, &ydim);
     a += fscanf(fp, "%d\n", &maxval);
     if (a != 4 || (magic != 6 && magic != 5)) {
-	fprintf(stderr, "Cannot read PNM header");
+        fprintf(stderr, "Cannot read PNM header");
     }
 #if 0
     fprintf(stderr, "PNM %s image: size %dx%d, maxval %d\n",
-	    (magic == 5) ? "gray" : "color", xdim, ydim, maxval);
+            (magic == 5) ? "gray" : "color", xdim, ydim, maxval);
 #endif
 
-    if (center_it) {
-	if (fill_it)
-	    memset(fb_map, 0, ((((h - ydim) / 2) * w) + (w - xdim) / 2) * 2);
-	fb_map += ((((h - ydim) / 2) * w) + (w - xdim) / 2);
+    topfillrows = (h - ydim) / 2;
+    bottomfillrows = (h - ydim) - topfillrows;
+    leftfillcols = (w - xdim) / 2;
+    rightfillcols = (w - xdim) - leftfillcols;
+    //  fprintf(stderr, "%d %d %d %d\n", 
+    //     topfillrows, bottomfillrows, leftfillcols, rightfillcols);
+
+    if (magic == 6)
+        bpp = 3;
+    else
+        bpp = 1;
+
+    for (j = 0; j < ydim; j++) {
+        for (i = 0; i < xdim; i++) {
+            n = fread(buf, bpp, 1, fp);
+            if (n != 1)
+                break;
+            if (bpp == 3)
+                pixel = reduce_24_to_rgb565(buf);
+            else
+                pixel = reduce_8grey_to_rgb565(buf);
+
+            if (top) {
+                // delayed fill of top margin, now we know the value
+                fill_it = pixel;
+                memset(fb_map, fill_it,
+                        ((topfillrows * w) + leftfillcols) * 2);
+                fb_map += ((topfillrows * w) + leftfillcols);
+                top = 0;
+            }
+            *fb_map++ = pixel;
+        }
+        memset(fb_map, fill_it, (w - xdim) * 2);
+        fb_map += w - xdim;
     }
-    if (magic == 6) {
-	for (j = 0; j < ydim; j++) {
-	    for (i = 0; i < xdim; i++) {
-		n = fread(buf, 3, 1, fp);
-		if (n != 1)
-		    break;
-		*fb_map++ = reduce_24_to_rgb565(buf);
-	    }
-	    if (center_it) {
-		if (fill_it)
-		    memset(fb_map, 0, (w - xdim) * 2);
-		fb_map += w - xdim;
-	    }
-	}
-    } else {
-	for (j = 0; j < ydim; j++) {
-	    for (i = 0; i < xdim; i++) {
-		n = fread(buf, 1, 1, fp);
-		if (n != 1)
-		    break;
-		*fb_map++ = reduce_8grey_to_rgb565(buf);
-	    }
-	    if (center_it) {
-		if (fill_it)
-		    memset(fb_map, 0, (w - xdim) * 2);
-		fb_map += w - xdim;
-	    }
-	}
-    }
-    if (center_it) {
-	if (fill_it)
-	    memset(fb_map, 0, (((h - ydim) / 2) * w) + (w - xdim) / 2);
-	fb_map += ((((h - ydim) / 2) * w) + (w - xdim) / 2);
-    }
+    memset(fb_map, fill_it,
+            ((bottomfillrows * w) - leftfillcols) * 2);
+    fb_map += ((bottomfillrows * w) - leftfillcols);
+    // fprintf(stderr, "%d\n", fb_map - ofb_map);
     fclose(fp);
 }
 
@@ -325,25 +355,22 @@ main(int argc, char *argv[])
 
     prog = argv[0];
 
-    while ((c = getopt(argc, argv, "cfs:")) != -1) {
-	switch (c) {
-	case 'c':
-	    center_it = 1;
-	    break;
-	case 'f':
-	    fill_it = 1;
-	    break;
-	case 's':
-	    sleeptime = atoi(optarg);
-	    break;
-	default:
-	    usage();
-	    break;
-	}
+    while ((c = getopt(argc, argv, "ds:")) != -1) {
+        switch (c) {
+        case 's':
+            sleeptime = atoi(optarg);
+            break;
+        case 'd':
+            dcon = 1;
+            break;
+        default:
+            usage();
+            break;
+        }
     }
 
     if (optind > argc) {
-	usage();
+        usage();
     }
 
     // ignore sigterm so we stay up longer during shutdown
@@ -362,22 +389,26 @@ main(int argc, char *argv[])
 
     fb = open("/dev/fb", O_RDWR);
     if (fb < 0) {
-	perror("open of /dev/fb");
-	exit(1);
+        perror("open of /dev/fb");
+        exit(1);
     }
 
+    dcon_freeze();
+    atexit(dcon_thaw);
+
     fb_map = (unsigned short *) mmap(NULL, FB_SIZE_B,
-			 PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
+                         PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
     vt_setup();
 
     while (optind < argc) {
-	showimage(argv[optind++], fb_map);
+        dcon_freeze();
+        showimage(argv[optind++], fb_map);
+        dcon_thaw();
 
-	if (!sigsetjmp(nxt_jmpbuf, 1) && sleeptime) {
-	    sleep(sleeptime);
-	}
+        if (!sigsetjmp(nxt_jmpbuf, 1) && sleeptime) {
+            sleep(sleeptime);
+        }
     }
-
 
     vt_deinit();
 
