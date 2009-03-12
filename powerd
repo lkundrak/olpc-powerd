@@ -4,14 +4,16 @@
 # 
 # this daemon is a more transparent and flexible (if
 # incompatible, and perhaps less robust!) replacement for ohmd on
-# the XO.  powerd is independent of X, dbus, and hald.
+# the XO.  powerd is independent of X, dbus, and hald, and so
+# might be attractive to very lightweight software distributions.
 #
-# powerd adds:
+# in addition to "standard" XO/ohmd functionality, powerd adds:
 # -- a power button splash screen (allowing cancel, suspend, or shutdown).
 # -- the ability to run arbitrary scripts after a resume.
-# -- configurable dim and sleep idle timeouts, and dim level. (and it ramps!)
+# -- configurable timeouts until screen dim and sleep, and configurable
+#    dim level.
 # -- different power management behavior when on wall power vs. battery.
-# -- different behavior when in ebook mode (may be unreliable)
+# -- different behavior when in ebook mode (though detection may be unreliable)
 # -- ease of customization, given that its written in shell.
 #
 # unimplemented:
