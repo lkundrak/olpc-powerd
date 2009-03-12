@@ -26,7 +26,9 @@
 #    /var/run/inhibit-idle-suspend
 #
 # post-resume scripts can be put in /etc/powerd/postresume.d -- the
-# scripts will be run in lexicographic order.
+# scripts will be run in lexicographic order.  the scripts are
+# run detached from powerd, so they won't impede its operation -- however,
+# they should be kept as short as possible.
 #
 # the inputs that contribute to power management are:
 #
