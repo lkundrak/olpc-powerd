@@ -16,7 +16,7 @@ PROG2 = pnmto565fb
 all: $(PROG1) $(PROG2)
 
 clean:
-	rm -f *.o $(PROG)
+	rm -f *.o $(PROG1) $(PROG2)
 
 
 # mock-ish rules for building an rpm
