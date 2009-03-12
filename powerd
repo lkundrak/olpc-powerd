@@ -514,6 +514,23 @@ gotactivity()
     unsplash
 }
 
+check_first_activity()
+{
+    # this is a bit of a hack.  on the XO, the bootanim
+    # script contrives to leave the dcon frozen at the end
+    # of the init sequence.  it remains frozen until sugar
+    # first becomes idle, at which point sugar sends a dbus
+    # message to ohmd, causing ohmd to unfreeze the dcon.
+    # since we don't do dbus, we unfreeze the dcon after
+    # a) 10 seconds have passed since we started, or b)
+    # user activity is detected.
+    if [ "$initial_freeze" ]
+    then
+        dcon_freeze 0
+        initial_freeze=;
+    fi
+}
+
 event_loop()
 {
     local event arg1 arg2 more
@@ -603,6 +620,7 @@ event_loop()
             gotactivity
             backlight restore
             test "$event" = useractive2 && set_idletimes
+            check_first_activity
             ;;
 
         useridle1)
@@ -636,6 +654,7 @@ event_loop()
                 # so we'll go through the useridle1/2 cycle again
                 set_idletimes
             fi
+            check_first_activity
             ;;
 
         reconfig)
@@ -655,6 +674,8 @@ savebright=;
 last_idletimes=;
 timerseqno=0;
 lastpowerpress=0;
+
+initial_freeze=true
 
 set_wakeupevents all
 
