@@ -143,7 +143,7 @@ WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
 
 # command fifo for olpc-kbdshim
-USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_rotate
+USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
 
 
 set -u
