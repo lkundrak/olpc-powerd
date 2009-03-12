@@ -118,6 +118,7 @@ dcon_control(int freeze)
     }
 
     write(fd, freeze ? "1\n" : "0\n", 2);
+    usleep(50000);
 }
 
 void dcon_freeze(void)
