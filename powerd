@@ -196,7 +196,6 @@ leavesplash()
 
 do_shutdown()
 {
-    # echo would shutdown -h now
     /sbin/shutdown -h now
 }
 
@@ -509,8 +508,7 @@ dcon_freeze()
 gotactivity()
 {
     am_idle=;
-    lastpowerpress=0  #invalidate outstanding power button timer
-    invalidate_timer  # and invalidate timerdone messages
+    invalidate_timer  # invalidate timerdone messages
     unsplash
 }
 
@@ -568,13 +566,12 @@ event_loop()
 
         power)
             am_idle=;
-            now=$arg1
-            let delta=$now-$lastpowerpress
-            if [ $delta -ge $config_CONFIRM_SECONDS  ]
+            if [ "$powerseqno" != "$timerseqno" ]
             then # first press
                 splash confirm
                 set_idletimes   # reprime for "useractivity"
                 sched_timer $config_CONFIRM_SECONDS gotosleep
+                powerseqno=$timerseqno
                 backlight restore
             else # second press
                 nextsplash  # advance to next splash screen
@@ -583,7 +580,6 @@ event_loop()
                 leavesplash # kill the splasher (leaving splash visible)
                 sleep 9999999
             fi
-            lastpowerpress=$now
             ;;
 
         timerdone)
@@ -591,6 +587,7 @@ event_loop()
             if [ "$timerseqno" = "$arg1" ]
             then
                 echo $arg2 >$FIFO
+                let timerseqno=timerseqno+1
             fi
             ;;
 
@@ -668,12 +665,13 @@ event_loop()
 
 default_config
 read_config
+
 am_ebook=;
 dimmed=;
 savebright=;
 last_idletimes=;
-timerseqno=0;
-lastpowerpress=0;
+timerseqno=1;
+powerseqno=0;
 
 initial_freeze=true
 
