@@ -20,7 +20,10 @@
 # -- there's some support for wake-on-lan, but it's not well tested.
 # -- probably more.
 #
-# major config variables are documented in powerd.conf.
+# major config variables are documented in powerd.conf.  powerd reads
+# its configuration from /etc/powerd/powerd.conf once at startup,
+# and again only when it receives a "reconfig" event on its
+# event fifo (/var/run/powerevents).
 #
 # idle suspend can be manually inhibited by creating the file
 #    /var/run/inhibit-idle-suspend
@@ -37,7 +40,7 @@
 #       ebook
 #       lid
 # actions on these switches appear as events on
-# /dev/input/event[012].  this script relies on the companion
+# /dev/input/event[012].  powerd relies on the companion
 # program "olpc-switchd" to report these events via the
 # /var/run/powerevents fifo it creates for the purpose.  it's
 # unfortunate that these events have no corresponding /sys state
@@ -83,8 +86,8 @@
 #
 # note that X11 DPMS is neither consulted nor configured, and it
 # may still be used to blank the display after some period of
-# inactivity.  (this can't happen unless the DPMS "standby" time
-# is longer than powerd's "useridle2" time.
+# inactivity.  (this won't happen, of course, unless the DPMS
+# "standby" time is shorter than powerd's "useridle2" time.
 #
 # my intention is that this be runnable with most any shell.  no
 # bash-specific features were used, unless by accident.
@@ -206,23 +209,23 @@ check_battery()
     esac
 }
 
-cpu_activity()
+cpu_busy()
 {
     # TBD
-    return 0
+    return 1
 }
 
-network_activity()
+network_busy()
 {
     # TBD
-    return 0
+    return 1
 }
 
 laptop_idle()
 {
     test -f /var/run/inhibit-idle-suspend && return 1
-    cpu_activity && return 1
-    network_activity && return 1
+    cpu_busy && return 1
+    network_busy && return 1
     return 0
 }
 
