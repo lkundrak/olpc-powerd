@@ -196,16 +196,19 @@ leavesplash()
 
 do_shutdown()
 {
-    /sbin/shutdown -h now
+    /sbin/shutdown -h now &
+    leavesplash # kill the splasher (leaving splash visible)
+    sleep 9999999
 }
 
 check_battery()
 {
     read capacity < $CAPACITY
     case $capacity in
-    [54321])
+    [54321])   # 5% or less
         splash critical
-        do_shutdown
+        sleep 1
+        do_shutdown  # no return
         ;;
     esac
 }
@@ -459,6 +462,8 @@ check_acstate()
         savepower=true;
         yes_or_true ${config_ALWAYSON} && savepower=;
     fi
+    # return success if on external power
+    test $on_ac = 1
 }
 
 set_idletimes()
@@ -576,9 +581,7 @@ event_loop()
             else # second press
                 nextsplash  # advance to next splash screen
                 sleep 1
-                do_shutdown &
-                leavesplash # kill the splasher (leaving splash visible)
-                sleep 9999999
+                do_shutdown  # no return
             fi
             ;;
 
@@ -643,8 +646,7 @@ event_loop()
 
         timeout)
             osavepower=$savepower
-            check_battery
-            check_acstate
+            check_acstate || check_battery
             if [ "$savepower" -a ! "$osavepower" ]
             then
                 # this will force a restart of the timers,
