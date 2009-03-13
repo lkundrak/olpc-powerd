@@ -2,6 +2,7 @@
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
 VERSION=1
+RELEASE=2
 PACKAGE=olpc-powerd
 MOCK=./mock-wrapper -r olpc-3-i386 --resultdir=$(MOCKDIR)
 MOCKDIR=./rpms
@@ -23,7 +24,10 @@ clean:
 # (leveraged from cscott's olpc-update makefile)
 
 update-version:
-	sed -i -e 's/^Version: .*/Version: $(VERSION)/' $(PACKAGE).spec
+	sed -i \
+		-e 's/^Version: .*/Version: $(VERSION)/' \
+		-e 's/^Release: .*/Release: $(RELEASE)/' \
+		$(PACKAGE).spec
 
 tarball: $(PKGVER).tar.gz
 
@@ -38,9 +42,9 @@ $(PKGVER).tar.gz:  update-version
 # the $(MOCKDIR) subdirectory.
 
 # make the SRPM.
-srpm: $(PKGVER)-1.src.rpm
+srpm: $(PKGVER)-$(RELEASE).src.rpm
 
-$(PKGVER)-1.src.rpm: $(PKGVER).tar.gz
+$(PKGVER)-$(RELEASE).src.rpm: $(PKGVER).tar.gz
 	rpmbuild --define "_specdir $(CWD)" \
 		 --define "_sourcedir $(CWD)" \
 		 --define "_builddir $(CWD)"  \
@@ -50,13 +54,13 @@ $(PKGVER)-1.src.rpm: $(PKGVER).tar.gz
 		 --nodeps -bs $(PACKAGE).spec
 
 # build RPMs from the SRPM
-mock:	$(PKGVER)-1.src.rpm
+mock:	$(PKGVER)-$(RELEASE).src.rpm
 	@mkdir -p $(MOCKDIR)
 	$(MOCK) -q --init
 	#$(MOCK) init
-	$(MOCK) --installdeps $(PKGVER)-1.src.rpm
-	$(MOCK) -v --no-clean --rebuild $(PKGVER)-1.src.rpm
+	$(MOCK) --installdeps $(PKGVER)-$(RELEASE).src.rpm
+	$(MOCK) -v --no-clean --rebuild $(PKGVER)-$(RELEASE).src.rpm
 
 rpmclean:
-	-$(RM) $(PKGVER)-1.src.rpm $(PKGVER).tar.gz
+	-$(RM) $(PKGVER)-[12345].src.rpm $(PKGVER).tar.gz
 	-$(RM) -rf $(MOCKDIR)
