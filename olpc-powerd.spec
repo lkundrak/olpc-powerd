@@ -2,7 +2,7 @@ Summary: OLPC XO experimental power management
 Name: olpc-powerd
 Version: 1
 Release: 2
-License: GPL
+License: GPLv2
 Group: System Environment/Base
 URL: http://dev.laptop.org/git?p=users/pgf/olpc-powerd
 Source0: %{name}-%{version}.tar.gz
@@ -10,7 +10,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: gcc, kernel-headers
 Requires: olpc-kbdshim >= 2-2
 BuildArch: i386
-Provides: olpc-powerd 1-2
+Provides: olpc-powerd = 1-2
 
 %description
 The olpc-powerd can function as an easily customizable replacement
