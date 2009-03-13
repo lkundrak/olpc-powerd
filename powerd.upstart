@@ -6,6 +6,6 @@ start on starting olpc-switchd
 
 console output
 
-exec /usr/bin/powerd
+exec /usr/sbin/powerd
 
 respawn

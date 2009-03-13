@@ -7,6 +7,6 @@ start on starting olpc-kbdshim
 
 console output
 
-exec /usr/bin/olpc-switchd -f -l -F /var/run/powerevents
+exec /usr/sbin/olpc-switchd -f -l -F /var/run/powerevents
 
 respawn
