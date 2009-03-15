@@ -75,13 +75,36 @@
 # ruling it out.)
 #
 # ** user activity/idleness:
-#       useractivity
-#       useridle1 (screen dims)
-#       useridle2 (laptop sleeps)
-#       useridle3 (currently unused, but if we could schedule a
-#            wakeup from sleep, we could use this for an idle shutdown)
 # powerd expects user activity and user idle events to be delivered via
-# the olpc-kbdshim daemon, when invoked with "-A /var/run/powerevents"
+# the olpc-kbdshim daemon, when invoked with "-A /var/run/powerevents".
+# the possible events are:
+#       useractivity
+#       useridle1
+#       useridle2
+#       useridle3
+#
+# these events are used in the following ways:
+#
+#                  screen          cpu
+#                  ------          ---
+#     useridle1     dim            on
+#     useridle2     dim            sleep
+#     rtcwake1      off            sleep
+#     rtcwake2           shutdown
+#
+# or, if $config_DARK_BEFORE_SLEEP is set true, this sequence,
+# which is more like a "normal" laptop behaves:
+#
+#                  screen          cpu
+#                  ------          ---
+#     useridle1     dim            on
+#     useridle2     off            on
+#     useridle3     off            sleep
+#     rtcwake2           shutdown
+#
+
+#
+#
 #
 # ** other system activity (cpu load, network load, etc):
 #       unimplemented
@@ -396,6 +419,7 @@ backlight()
 {
     case $1 in
     restore)
+        dcon_sleep 0
         if [ "$dimmed" -a "$savebright" ]
         then
             read_brightness curbright
@@ -426,6 +450,7 @@ backlight()
             set_brightness 0
             dimmed=true
         fi
+        dcon_sleep 1
         ;;
     esac
 }
@@ -510,6 +535,11 @@ dcon_freeze()
     echo $1 > /sys/devices/platform/dcon/freeze
 }
 
+dcon_sleep()
+{
+    echo $1 > /sys/class/backlight/dcon-bl/device/sleep
+}
+
 gotactivity()
 {
     am_idle=;
@@ -540,8 +570,8 @@ event_loop()
 
     idletimes=${config_IDLETIMES:-"120 130 240"}
 
-    #set -x
-    #exec 2>>$LOGFILE
+    set -x
+    exec 2>>$LOGFILE
     : starting eventloop
 
     check_acstate
@@ -635,13 +665,27 @@ event_loop()
             am_idle=2
             if [ "$savepower" ] && laptop_idle
             then
-                catnap
-                runparts resume &
+                if yes_or_true "$config_DARK_BEFORE_SLEEP"
+                then
+                    backlight off
+                else
+                    catnap
+                    runparts resume &
+                fi
             fi
             ;;
 
         useridle3)
             am_idle=3
+            if [ "$savepower" ] && laptop_idle
+            then
+                if yes_or_true "$config_DARK_BEFORE_SLEEP"
+                then
+                    catnap
+                    runparts resume &
+                # else shouldn't happen
+                fi
+            fi
             ;;
 
         timeout)
