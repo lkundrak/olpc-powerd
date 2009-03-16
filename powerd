@@ -102,8 +102,6 @@
 #     useridle3     off            sleep
 #     rtcwake2           shutdown
 #
-
-#
 #
 #
 # ** other system activity (cpu load, network load, etc):
@@ -356,9 +354,26 @@ catnap()
 {
     read_wlan_power wlp
     yes_or_true "$config_MESH_or_WAKE_ON_WAN" || set_wlan_power 0
+
+    # we only use rtc alarms to either a) turn of the screen when
+    # we've been sleeping for a while, or b) shutdown after we've
+    # been sleeping for a while.  if we do a), we'll do b) next.
+    if [ "$1" = "rtc" ]
+    then
+        rtctype=$2   # "screenoff", or "shutdown"
+        rtctime=$3
+    else
+        rtctype=;
+    fi
+
     while :
     do
-        echo mem >/sys/power/state
+        if [ "$rtctype" ]
+        then
+            rtcwake -m mem -a -s $rtctime
+        else
+            echo mem >/sys/power/state
+        fi
         read_wakeupsource wakeupsource
         : wakeupsource is $wakeupsource
         case $wakeupsource in
@@ -373,6 +388,20 @@ catnap()
                 selfinject useractive2
                 break
             fi
+            ;;
+        "rtc alarm")
+            case $rtctype in
+            screenoff)
+                backlight off
+                rtctype=shutdown
+                rtctime=$4
+                ;;
+            shutdown)
+                do_shutdown
+                ;;
+            *) # it's a leftover (spurious?) rtc wakeup.  go back to sleep.
+                ;;
+            esac
             ;;
         *)   #"lid"|"empty sci"|"key press"|"ebook")
             selfinject useractive2
@@ -408,7 +437,7 @@ brightness_ramp()
     i=$1
     while :
     do
-        let i=i+$incr
+        : $((i += incr))
         set_brightness $i
         test $i = $2 && break
         usleep 20000
@@ -459,13 +488,14 @@ default_config()
 {
     # give all config values defaults, so we'll
     # never find them unset
-    config_EBOOK_IDLETIMES="10 15 240"
-    config_IDLETIMES="120 130 240"
+    config_EBOOK_IDLETIMES="10 15 240 1800"
+    config_IDLETIMES="120 130 240 3600"
     config_IDLEDIM=5
     config_SOLAR=no
     config_ALWAYSON=no
     config_MESH_or_WAKE_ON_WAN=yes
     config_CONFIRM_SECONDS=7
+    config_DARK_BEFORE_SLEEP=false
 } 
 
 read_config()
@@ -499,10 +529,45 @@ set_idletimes()
     else
             idletimes=${config_IDLETIMES}
     fi
-    if [ "${1:-}" != ifchanged -o "$idletimes" != "${last_idletimes}" ]
+
+    if [ "${1:-}" = ifchanged -a "$idletimes" = "${last_idletimes}" ]
     then
-        echo "I $idletimes" >$USER_ACTIVITY_CMDS
+        return
     fi
+
+    set -- ${idletimes}
+
+
+    # we need to validate the given times, and turn them into deltas.
+    t1=${1:-120}
+    t2=${2:-0}
+    t3=${3:-0}
+    t4=${4:-0}
+    test "$t1" -eq "$t1" || t1=120   # force numeric
+
+    #if any delta is 0 or negative, make it 60
+    #if any delta is less than 5, make it at least 5
+    test ! "$t2" -o "$t2" -le "$t1" && t2=$((t1 + 60))
+    test "$t2" -le $((t1 + 5)) && t2=$((t1 + 5))
+
+    test ! "$t3" -o "$t3" -le "$t2" && t3=$((t2 + 60))
+    test "$t3" -le $((t2 + 5)) && t3=$((t2 + 5))
+
+    test ! "$t4" -o "$t4" -le "$t3" && t4=$((t3 + 600))
+    test "$t4" -le $((t3 + 5)) && t4=$((t3 + 5))
+    
+    # give olpc-kbdshim the timeouts
+    echo "I $t1 $t2 $t3" >$USER_ACTIVITY_CMDS
+
+    if [ "$config_DARK_BEFORE_SLEEP" ]
+    then
+        screenofftimer=$((t3 - t2))
+        shutdowntimer=$((t4 - t3))
+    else
+        screenofftimer=;
+        shutdowntimer=$((t4 - t3))
+    fi
+
     last_idletimes="$idletimes"
 }
 
@@ -519,7 +584,7 @@ selfinject()
 sched_timer()
 {
     # we can't cancel timers, so give them sequence numbers
-    let timerseqno=timerseqno+1
+    : $((timerseqno += 1))
     (sleep $1; shift 1; selfinject timerdone $timerseqno $*) &
 }
 
@@ -527,7 +592,7 @@ invalidate_timer()
 {
     # bump the seq number so we won't match a scheduled timer
     # when it arrives.
-    let timerseqno=timerseqno+1
+    : $((timerseqno += 1))
 }
 
 dcon_freeze()
@@ -568,10 +633,10 @@ event_loop()
 {
     local event arg1 arg2 more
 
-    idletimes=${config_IDLETIMES:-"120 130 240"}
+    idletimes=$config_IDLETIMES
 
-    set -x
-    exec 2>>$LOGFILE
+    #set -x
+    #exec 2>$LOGFILE
     : starting eventloop
 
     check_acstate
@@ -620,7 +685,7 @@ event_loop()
             if [ "$timerseqno" = "$arg1" ]
             then
                 echo $arg2 >$FIFO
-                let timerseqno=timerseqno+1
+                : $((timerseqno += 1))
             fi
             ;;
 
@@ -669,7 +734,7 @@ event_loop()
                 then
                     backlight off
                 else
-                    catnap
+                    catnap rtc screenoff "$screenofftimer" "$shutdowntimer"
                     runparts resume &
                 fi
             fi
@@ -681,9 +746,11 @@ event_loop()
             then
                 if yes_or_true "$config_DARK_BEFORE_SLEEP"
                 then
-                    catnap
+                    # schedule a wakeup, so we can shut down
+                    catnap rtc shutdown "$shutdowntimer"
                     runparts resume &
-                # else shouldn't happen
+                #else
+                #    ; # shouldn't happen
                 fi
             fi
             ;;
