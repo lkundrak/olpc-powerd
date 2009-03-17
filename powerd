@@ -163,6 +163,9 @@ WLAN_ENABLED=/sys/power/wlan-enabled # 1/0 (see comment at set_wlan_power())
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
 
+DCON_FREEZE=/sys/devices/platform/dcon/freeze
+DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
+
 # command fifo for olpc-kbdshim
 USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
 
@@ -172,12 +175,11 @@ set -u
 
 yes_or_true()
 {
-    test "$1" || return 1
-
     case $1 in
     [yYtT]*) return 0 ;;
-    *)     return 1 ;;
     esac
+
+    return 1
 }
 
 splash()
@@ -314,15 +316,14 @@ slumber()
     set_wakeupevents none
     read_wlan_power wlp
     yes_or_true "$config_MESH_or_WAKE_ON_WAN" || set_wlan_power 0
-    echo 1   >/sys/devices/platform/dcon/sleep 
+    dcon sleep
     echo mem >/sys/power/state
-    selfinject useractive2
+    selfinject fake_useractive
     set_wakeupevents all
-    echo 0   >/sys/devices/platform/dcon/sleep 
+    dcon wake
     set_wlan_power $wlp
     unsplash
-    reevaluate
-    set_idletimes
+    reset_idlecounter
 }
 
 set_wakeupevents()
@@ -385,7 +386,7 @@ catnap()
         "wlan packet")
             if yes_or_true "$config_MESH_or_WAKE_ON_WAN"
             then
-                selfinject useractive2
+                selfinject fake_useractive
                 break
             fi
             ;;
@@ -403,14 +404,14 @@ catnap()
                 ;;
             esac
             ;;
-        *)   #"lid"|"empty sci"|"key press"|"ebook")
-            selfinject useractive2
+        *)   # "lid"|"empty sci"|"key press"|"ebook")
+            selfinject fake_useractive
             break
             ;;
         esac
     done
     set_wlan_power $wlp
-    set_idletimes
+    reset_idlecounter
 }
 
 set_brightness()
@@ -448,7 +449,7 @@ backlight()
 {
     case $1 in
     restore)
-        dcon_sleep 0
+        dcon wake
         if [ "$dimmed" -a "$savebright" ]
         then
             read_brightness curbright
@@ -479,7 +480,7 @@ backlight()
             set_brightness 0
             dimmed=true
         fi
-        dcon_sleep 1
+        dcon sleep
         ;;
     esac
 }
@@ -500,9 +501,7 @@ default_config()
 
 read_config()
 {
-
     source $CONFIGFILE
-
 }
 
 check_acstate()
@@ -521,6 +520,12 @@ check_acstate()
     test $on_ac = 1
 }
 
+reset_idlecounter()
+{
+    # olpc-kbdshim will reset its idle timers when the deadlines are reset
+    echo "I $t1 $t2 $t3" >$USER_ACTIVITY_CMDS
+}
+
 set_idletimes()
 {
     if [ "$am_ebook" ]
@@ -530,15 +535,14 @@ set_idletimes()
             idletimes=${config_IDLETIMES}
     fi
 
-    if [ "${1:-}" = ifchanged -a "$idletimes" = "${last_idletimes}" ]
+    if [ "$idletimes" = "${last_idletimes}" ]
     then
         return
     fi
 
     set -- ${idletimes}
 
-
-    # we need to validate the given times, and turn them into deltas.
+    # validate the given times, and turn them into deltas.
     t1=${1:-120}
     t2=${2:-0}
     t3=${3:-0}
@@ -559,13 +563,15 @@ set_idletimes()
     # give olpc-kbdshim the timeouts
     echo "I $t1 $t2 $t3" >$USER_ACTIVITY_CMDS
 
-    if [ "$config_DARK_BEFORE_SLEEP" ]
+    if yes_or_true "$config_DARK_BEFORE_SLEEP"
     then
-        screenofftimer=$((t3 - t2))
-        shutdowntimer=$((t4 - t3))
-    else
         screenofftimer=;
         shutdowntimer=$((t4 - t3))
+        : dim in $t1 seconds, blank in $t2, sleep in $t3, shutdown in $t4
+    else
+        screenofftimer=$((t3 - t2))
+        shutdowntimer=$((t4 - t3))
+        : dim in $t1 seconds, sleep in $t2, blank in $t3, shutdown in $t4
     fi
 
     last_idletimes="$idletimes"
@@ -573,7 +579,15 @@ set_idletimes()
 
 reevaluate()
 {
-    check_acstate
+    check_acstate || check_battery
+    if [ "${o_savepower:-}" != "$savepower" -o \
+         "${o_ebook:-}" != "$am_ebook" ]
+    then
+        set_idletimes
+        reset_idlecounter
+    fi
+    o_ebook=$am_ebook
+    o_savepower=$savepower
 }
 
 selfinject()
@@ -595,19 +609,18 @@ invalidate_timer()
     : $((timerseqno += 1))
 }
 
-dcon_freeze()
+dcon()
 {
-    echo $1 > /sys/devices/platform/dcon/freeze
-}
-
-dcon_sleep()
-{
-    echo $1 > /sys/class/backlight/dcon-bl/device/sleep
+    case $1 in
+    freeze) echo 1 > $DCON_FREEZE ;;
+    thaw)   echo 0 > $DCON_FREEZE ;;
+    sleep)  echo 1 > $DCON_SLEEP ;;
+    wake)   echo 0 > $DCON_SLEEP ;;
+    esac
 }
 
 gotactivity()
 {
-    am_idle=;
     invalidate_timer  # invalidate timerdone messages
     unsplash
 }
@@ -624,7 +637,7 @@ check_first_activity()
     # user activity is detected.
     if [ "$initial_freeze" ]
     then
-        dcon_freeze 0
+        dcon thaw
         initial_freeze=;
     fi
 }
@@ -635,8 +648,8 @@ event_loop()
 
     idletimes=$config_IDLETIMES
 
-    #set -x
-    #exec 2>$LOGFILE
+    set -x
+    exec 2>$LOGFILE
     : starting eventloop
 
     check_acstate
@@ -651,7 +664,7 @@ event_loop()
 
     while :
     do
-        set_idletimes ifchanged
+        reevaluate
 
         if ! read -t 10 event arg1 arg2 more
         then
@@ -660,16 +673,15 @@ event_loop()
         fi
 
         : -------------------------
-        : got $event, arg1: ${arg1:-n/a} arg2: ${arg2:-n/a}
+        : got "<$event>", arg1: ${arg1:-n/a} arg2: ${arg2:-n/a}
 
         case $event in
 
         power)
-            am_idle=;
             if [ "$powerseqno" != "$timerseqno" ]
             then # first press
                 splash confirm
-                set_idletimes   # reprime for "useractivity"
+                reset_idlecounter # reprime for "useractivity"
                 sched_timer $config_CONFIRM_SECONDS gotosleep
                 powerseqno=$timerseqno
                 backlight restore
@@ -702,24 +714,21 @@ event_loop()
             ;;
 
         ebookclose)
-            am_idle=;
             am_ebook=true
             ;;
 
         ebookopen)
-            am_idle=;
             am_ebook=;
             ;;
 
-        useractive*)
+        useractive|fake_useractive)
             gotactivity
             backlight restore
-            test "$event" = useractive2 && set_idletimes
+            test "$event" = fake_useractive && reset_idlecounter
             check_first_activity
             ;;
 
         useridle1)
-            am_idle=1
             if [ "$savepower" -a ! "$am_ebook" ]
             then
                 backlight dim
@@ -727,7 +736,6 @@ event_loop()
             ;;
 
         useridle2)
-            am_idle=2
             if [ "$savepower" ] && laptop_idle
             then
                 if yes_or_true "$config_DARK_BEFORE_SLEEP"
@@ -741,7 +749,6 @@ event_loop()
             ;;
 
         useridle3)
-            am_idle=3
             if [ "$savepower" ] && laptop_idle
             then
                 if yes_or_true "$config_DARK_BEFORE_SLEEP"
@@ -756,14 +763,6 @@ event_loop()
             ;;
 
         timeout)
-            osavepower=$savepower
-            check_acstate || check_battery
-            if [ "$savepower" -a ! "$osavepower" ]
-            then
-                # this will force a restart of the timers,
-                # so we'll go through the useridle1/2 cycle again
-                set_idletimes
-            fi
             check_first_activity
             ;;
 
@@ -780,6 +779,8 @@ default_config
 read_config
 
 am_ebook=;
+o_ebook=xxx;
+o_savepower=xxx;
 dimmed=;
 savebright=;
 last_idletimes=;
