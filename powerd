@@ -172,6 +172,10 @@ USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
 
 set -u
 
+log()
+{
+    logger -t powerd -p daemon.info -- "$@"
+}
 
 yes_or_true()
 {
@@ -219,6 +223,7 @@ leavesplash()
 
 do_shutdown()
 {
+    log shutting down due to $*
     /sbin/shutdown -h now &
     leavesplash # kill the splasher (leaving splash visible)
     sleep 9999999
@@ -231,7 +236,7 @@ check_battery()
     [54321])   # 5% or less
         splash critical
         sleep 1
-        do_shutdown  # no return
+        do_shutdown "low battery"
         ;;
     esac
 }
@@ -398,7 +403,7 @@ catnap()
                 rtctime=$4
                 ;;
             shutdown)
-                do_shutdown
+                do_shutdown "idle timeout"
                 ;;
             *) # it's a leftover (spurious?) rtc wakeup.  go back to sleep.
                 ;;
@@ -502,6 +507,15 @@ default_config()
 read_config()
 {
     source $CONFIGFILE
+    if yes_or_true $config_ALWAYSON
+    then
+	log configured for always on
+    elif yes_or_true $config_SOLAR
+    then
+	log configured to save power even on external source
+    else
+	log configured for power saving on battery only
+    fi
 }
 
 check_acstate()
@@ -567,11 +581,11 @@ set_idletimes()
     then
         screenofftimer=;
         shutdowntimer=$((t4 - t3))
-        : dim in $t1 seconds, blank in $t2, sleep in $t3, shutdown in $t4
+        log dim in $t1 seconds, blank in $t2, sleep in $t3, shutdown in $t4
     else
         screenofftimer=$((t3 - t2))
         shutdowntimer=$((t4 - t3))
-        : dim in $t1 seconds, sleep in $t2, blank in $t3, shutdown in $t4
+        log dim in $t1 seconds, sleep in $t2, blank in $t3, shutdown in $t4
     fi
 
     last_idletimes="$idletimes"
@@ -688,7 +702,7 @@ event_loop()
             else # second press
                 nextsplash  # advance to next splash screen
                 sleep 1
-                do_shutdown  # no return
+                do_shutdown  "power press"
             fi
             ;;
 
@@ -774,6 +788,7 @@ event_loop()
     done <> $FIFO
 }
 
+log starting
 
 default_config
 read_config
