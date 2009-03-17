@@ -12,6 +12,9 @@
 # -- the ability to run arbitrary scripts after a resume.
 # -- configurable timeouts until screen dim and sleep, and configurable
 #    dim level.
+# -- idle screen blanking after laptop has slept
+# -- idle shutdown after laptop has slept
+# -- low battery shutdown (only when not sleeping)
 # -- different power management behavior when on wall power vs. battery.
 # -- different behavior when in ebook mode (though detection may be unreliable)
 # -- ease of customization, given that its written in shell.
@@ -36,8 +39,9 @@
 # they should be kept as short as possible.
 #
 # the inputs that contribute to power management are:
+
 #
-# ** switches:
+# -- switches:
 #       power button
 #       ebook
 #       lid
@@ -53,13 +57,15 @@
 # http://dev.laptop.org/ticket/5703 .  the lid switch events seem
 # to be reliable (but see below re:  wakeup source reporting).
 #
-# ** conditions:
+#
+# -- conditions:
 #       AC input (boolean)
 #       battery level (numeric)
 # it's unfortunate that these have no corresponding events, since
-# otherwise no polling would be necessary.
+# otherwise polling might not be necessary.
 #
-# ** wakeups:
+#
+# -- wakeups:
 #       ac_power
 #       battery_error
 #       battery_soc
@@ -74,7 +80,8 @@
 # is reported for lid close, or for ebook_mode_change, but i'm not
 # ruling it out.)
 #
-# ** user activity/idleness:
+#
+# -- user activity/idleness:
 # powerd expects user activity and user idle events to be delivered via
 # the olpc-kbdshim daemon, when invoked with "-A /var/run/powerevents".
 # the possible events are:
@@ -92,8 +99,8 @@
 #     rtcwake1      off            sleep
 #     rtcwake2           shutdown
 #
-# or, if $config_DARK_BEFORE_SLEEP is set true, this sequence,
-# which is more like a "normal" laptop behaves:
+# or, if $config_TIME_BLANK is less than $config_TIME_SLEEP, then
+# this sequence, which is more like a "normal" laptop behaves:
 #
 #                  screen          cpu
 #                  ------          ---
@@ -104,13 +111,13 @@
 #
 #
 #
-# ** other system activity (cpu load, network load, etc):
+# -- other system activity (cpu load, network load, etc):
 #       unimplemented
 #
 # note that X11 DPMS is neither consulted nor configured, and it
 # may still be used to blank the display after some period of
 # inactivity.  (this won't happen, of course, unless the DPMS
-# "standby" time is shorter than powerd's "useridle2" time.
+# "standby" time is shorter than powerd's "config_TIME_SLEEP" time.
 #
 # my intention is that this be runnable with most any shell.  no
 # bash-specific features were used, unless by accident.
@@ -138,7 +145,8 @@
 PROJECTDIR=/etc/powerd
 RUNPARTSDIR=/etc/powerd/postresume.d
 
-CONFIGFILE=$PROJECTDIR/powerd.conf
+CONFIGDIR=$PROJECTDIR/conf
+CONFIGFILE=$CONFIGDIR/powerd.conf
 LOGFILE=$PROJECTDIR/powerd.log   # only used for debug, currently
 
 CONFIRMSPLASH=$PROJECTDIR/pleaseconfirm.pgm
@@ -511,13 +519,55 @@ read_config()
     source $CONFIGFILE
     if yes_or_true $config_ALWAYSON
     then
-	log configured for always on
+        log configured for always on
     elif yes_or_true $config_SOLAR
     then
-	log configured to save power even on external source
+        log configured to save power even on external source
     else
-	log configured for power saving on battery only
+        log configured for power saving on battery only
     fi
+}
+
+choose_config()
+{
+    newconfig=$1
+    curconfig=$(readlink $CONFIGFILE)
+
+    if [ ! "$newconfig" ]
+    then
+        log "(re)reading $curconfig"
+        return
+    fi
+
+    if [ "$newconfig" = previous ]
+    then
+        newconfig=${prevconfig:-default}
+    fi
+
+    if [ "$curconfig" = "$newconfig" ]
+    then
+        return
+    fi
+
+    if [ ! -e $CONFIGDIR/$newconfig ]
+    then
+        log request for nonexistent configuration \"$newconfig\"
+        if [ ! -e $CONFIGDIR/default ]
+        then
+            return
+        fi
+        newconfig=default
+    fi
+
+    if [ "$newconfig" = ebook ]
+    then
+        prevconfig=$curconfig
+    else
+        prevconfig=;
+    fi
+
+    ln -sf $newconfig $CONFIGFILE
+    log configuring from \"$newconfig\"
 }
 
 check_acstate()
@@ -553,36 +603,36 @@ set_idletimes()
     t3=${config_TIME_BLANK:-0}
     t4=${config_TIME_SHUTDOWN:-0}
 
-    # changed?
+    # have the values changed?
     idletimes="$t1 $t2 $t3 $t4"
-    test "$idletimes" = "$last_idletimes" && return
+    test "$idletimes" = "$last_idletimes" && return 1
     last_idletimes="$idletimes"
 
-    # force all numeric:
+    # force all to be numeric:
     test "$t1" -eq "$t1" || t1=120
     test "$t2" -eq "$t2" || t2=0
     test "$t3" -eq "$t3" || t3=0
     test "$t4" -eq "$t4" || t4=0
 
-    # adjust ordering of blank/sleep:
+    # adjust the ordering of blank/sleep:
     if [ "$t3" -ge "$t2" ]
     then
-	dark_before_sleep=;
+        dark_before_sleep=;
     else
-	tt="$t2"; t2="$t3"; t3="$tt"
-	dark_before_sleep=true
+        tt="$t2"; t2="$t3"; t3="$tt"
+        dark_before_sleep=true
     fi
 
     #if any delta is 0 or negative, make it 60
     #if any delta is less than 5, make it at least 5
-    test ! "$t2" -o "$t2" -le "$t1" && t2=$((t1 + 60))
-    test "$t2" -le $((t1 + 5)) && t2=$((t1 + 5))
+    test "$t2" -le "$t1"        && t2=$((t1 + 60))
+    test "$t2" -le $((t1 + 5))  && t2=$((t1 + 5))
 
-    test ! "$t3" -o "$t3" -le "$t2" && t3=$((t2 + 60))
-    test "$t3" -le $((t2 + 5)) && t3=$((t2 + 5))
+    test "$t3" -le "$t2"        && t3=$((t2 + 60))
+    test "$t3" -le $((t2 + 5))  && t3=$((t2 + 5))
 
-    test ! "$t4" -o "$t4" -le "$t3" && t4=$((t3 + 600))
-    test "$t4" -le $((t3 + 5)) && t4=$((t3 + 5))
+    test "$t4" -le "$t3"        && t4=$((t3 + 600))
+    test "$t4" -le $((t3 + 5))  && t4=$((t3 + 5))
     
     # give olpc-kbdshim the timeouts
     echo "I $t1 $t2 $t3" >$USER_ACTIVITY_CMDS
@@ -598,17 +648,17 @@ set_idletimes()
         log dim in $t1 seconds, sleep in $t2, blank in $t3, shutdown in $t4
     fi
 
+    return 0
 }
 
 reevaluate()
 {
     check_acstate || check_battery
     if [ "${1:-}" = all -o \
-	 "${o_savepower:-}" != "$savepower" -o \
+         "${o_savepower:-}" != "$savepower" -o \
          "${o_ebook:-}" != "$am_ebook" ]
     then
-        set_idletimes
-        reset_idlecounter
+        set_idletimes || reset_idlecounter
     fi
     o_ebook=$am_ebook
     o_savepower=$savepower
@@ -670,8 +720,6 @@ event_loop()
 {
     local event arg1 arg2 more
 
-    set -x
-    exec 2>$LOGFILE
     : starting eventloop
 
     check_acstate
@@ -737,10 +785,14 @@ event_loop()
 
         ebookclose)
             am_ebook=true
+            choose_config ebook
+            read_config
             ;;
 
         ebookopen)
             am_ebook=;
+            choose_config previous
+            read_config
             ;;
 
         useractive|fake_useractive)
@@ -751,7 +803,7 @@ event_loop()
             ;;
 
         useridle1)
-            if [ "$savepower" -a ! "$am_ebook" ]
+            if [ "$savepower" ]
             then
                 backlight dim
             fi
@@ -789,17 +841,22 @@ event_loop()
             ;;
 
         reconfig)
+            choose_config ${arg1:-}
             read_config
-	    reevaluate all
+            reevaluate all
             ;;
 
         esac
     done <> $FIFO
 }
 
+set -x
+exec 2>$LOGFILE
+
 log starting
 
 default_config
+choose_config default
 read_config
 
 am_ebook=;
