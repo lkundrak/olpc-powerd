@@ -494,8 +494,10 @@ default_config()
 {
     # give all config values defaults, so we'll
     # never find them unset
-    config_EBOOK_IDLETIMES="10 15 240 1800"
-    config_IDLETIMES="120 130 240 3600"
+    config_TIME_DIM=120
+    config_TIME_SLEEP=130
+    config_TIME_BLANK=240
+    config_TIME_SHUTDOWN=3600
     config_IDLEDIM=5
     config_SOLAR=no
     config_ALWAYSON=no
@@ -542,26 +544,34 @@ reset_idlecounter()
 
 set_idletimes()
 {
-    if [ "$am_ebook" ]
+
+    # validate the configured times, and turn them into deltas.
+
+    # defaults:
+    t1=${config_TIME_DIM:-120}
+    t2=${config_TIME_SLEEP:-0}
+    t3=${config_TIME_BLANK:-0}
+    t4=${config_TIME_SHUTDOWN:-0}
+
+    # changed?
+    idletimes="$t1 $t2 $t3 $t4"
+    test "$idletimes" = "$last_idletimes" && return
+    last_idletimes="$idletimes"
+
+    # force all numeric:
+    test "$t1" -eq "$t1" || t1=120
+    test "$t2" -eq "$t2" || t2=0
+    test "$t3" -eq "$t3" || t3=0
+    test "$t4" -eq "$t4" || t4=0
+
+    # adjust ordering of blank/sleep:
+    if [ "$t3" -ge "$t2" ]
     then
-            idletimes=${config_EBOOK_IDLETIMES}
+	dark_before_sleep=;
     else
-            idletimes=${config_IDLETIMES}
+	tt="$t2"; t2="$t3"; t3="$tt"
+	dark_before_sleep=true
     fi
-
-    if [ "$idletimes" = "${last_idletimes}" ]
-    then
-        return
-    fi
-
-    set -- ${idletimes}
-
-    # validate the given times, and turn them into deltas.
-    t1=${1:-120}
-    t2=${2:-0}
-    t3=${3:-0}
-    t4=${4:-0}
-    test "$t1" -eq "$t1" || t1=120   # force numeric
 
     #if any delta is 0 or negative, make it 60
     #if any delta is less than 5, make it at least 5
@@ -577,7 +587,7 @@ set_idletimes()
     # give olpc-kbdshim the timeouts
     echo "I $t1 $t2 $t3" >$USER_ACTIVITY_CMDS
 
-    if yes_or_true "$config_DARK_BEFORE_SLEEP"
+    if [ "$dark_before_sleep" ]
     then
         screenofftimer=;
         shutdowntimer=$((t4 - t3))
@@ -588,13 +598,13 @@ set_idletimes()
         log dim in $t1 seconds, sleep in $t2, blank in $t3, shutdown in $t4
     fi
 
-    last_idletimes="$idletimes"
 }
 
 reevaluate()
 {
     check_acstate || check_battery
-    if [ "${o_savepower:-}" != "$savepower" -o \
+    if [ "${1:-}" = all -o \
+	 "${o_savepower:-}" != "$savepower" -o \
          "${o_ebook:-}" != "$am_ebook" ]
     then
         set_idletimes
@@ -659,8 +669,6 @@ check_first_activity()
 event_loop()
 {
     local event arg1 arg2 more
-
-    idletimes=$config_IDLETIMES
 
     set -x
     exec 2>$LOGFILE
@@ -752,7 +760,7 @@ event_loop()
         useridle2)
             if [ "$savepower" ] && laptop_idle
             then
-                if yes_or_true "$config_DARK_BEFORE_SLEEP"
+                if [ "$dark_before_sleep" ]
                 then
                     backlight off
                 else
@@ -765,7 +773,7 @@ event_loop()
         useridle3)
             if [ "$savepower" ] && laptop_idle
             then
-                if yes_or_true "$config_DARK_BEFORE_SLEEP"
+                if [ "$dark_before_sleep" ]
                 then
                     # schedule a wakeup, so we can shut down
                     catnap rtc shutdown "$shutdowntimer"
@@ -782,6 +790,7 @@ event_loop()
 
         reconfig)
             read_config
+	    reevaluate all
             ;;
 
         esac
