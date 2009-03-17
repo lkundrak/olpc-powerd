@@ -320,7 +320,7 @@ slumber()
 {
     set_wakeupevents none
     read_wlan_power wlp
-    yes_or_true "$config_MESH_or_WAKE_ON_WAN" || set_wlan_power 0
+    yes_or_true "$config_MESH_or_WAKE_ON_WLAN" || set_wlan_power 0
     dcon sleep
     echo mem >/sys/power/state
     selfinject fake_useractive
@@ -359,7 +359,7 @@ read_wakeupsource()
 catnap()
 {
     read_wlan_power wlp
-    yes_or_true "$config_MESH_or_WAKE_ON_WAN" || set_wlan_power 0
+    yes_or_true "$config_MESH_or_WAKE_ON_WLAN" || set_wlan_power 0
 
     # we only use rtc alarms to either a) turn of the screen when
     # we've been sleeping for a while, or b) shutdown after we've
@@ -389,7 +389,7 @@ catnap()
             ;;
 
         "wlan packet")
-            if yes_or_true "$config_MESH_or_WAKE_ON_WAN"
+            if yes_or_true "$config_MESH_or_WAKE_ON_WLAN"
             then
                 selfinject fake_useractive
                 break
@@ -499,7 +499,7 @@ default_config()
     config_IDLEDIM=5
     config_SOLAR=no
     config_ALWAYSON=no
-    config_MESH_or_WAKE_ON_WAN=yes
+    config_MESH_or_WAKE_ON_WLAN=yes
     config_CONFIRM_SECONDS=7
     config_DARK_BEFORE_SLEEP=false
 } 
