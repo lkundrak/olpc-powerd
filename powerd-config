@@ -311,12 +311,13 @@ main()
         exit
     fi
 
-    if ! type -path dialog 2>/dev/null
+    if ! type dialog 2>/dev/null
     then
 	(
 	echo "${0##*/}: the 'dialog' program isn't available, quitting."
 	echo "  Use a text editor to edit profiles under $CONFIGDIR,"
-	echo "  and activate them with: '${0##*/} profilename'"
+	echo "  and (re)activate them with: '${0##*/} profilename'"
+	echo "  (Or use 'sudo yum install dialog' to install the package.)"
 	) >&2
 	exit 1
     fi
