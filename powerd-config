@@ -86,15 +86,35 @@ setvar()
 }
 
 
-
 display_profile()
 {
+    
     dialog --yesno \
         "$(echo Profile \'$1\' contains:; \
             echo; \
-            sed -n 's/^config_.*/   &/p' $CONFIGDIR/$1;
+	        sed  \
+		   -e 's/^config_TIME_DIM=/  1) Seconds until the screen dims: /' \
+		   -e 's/^config_TIME_SLEEP=/  2) Seconds until the laptop sleeps: /' \
+		   -e 's/^config_TIME_BLANK=/  3) Seconds until the screen blanks: /' \
+		   -e 's/^config_TIME_SHUTDOWN=/  4) Seconds until the laptop shuts down: /' \
+		   -e 's/^config_IDLEDIM=/  5) How far to dim the screen when idle: /' \
+		   -e 's/^config_SOLAR=/  6) Conserve external power: /' \
+		   -e 's/^config_MESH_or_WAKE_ON_WLAN=/  7) Try and keep the wireless active: /' \
+		   -e 's/^config_ALWAYSON=/  8) Run without saving power, even on battery: /' \
+		   -e 's/^config_USE_EBOOK_PROFILE=/  9) Use '\''ebook'\'' profile when folded as ebook: /' \
+		   -e 's/^config_CONFIRM_SECONDS=/ 10) Seconds to wait for a second power button press to shut down: /' \
+		   -e 's/\<n\>/no/' \
+		   -e 's/\<y\>/yes/' \
+		   -e 's/\<false\>/no/' \
+		   -e 's/\<true\>/yes/' \
+		   -e 's/\"/ /g' \
+		   -e 's/^/   /' \
+		   -e '/^[[:space:]]*#.*/d' \
+		   -e '/^[[:space:]]*$/d' \
+	    $CONFIGDIR/$1 | sort -n
             echo; \
-            echo Okay to activate? )" 0 0
+            echo Okay to activate? \
+	)" 0 0
 }
 
 
@@ -133,10 +153,11 @@ edit_profile()
         return 1
     fi
 
-    read got junk < $TMP
 
     setvar SOLAR false
     setvar ALWAYSON false
+
+    read got junk < $TMP
     case $got in
     normal) ;;
     solar) setvar SOLAR true ;;
