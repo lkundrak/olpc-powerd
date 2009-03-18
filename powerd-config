@@ -37,7 +37,7 @@ usage()
 
 # CONFIGDIR=/home/olpc/src/powerd/testconf
 CONFIGDIR=/etc/powerd/conf
-CONFIGLINK=$CONFIGDIR/powerd.conf
+CONFIGLINK=$CONFIGDIR/curconfig.link
 
 TMP=/tmp/powerdconfig.$$
 
@@ -302,9 +302,9 @@ main()
 
     if [ "$1" ]
     then
-        if [ ! -r "$1" ]
+        if [ ! -r $CONFIGDIR/"${1##*/}" ]
         then
-            echo "${0##*/} profile $1 not readable" >&2
+            echo "${0##*/} profile $1 (in $CONFIGDIR) not readable" >&2
             exit 1
         fi
         activate_profile ${1##*/}

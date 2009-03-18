@@ -16,7 +16,7 @@
 # -- idle shutdown after laptop has slept
 # -- low battery shutdown (only when not sleeping)
 # -- different power management behavior when on wall power vs. battery.
-# -- different behavior when in ebook mode (though detection may be unreliable)
+# -- different behavior when in ebook mode
 # -- ease of customization, given that its written in shell.
 #
 # unimplemented:
@@ -25,10 +25,53 @@
 # -- there's some support for wake-on-lan, but it's not well tested.
 # -- probably more.
 #
-# major config variables are documented in powerd.conf.  powerd reads
-# its configuration from /etc/powerd/powerd.conf once at startup,
+# configuration:
+#
+# major config variables are documented below.  powerd reads
+# its configuration from /etc/powerd/default once at startup,
 # and again only when it receives a "reconfig" event on its
-# event fifo (/var/run/powerevents).
+# event fifo (/var/run/powerevents).  the current configuration
+# profile can be changed by sending "reconfig <profilename>" to
+# the fifo.  folding the laptop into ebook mode will trigger an
+# automatic profile switch to the "ebook" profile (if configured
+# to do so with config_USE_EBOOK_PROFILE.)
+#
+# all four idle times are expressed in seconds: 
+# "config_TIME_DIM", "config_TIME_SLEEP", "config_TIME_BLANK",
+# "config_TIME_SHUTDOWN".
+# dim must happen first.  sleep and blanking can happen in either
+# order.  if sleep happens first, the screen will stay on while
+# the rest of the system sleeps.  if blanking is scheduled first,
+# the screen will go dark while the laptop remains otherwise
+# fully active.  shutdown, of course, happens last.
+#
+# "config_IDLEDIM" is how dim will the screen go when the first
+# timer fires.  (range 0-15)
+#
+# normally we try and save power when on battery, but not when on
+# external power.  setting "config_SOLAR" (boolean) causes laptop
+# to behave as if power were scarce in either case.
+#
+# "config_ALWAYSON" (boolean) will suppress any automatic sleeps,
+# even on battery.  this overrides "config_SOLAR".  note that
+# creating the file /var/run/inhibit-idle-suspend will do much
+# the same thing, except that in that case the screen is still
+# allowed to dim.
+#
+# "config_CONFIRM_SECONDS" determines how long the
+# shutdown/suspend confirmation splash screen stays visible
+# before the laptop automatically suspends.
+#
+# "config_MESH_or_WAKE_ON_WLAN" (boolean) allows wireless to
+# continue operating when the laptop is sleeping.  note that the
+# wireless configuration may allow shutting down the wireless
+# entirely (e.g., with "echo 0>/sys/power/wlan-enabled"), which
+# may override this setting.
+#
+# "config_USE_EBOOK_PROFILE" (boolean) allows powerd to switch to
+# the configuration profile named "ebook" when folded into ebook
+# mode.
+#
 #
 # idle suspend can be manually inhibited by creating the file
 #    /var/run/inhibit-idle-suspend
@@ -38,8 +81,8 @@
 # run detached from powerd, so they won't impede its operation -- however,
 # they should be kept as short as possible.
 #
+#
 # the inputs that contribute to power management are:
-
 #
 # -- switches:
 #       power button
@@ -146,7 +189,7 @@ PROJECTDIR=/etc/powerd
 RUNPARTSDIR=/etc/powerd/postresume.d
 
 CONFIGDIR=$PROJECTDIR/conf
-CONFIGFILE=$CONFIGDIR/powerd.conf
+CONFIGLINK=$CONFIGDIR/curconfig.link
 LOGFILE=$PROJECTDIR/powerd.log   # only used for debug, currently
 
 CONFIRMSPLASH=$PROJECTDIR/pleaseconfirm.pgm
@@ -516,12 +559,12 @@ default_config()
 
 read_config()
 {
-    if [ ! -r $CONFIGFILE ]
+    if [ ! -r $CONFIGLINK ]
     then
-        log cannot read configuration from $CONFIGFILE
+        log cannot read configuration from $CONFIGLINK
         exit 1
     fi
-    source $CONFIGFILE
+    source $CONFIGLINK
     if yes_or_true $config_ALWAYSON
     then
         log configured for always on
@@ -536,7 +579,7 @@ read_config()
 choose_config()
 {
     newconfig=$1
-    curconfig=$(readlink $CONFIGFILE)
+    curconfig=$(readlink $CONFIGLINK)
 
     if [ ! "$newconfig" ]
     then
@@ -575,7 +618,7 @@ choose_config()
         prevconfig=;
     fi
 
-    ln -sf $newconfig $CONFIGFILE
+    ln -sf $newconfig $CONFIGLINK
     log configuring from \"$newconfig\"
 
     return 0
@@ -861,13 +904,18 @@ event_loop()
     done <> $FIFO
 }
 
-set -x
-exec 2>$LOGFILE
+# set -x
+# exec 2>$LOGFILE
 
 log starting
 
 default_config
-choose_config default
+if [ ! -r $CONFIGLINK ]
+then
+    choose_config default
+else
+    log configuring from \"$(readlink $CONFIGLINK)\"
+fi
 read_config
 
 am_ebook=;
