@@ -1,4 +1,39 @@
 #!/bin/sh
+#
+# primitive configurator for powerd.
+#
+# can be used from the commandline to activate a profile,
+# otherwise, will bring up a series of dialog-based config
+# screens to let you select and edit a profile.
+#
+#
+# Copyright (C) 2009, Paul G Fox
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 2 of
+# the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+# PURPOSE.  See the GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; if not, write to the Free
+# Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139,
+# USA.
+#
+
+usage()
+{
+        (
+        echo "usage: ${0##*/} [ profile-name ]"
+        echo "will activate 'profile-name' if given,"
+        echo "or bring up interactive selection/edit dialogs."
+        ) >&2
+        exit 1
+}
 
 # CONFIGDIR=/home/olpc/src/powerd/testconf
 CONFIGDIR=/etc/powerd/conf
@@ -9,10 +44,7 @@ TMP=/tmp/powerdconfig.$$
 
 trap "rm -f $TMP $TMPCONFIG $NEWCONFIG" 0
 
-# set -e
-
 backtitle="powerd configuration"
-
 
 yes_or_true()
 {
@@ -58,11 +90,11 @@ setvar()
 display_profile()
 {
     dialog --yesno \
-	"$(echo Profile \'$1\' contains:; \
-	    echo; \
-	    sed -n 's/^config_.*/   &/p' $CONFIGDIR/$1;
-	    echo; \
-	    echo Okay to activate? )" 0 0
+        "$(echo Profile \'$1\' contains:; \
+            echo; \
+            sed -n 's/^config_.*/   &/p' $CONFIGDIR/$1;
+            echo; \
+            echo Okay to activate? )" 0 0
 }
 
 
@@ -84,21 +116,21 @@ edit_profile()
     test "$solar" = off -a $alwayson = off && normal=on
 
     if ! dialog \
-	--backtitle "$backtitle" \
-	--radiolist "Power usage" 0 0 0 \
-	    "normal" \
-		"Save battery power, but run at full power when plugged in" \
-		$normal \
-	    "solar" \
-		"Save both external and battery power" \
-		$solar \
-	    "full" \
-		"Run at full power at all times (No dim, sleep, or shutdown)"  \
-		$alwayson \
-	2>$TMP
+        --backtitle "$backtitle" \
+        --radiolist "Power usage" 0 0 0 \
+            "normal" \
+                "Save battery power, but run at full power when plugged in" \
+                $normal \
+            "solar" \
+                "Save both external and battery power" \
+                $solar \
+            "full" \
+                "Run at full power at all times (No dim, sleep, or shutdown)"  \
+                $alwayson \
+        2>$TMP
     then
-	rm $TMPCONFIG
-	return 1
+        rm $TMPCONFIG
+        return 1
     fi
 
     read got junk < $TMP
@@ -115,28 +147,28 @@ edit_profile()
     use_ebook=$(yes_or_true $(config USE_EBOOK_PROFILE))
 
     if ! dialog \
-	--backtitle "$backtitle" \
-	--separate-output --checklist "Options" 0 0 0 \
-	    "wlanwake" \
-		"Leave WLAN enabled when sleeping" \
-		$wake \
-	    "ebookconfig" \
-		"Switch to 'ebook' config profile automatically in ebook mode" \
-		$use_ebook \
-	2>$TMP
+        --backtitle "$backtitle" \
+        --separate-output --checklist "Options" 0 0 0 \
+            "wlanwake" \
+                "Leave WLAN enabled when sleeping" \
+                $wake \
+            "ebookconfig" \
+                "Switch to 'ebook' config profile automatically in ebook mode" \
+                $use_ebook \
+        2>$TMP
     then
-	rm $TMPCONFIG
-	return 1
+        rm $TMPCONFIG
+        return 1
     fi
 
     setvar MESH_or_WAKE_ON_WLAN false
     setvar USE_EBOOK_PROFILE false
     while read got junk
     do
-	case $got in
-	wlanwake) setvar MESH_or_WAKE_ON_WLAN true;;
-	ebookconfig) setvar USE_EBOOK_PROFILE true ;;
-	esac
+        case $got in
+        wlanwake) setvar MESH_or_WAKE_ON_WLAN true;;
+        ebookconfig) setvar USE_EBOOK_PROFILE true ;;
+        esac
     done < $TMP
 
 
@@ -147,16 +179,16 @@ edit_profile()
     shut=$(config TIME_SHUTDOWN)
 
     if ! dialog \
-	  --backtitle "$backtitle" --form \
-	    "Idle timeouts -- either Sleep or Blank may occur first" 0 0 4 \
-	    "Dim:"         1 1      "$dim"    1  11 9 9 \
+          --backtitle "$backtitle" --form \
+            "Idle timeouts -- either Sleep or Blank may occur first" 0 0 4 \
+            "Dim:"         1 1      "$dim"    1  11 9 9 \
       "Sleep:"       2 1      "$sleep"  2  11 9 9 \
-			    "Blank:"       2 25     "$blank"  2  35 9 9 \
-	    "Shutdown:"    3 1      "$shut"   3  11 9 9 \
+                            "Blank:"       2 25     "$blank"  2  35 9 9 \
+            "Shutdown:"    3 1      "$shut"   3  11 9 9 \
     2>$TMP
     then
-	rm $TMPCONFIG
-	return 1
+        rm $TMPCONFIG
+        return 1
     fi
 
     set -- $(cat $TMP)
@@ -168,45 +200,45 @@ edit_profile()
 
     for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
     do
-	eval r${i}=off
+        eval r${i}=off
     done
     eval r${config_IDLEDIM}=on
 
     if ! dialog \
-	--radiolist "Dim level" 0 0 0 \
-	   15 "" "$r15" \
-	   14 "" "$r14" \
-	   13 "" "$r13" \
-	   12 "" "$r12" \
-	   11 "" "$r11" \
-	   10 "" "$r10" \
-	    9 "" "$r9" \
-	    8 "" "$r8" \
-	    7 "" "$r7" \
-	    6 "" "$r6" \
-	    5 "" "$r5" \
-	    4 "" "$r4" \
-	    3 "" "$r3" \
-	    2 "" "$r2" \
-	    1 "" "$r1" \
-	  off "" "$r0" \
-	2>$TMP
+        --radiolist "Dim level" 0 0 0 \
+           15 "" "$r15" \
+           14 "" "$r14" \
+           13 "" "$r13" \
+           12 "" "$r12" \
+           11 "" "$r11" \
+           10 "" "$r10" \
+            9 "" "$r9" \
+            8 "" "$r8" \
+            7 "" "$r7" \
+            6 "" "$r6" \
+            5 "" "$r5" \
+            4 "" "$r4" \
+            3 "" "$r3" \
+            2 "" "$r2" \
+            1 "" "$r1" \
+          off "" "$r0" \
+        2>$TMP
     then
-	rm $TMPCONFIG
-	return 1
+        rm $TMPCONFIG
+        return 1
     fi
 
     setvar IDLEDIM $(cat $TMP)
 
     seconds=$config_CONFIRM_SECONDS
     if ! dialog \
-	  --backtitle "$backtitle" \
-	  --form "Shutdown confirmation delay" 0 0 1 \
-	"Seconds between power button presses:"   1 1 "$seconds"  1  45 3 3 \
-	2>$TMP
+          --backtitle "$backtitle" \
+          --form "Shutdown confirmation delay" 0 0 1 \
+        "Seconds between power button presses:"   1 1 "$seconds"  1  45 3 3 \
+        2>$TMP
     then
-	rm $TMPCONFIG
-	return 1
+        rm $TMPCONFIG
+        return 1
     fi
 
     read got junk < $TMP
@@ -222,11 +254,11 @@ check_root()
 {
     if [ "$(whoami)" != root ]
     then
-	dialog \
-	    --backtitle "$backtitle" \
-	    --msgbox \
-	    "You must be root to run this configuration program" 0 0
-	exit 1
+        dialog \
+            --backtitle "$backtitle" \
+            --msgbox \
+            "You must be root to run this configuration program" 0 0
+        exit 1
     fi
 }
 
@@ -242,13 +274,13 @@ select_profile()
     done
 
     dialog \
-	--backtitle "$backtitle" \
-	--default-item $curprofile \
-	--extra-button \
-	--extra-label Edit \
-	--menu "Select a profile (to use or edit and then use)" 0 0 0 \
-	$profilelist \
-	2>$TMP
+        --backtitle "$backtitle" \
+        --default-item $curprofile \
+        --extra-button \
+        --extra-label Edit \
+        --menu "Select a profile (to use or edit and then use)" 0 0 0 \
+        $profilelist \
+        2>$TMP
     ret=$?
 
     read workingprofile < $TMP
@@ -265,47 +297,40 @@ main()
 {
 
     case $1 in
-    -*)
-	(
-	echo "usage: ${0##*/} [ profile-name ]"
-	echo "will activate 'profile-name' if given,"
-	echo "or bring up interactive selection/edit dialogs."
-	) >&2
-	exit 1
-	;;
+    -*) usage ;;
     esac
 
     if [ "$1" ]
     then
-	if [ ! -r "$1" ]
-	then
-	    echo ${0##*/} profile $1 not readable
-	    exit 1
-	fi
-	activate_profile $1
-	exit
+        if [ ! -r "$1" ]
+        then
+            echo ${0##*/} profile $1 not readable
+            exit 1
+        fi
+        activate_profile $1
+        exit
     fi
 
     check_root
 
     while :
     do
-	select_profile
-	selectret=$?
+        select_profile
+        selectret=$?
 
-	case $selectret in
-	3|0)  ;;
-	*)  exit 1 ;;
-	esac
+        case $selectret in
+        3|0)  ;;
+        *)  exit 1 ;;
+        esac
 
-	test "$workingprofile" -a -e $CONFIGDIR/$workingprofile || continue
+        test "$workingprofile" -a -e $CONFIGDIR/$workingprofile || continue
 
-	case $selectret in
-	3)  edit_profile $workingprofile && break
-	    ;;
-	0)  break
-	    ;;
-	esac
+        case $selectret in
+        3)  edit_profile $workingprofile && break
+            ;;
+        0)  break
+            ;;
+        esac
     done
 
 
