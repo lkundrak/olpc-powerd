@@ -10,7 +10,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: gcc, kernel-headers
 Requires: olpc-kbdshim >= 2-2
 BuildArch: i386
-Provides: olpc-powerd = 1-2
+Provides: olpc-powerd = 2-1
 
 %description
 The olpc-powerd can function as an easily customizable replacement
@@ -31,15 +31,18 @@ mkdir -p $RPM_BUILD_ROOT/usr/bin
 mkdir -p $RPM_BUILD_ROOT/etc/event.d
 mkdir -p $RPM_BUILD_ROOT/etc/powerd
 mkdir -p $RPM_BUILD_ROOT/etc/powerd/postresume.d
+mkdir -p $RPM_BUILD_ROOT/etc/powerd/conf
 
 %{__install} -m 755 olpc-switchd $RPM_BUILD_ROOT/usr/sbin/olpc-switchd
 %{__install} -m 755 powerd $RPM_BUILD_ROOT/usr/sbin/powerd
 %{__install} -m 755 pnmto565fb $RPM_BUILD_ROOT/usr/bin/pnmto565fb
+%{__install} -m 755 powerd-config $RPM_BUILD_ROOT/usr/bin/powerd-config
 %{__install} -m 644 olpc-switchd.upstart $RPM_BUILD_ROOT/etc/event.d/olpc-switchd
 %{__install} -m 644 powerd.upstart $RPM_BUILD_ROOT/etc/event.d/powerd
 %{__install} -m 644 pleaseconfirm.pgm $RPM_BUILD_ROOT/etc/powerd/pleaseconfirm.pgm
 %{__install} -m 644 shuttingdown.pgm $RPM_BUILD_ROOT/etc/powerd/shuttingdown.pgm
-%{__install} -m 644 powerd.conf $RPM_BUILD_ROOT/etc/powerd/powerd.conf
+%{__install} -m 644 conf/default $RPM_BUILD_ROOT/etc/powerd/conf/default
+%{__install} -m 644 conf/ebook $RPM_BUILD_ROOT/etc/powerd/conf/ebook
 
 
 %clean
@@ -52,11 +55,13 @@ rm -rf $RPM_BUILD_ROOT
 /usr/sbin/olpc-switchd
 /usr/sbin/powerd
 /usr/bin/pnmto565fb
+/usr/bin/powerd-config
 /etc/event.d/olpc-switchd
 /etc/event.d/powerd
 /etc/powerd/pleaseconfirm.pgm
 /etc/powerd/shuttingdown.pgm
-/etc/powerd/powerd.conf
+/etc/powerd/conf/default
+/etc/powerd/conf/ebook
 
 %post
 if test -e /etc/init.d/ohmd
@@ -93,4 +98,9 @@ fi
 * Fri Mar 13 2009 Paul Fox <pgf@laptop.org>
 - 1-2
 - fix rpmlint errors, move daemons to /usr/sbin
+
+* Tue Mar 17 2009 Paul Fox <pgf@laptop.org
+- 2-1 
+- added powerd-config, and added blank-or-shutdown after sleep
+  capability
 
