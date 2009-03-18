@@ -1,7 +1,7 @@
 Summary: OLPC XO experimental power management
 Name: olpc-powerd
-Version: 1
-Release: 2
+Version: 2
+Release: 1
 License: GPLv2
 Group: System Environment/Base
 URL: http://dev.laptop.org/git?p=users/pgf/olpc-powerd
@@ -95,12 +95,12 @@ then
 fi
 
 %changelog
-* Fri Mar 13 2009 Paul Fox <pgf@laptop.org>
-- 1-2
-- fix rpmlint errors, move daemons to /usr/sbin
-
 * Tue Mar 17 2009 Paul Fox <pgf@laptop.org
 - 2-1 
 - added powerd-config, and added blank-or-shutdown after sleep
   capability
+
+* Fri Mar 13 2009 Paul Fox <pgf@laptop.org>
+- 1-2
+- fix rpmlint errors, move daemons to /usr/sbin
 

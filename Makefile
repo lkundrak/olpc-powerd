@@ -1,8 +1,8 @@
 # Copyright (C) 2009 Paul G. Fox
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
-VERSION=1
-RELEASE=2
+VERSION=2
+RELEASE=1
 PACKAGE=olpc-powerd
 MOCK=./mock-wrapper -r olpc-3-i386 --resultdir=$(MOCKDIR)
 MOCKDIR=./rpms
@@ -25,9 +25,10 @@ clean:
 
 update-version:
 	sed -i \
-		-e 's/^Version: .*/Version: $(VERSION)/' \
-		-e 's/^Release: .*/Release: $(RELEASE)/' \
-		$(PACKAGE).spec
+	-e 's/^Version: .*/Version: $(VERSION)/' \
+	-e 's/^Release: .*/Release: $(RELEASE)/' \
+	-e 's/^Provides: .*/Provides: $(PACKAGE) = $(VERSION)-$(RELEASE)/' \
+	$(PACKAGE).spec
 
 tarball: $(PKGVER).tar.gz
 
