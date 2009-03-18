@@ -304,11 +304,21 @@ main()
     then
         if [ ! -r "$1" ]
         then
-            echo ${0##*/} profile $1 not readable
+            echo "${0##*/} profile $1 not readable" >&2
             exit 1
         fi
-        activate_profile $1
+        activate_profile ${1##*/}
         exit
+    fi
+
+    if ! type -path dialog 2>/dev/null
+    then
+	(
+	echo "${0##*/}: the 'dialog' program isn't available, quitting."
+	echo "  Use a text editor to edit profiles under $CONFIGDIR,"
+	echo "  and activate them with: '${0##*/} profilename'"
+	) >&2
+	exit 1
     fi
 
     check_root
