@@ -511,11 +511,16 @@ default_config()
     config_ALWAYSON=no
     config_MESH_or_WAKE_ON_WLAN=yes
     config_CONFIRM_SECONDS=7
-    config_DARK_BEFORE_SLEEP=false
+    config_USE_EBOOK_PROFILE=false
 } 
 
 read_config()
 {
+    if [ ! -r $CONFIGFILE ]
+    then
+        log cannot read configuration from $CONFIGFILE
+        exit 1
+    fi
     source $CONFIGFILE
     if yes_or_true $config_ALWAYSON
     then
@@ -536,17 +541,21 @@ choose_config()
     if [ ! "$newconfig" ]
     then
         log "(re)reading $curconfig"
-        return
+        return 0
     fi
 
     if [ "$newconfig" = previous ]
     then
-        newconfig=${prevconfig:-default}
+        if [ ! "$prevconfig" ]
+        then
+            return 1
+        fi
+        newconfig=$prevconfig
     fi
 
     if [ "$curconfig" = "$newconfig" ]
     then
-        return
+        return 0
     fi
 
     if [ ! -e $CONFIGDIR/$newconfig ]
@@ -554,7 +563,7 @@ choose_config()
         log request for nonexistent configuration \"$newconfig\"
         if [ ! -e $CONFIGDIR/default ]
         then
-            return
+            return 1
         fi
         newconfig=default
     fi
@@ -568,6 +577,8 @@ choose_config()
 
     ln -sf $newconfig $CONFIGFILE
     log configuring from \"$newconfig\"
+
+    return 0
 }
 
 check_acstate()
@@ -783,9 +794,9 @@ event_loop()
             backlight restore
             ;;
 
-        ebookclose)
+        ebookclose)  # i.e., fully flat in ebook mode
             am_ebook=true
-            choose_config ebook
+            yes_or_true $config_USE_EBOOK_PROFILE && choose_config ebook
             read_config
             ;;
 
