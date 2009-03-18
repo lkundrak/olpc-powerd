@@ -1,31 +1,48 @@
 #
 # configuration for powerd.
 #
+# this file is in /bin/sh syntax.  please be careful.
 
-# in ebook mode, shorten the sleep, extend the blank, and don't dim
+# all four idle times are expressed in seconds: "config_TIME_DIM",
+# "config_TIME_SLEEP", "config_TIME_BLANK", "config_TIME_SHUTDOWN".
+# dim must happen first.  sleep and blanking can happen in either
+# order.  if sleep happens first, the screen will stay on while
+# the rest of the system sleeps.  if blanking is scheduled first,
+# the screen will go dark while the laptop remains otherwise
+# fully active.  shutdown, of course, happens last.
+
+# "config_IDLEDIM" is how dim will the screen go when the first
+# timer fires.  (range 0-15)
+
+# normally we try and save power when on battery, but not when on
+# external power.  setting "config_SOLAR" (boolean) causes laptop to behave
+# as if power were scarce in either case.
+
+# "config_ALWAYSON" (boolean) will suppress any automatic sleeps, even on
+# battery.  this overrides "config_SOLAR".  note that creating the
+# file /var/run/inhibit-idle-suspend will do much the same thing,
+# except that in that case the screen is still allowed to dim.
+
+# "config_CONFIRM_SECONDS" determines how long the shutdown/suspend
+# confirmation splash screen stays visible before the laptop
+# automatically suspends.
+
+# "config_MESH_or_WAKE_ON_WLAN" (boolean) allows wireless to continue
+# operating when the laptop is sleeping.  note that the wireless
+# configuration may allow shutting down the wireless entirely
+# (e.g., with "echo 0>/sys/power/wlan-enabled"), which may
+# override this setting.
+
+# "config_USE_EBOOK_PROFILE" (boolean) allows powerd to switch to
+# the configuration profile named "ebook" when folded into ebook
+# mode.
+
 config_IDLEDIM=15
 config_TIME_DIM=10
 config_TIME_SLEEP=15
 config_TIME_BLANK=240
 config_TIME_SHUTDOWN=3600
-
-# normally we try and save power when on battery, but not when on
-# external power.  setting config_SOLAR causes laptop to behave
-# as if power were scarce in either case.
 config_SOLAR=n
-
-# suppress any automatic sleeps, even on battery.  this overrides
-# config_SOLAR.  note that creating the file
-# /var/run/inhibit-idle-suspend will do much the same thing,
-# except that in that case the screen is still allowed to dim.
 config_ALWAYSON=n
-
-# how long does the shutdown/suspend confirmation splash screen
-# stay visible before the laptop automatically suspends?
 config_CONFIRM_SECONDS=7
-
-# allows wireless to continue operating when the laptop is
-# sleeping.  note that the wireless configuration may allow
-# shutting down the wireless entirely (e.g., with 
-# "echo 0>/sys/power/wlan-enabled"), which may override this setting.
 config_MESH_or_WAKE_ON_WLAN=y
