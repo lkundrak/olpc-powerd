@@ -96,6 +96,10 @@ fi
 
 %changelog
 * Thu Mar 19 2009 Paul Fox <pgf@laptop.org
+- 2-3
+- removed extra dcon calls.
+
+* Thu Mar 19 2009 Paul Fox <pgf@laptop.org
 - 2-2
 - bug fixing
 
