@@ -1,7 +1,7 @@
 Summary: OLPC XO experimental power management
 Name: olpc-powerd
 Version: 2
-Release: 1
+Release: 2
 License: GPLv2
 Group: System Environment/Base
 URL: http://dev.laptop.org/git?p=users/pgf/olpc-powerd
@@ -10,7 +10,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: gcc, kernel-headers
 Requires: olpc-kbdshim >= 2-2
 BuildArch: i386
-Provides: olpc-powerd = 2-1
+Provides: olpc-powerd = 2-2
 
 %description
 The olpc-powerd can function as an easily customizable replacement
@@ -95,6 +95,10 @@ then
 fi
 
 %changelog
+* Thu Mar 19 2009 Paul Fox <pgf@laptop.org
+- 2-2
+- bug fixing
+
 * Tue Mar 17 2009 Paul Fox <pgf@laptop.org
 - 2-1 
 - added powerd-config, and added blank-or-shutdown after sleep
