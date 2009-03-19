@@ -77,8 +77,8 @@
 #    /var/run/inhibit-idle-suspend
 #
 # post-resume scripts can be put in /etc/powerd/postresume.d -- the
-# scripts will be run in lexicographic order.  the scripts are
-# run detached from powerd, so they won't impede its operation -- however,
+# scripts will be run in lexicographic order.  the scripts are run
+# detached from powerd, so they won't impede its operation -- however,
 # they should be kept as short as possible.
 #
 #
@@ -88,22 +88,18 @@
 #       power button
 #       ebook
 #       lid
-# actions on these switches appear as events on
-# /dev/input/event[012].  powerd relies on the companion
-# program "olpc-switchd" to report these events via the
-# /var/run/powerevents fifo it creates for the purpose.  it's
-# unfortunate that these events have no corresponding /sys state
-# indicators, since knowing the state of the lid, or of ebook
-# mode, would be useful in the absence of events (at startup, for
-# instance).  in addition, it seems that the ebook switch may
-# suffer from the lid switch symptoms described in
-# http://dev.laptop.org/ticket/5703 .  the lid switch events seem
-# to be reliable (but see below re:  wakeup source reporting).
+# actions on these switches appear as events on /dev/input/event[012]. 
+# powerd relies on the companion program "olpc-switchd" to report
+# these events via the /var/run/powerevents fifo it creates for the
+# purpose.  it's unfortunate that these events have no corresponding
+# /sys state indicators, since knowing the state of the lid (or of
+# ebook mode) would be useful in the absence of events (at startup,
+# for instance).
 #
 #
 # -- conditions:
 #       AC input (boolean)
-#       battery level (numeric)
+#       battery capacity (numeric)
 # it's unfortunate that these have no corresponding events.  because
 # they don't, olpc-switchd also monitors these two nodes (under /sys)
 # and synthesizes events to represent their transitions.
@@ -112,7 +108,7 @@
 # -- wakeups:
 #       ac_power
 #       battery_error
-#       battery_soc
+#       battery_soc (i.e. "state of charge" --> capacity)
 #       battery_state
 #       ebook_mode_change
 #       ps2event
@@ -120,9 +116,8 @@
 #       lid (or sometimes "empty sci")
 # when the system wakes from sleep, /sys/power/wakeup-source reports
 # the cause.  lid reporting is not reliable -- sometimes "empty sci"
-# is reported instead.  (i've not yet seen a case where "empty sci"
-# is reported for lid close, or for ebook_mode_change, but i'm not
-# ruling it out.)
+# is reported instead.  (i've not yet seen a case where "empty sci" is
+# reported for lid close i'm not ruling it out.)
 #
 #
 # -- user activity/idleness:
@@ -165,7 +160,8 @@
 # of DPMS doing this will result in confusion, since when DPMS
 # blanks the screen, powerd can't tell that it's been done. 
 # i.e., a laptop with a screen blanked by DPMS may behave
-# differently than one blanked by powerd.
+# differently than one blanked by powerd.  so "xset -dpms" is
+# recommended, preferably in olpc-session.
 #
 # my intention is that this be runnable with most any shell.  no
 # bash-specific features were used, unless by accident.
@@ -204,12 +200,11 @@ BATTSHUTSPLASH=$PROJECTDIR/shuttingdown.pgm
 FIFO=/var/run/powerevents
 
 # note re: battery capacity:
-# i'd use /sys/.../capacity_level here, but we never hit
-# "critical" -- we only get to "low", which then lasts for
-# another half hour.  using /sys/.../capacity (which gives a
-# percentage), and cutting off at 5% means we're shutting down
-# with (on my machine and battery under 2 minutes of runtime
-# left.  close enough for jazz...
+# i'd use /sys/.../capacity_level here, but we never hit "critical" --
+# we only get to "low", which then lasts for another half hour.  using
+# /sys/.../capacity (which gives a percentage), and cutting off at 5%
+# means we're shutting down with (on my machine and battery under 2
+# minutes of runtime left.  close enough for jazz...
 CAPACITY=/sys/class/power_supply/olpc-battery/capacity  # percentage
 
 AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1/0
@@ -307,11 +302,10 @@ laptop_idle()
 
 set_wlan_power()
 {
-    # very important not to do extra writes to wlan-enabled --
-    # the node is sort of misnamed.  writing a 0 puts the
-    # wlan into reset.  writing a 1 puts it into reset, and
-    # immediately releases the reset.  so a reset is always
-    # involved, even if brief.
+    # very important not to do extra writes to wlan-enabled -- the
+    # node is sort of misnamed.  writing a 0 puts the wlan into reset. 
+    # writing a 1 puts it into reset, but immediately releases the
+    # reset.  so a reset is always involved, even if brief.
     read_wlan_power w
     if [ "$w" != "$1" ]
     then
@@ -406,8 +400,8 @@ catnap()
     yes_or_true "$config_MESH_or_WAKE_ON_WLAN" || set_wlan_power 0
 
     # we only use rtc alarms to either a) turn of the screen when
-    # we've been sleeping for a while, or b) shutdown after we've
-    # been sleeping for a while.  if we do a), we'll do b) next.
+    # we've been sleeping for a while, or b) shutdown after we've been
+    # sleeping for a while.  if we do a), we'll do b) next.
     rtctype=$1   # "until_screenoff", or "until_shutdown"
     rtctime=$2
 
@@ -437,7 +431,7 @@ catnap()
                 selfinject fake_useractive
             else
                 # we're waiting until_screenoff, so screen is still on
-                selfinject power
+                selfinject fake_powerbutton
             fi
             break
             ;;
@@ -821,7 +815,7 @@ event_loop()
 
         case $event in
 
-        powerbutton)
+        powerbutton|fake_powerbutton)
             if backlight is_off
             then
                 gotactivity
