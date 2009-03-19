@@ -158,9 +158,13 @@
 #       unimplemented
 #
 # note that X11 DPMS is neither consulted nor configured, and it
-# may still be used to blank the display after some period of
-# inactivity.  (this won't happen, of course, unless the DPMS
-# "standby" time is shorter than powerd's "config_TIME_SLEEP" time.
+# may still blank the display after some period of inactivity. 
+# (this won't happen, of course, unless the DPMS "standby" time
+# is shorter than powerd's "config_TIME_SLEEP" time.  the affect
+# of DPMS doing this will result in confusion, since when DPMS
+# blanks the screen, powerd can't tell that it's been done. 
+# i.e., a laptop with a screen blanked by DPMS may behave
+# differently than one blanked by powerd.
 #
 # my intention is that this be runnable with most any shell.  no
 # bash-specific features were used, unless by accident.
@@ -415,27 +419,37 @@ catnap()
     # we only use rtc alarms to either a) turn of the screen when
     # we've been sleeping for a while, or b) shutdown after we've
     # been sleeping for a while.  if we do a), we'll do b) next.
-    if [ "$1" = "rtc" ]
-    then
-        rtctype=$2   # "screenoff", or "shutdown"
-        rtctime=$3
-    else
-        rtctype=;
-    fi
+    rtctype=$1   # "until_screenoff", or "until_shutdown"
+    rtctime=$2
 
     while :
     do
-        if [ "$rtctype" ]
+        if [ $rtctype = until_shutdown ]
         then
+            # if we're just waiting for a shutdown, then this
+            # is a sound sleep -- so act like lid close or power button.
+            set_wakeupevents none
             rtcwake -m mem -a -s $rtctime
+            set_wakeupevents all
         else
-            echo mem >/sys/power/state
+            # otherwise we want most anything to wake us.
+            rtcwake -m mem -a -s $rtctime
         fi
+
         read_wakeupsource wakeupsource
         : wakeupsource is $wakeupsource
         case $wakeupsource in
         "power button")
-            selfinject power $(date +%s)
+            if [ $rtctype = until_shutdown ]
+            then
+                # this takes care of the "screen blanked but not sleeping"
+                # case.  we only want the button to give the splash menu
+                # when the screen was lit when it was pushed.
+                selfinject fake_useractive
+            else
+                # we're waiting until_screenoff, so screen is still on
+                selfinject power
+            fi
             break
             ;;
 
@@ -448,12 +462,12 @@ catnap()
             ;;
         "rtc alarm")
             case $rtctype in
-            screenoff)
+            until_screenoff)
                 backlight off
-                rtctype=shutdown
-                rtctime=$4
+                rtctype=until_shutdown
+                rtctime=$3
                 ;;
-            shutdown)
+            until_shutdown)
                 do_shutdown "idle timeout"
                 ;;
             *) # it's a leftover (spurious?) rtc wakeup.  go back to sleep.
@@ -497,7 +511,7 @@ brightness_ramp()
         : $((i += incr))
         set_brightness $i
         test $i = $2 && break
-        usleep 20000
+        usleep 25000
     done
 }
 
@@ -533,10 +547,16 @@ backlight()
         if [ ! "${dimmed}" ]
         then
             read_brightness savebright
-            set_brightness 0
             dimmed=true
         fi
+        set_brightness 0
         dcon sleep
+        ;;
+
+    is_off)
+        read_brightness b
+        test $b = 0
+        return
         ;;
     esac
 }
@@ -649,18 +669,19 @@ reset_idlecounter()
 set_idletimes()
 {
 
-    # validate the configured times, and turn them into deltas.
+    # have the values changed?
+    idletimes="$config_TIME_DIM $config_TIME_SLEEP \
+                $config_TIME_BLANK $config_TIME_SHUTDOWN"
+    test "$idletimes" = "$last_idletimes" && return 1
+    last_idletimes="$idletimes"
+
+    # now validate the configured times, and turn them into deltas.
 
     # defaults:
     t1=${config_TIME_DIM:-120}
     t2=${config_TIME_SLEEP:-0}
     t3=${config_TIME_BLANK:-0}
     t4=${config_TIME_SHUTDOWN:-0}
-
-    # have the values changed?
-    idletimes="$t1 $t2 $t3 $t4"
-    test "$idletimes" = "$last_idletimes" && return 1
-    last_idletimes="$idletimes"
 
     # force all to be numeric:
     test "$t1" -eq "$t1" || t1=120
@@ -790,10 +811,10 @@ event_loop()
     do
         reevaluate
 
+        arg1=; arg2=; more=;
         if ! read -t 10 event arg1 arg2 more
         then
             event=timeout
-            arg1=; arg2=; more=;
         fi
 
         : -------------------------
@@ -801,18 +822,26 @@ event_loop()
 
         case $event in
 
-        power)
-            if [ "$powerseqno" != "$timerseqno" ]
-            then # first press
-                splash confirm
-                reset_idlecounter # reprime for "useractivity"
-                sched_timer $config_CONFIRM_SECONDS gotosleep
-                powerseqno=$timerseqno
+        power)      # powerbutton
+            if backlight is_off
+            then
+                gotactivity
                 backlight restore
-            else # second press
-                nextsplash  # advance to next splash screen
-                sleep 1
-                do_shutdown  "power press"
+                reset_idlecounter
+                check_first_activity
+            else
+                if [ "$powerseqno" != "$timerseqno" ]
+                then # first press
+                    splash confirm
+                    reset_idlecounter # reprime for "useractivity"
+                    sched_timer $config_CONFIRM_SECONDS gotosleep
+                    powerseqno=$timerseqno
+                    backlight restore
+                else # second press
+                    nextsplash  # advance to next splash screen
+                    sleep 1
+                    do_shutdown  "power press"
+                fi
             fi
             ;;
 
@@ -870,7 +899,7 @@ event_loop()
                 then
                     backlight off
                 else
-                    catnap rtc screenoff "$screenofftimer" "$shutdowntimer"
+                    catnap until_screenoff "$screenofftimer" "$shutdowntimer"
                     runparts resume &
                 fi
             fi
@@ -882,7 +911,7 @@ event_loop()
                 if [ "$dark_before_sleep" ]
                 then
                     # schedule a wakeup, so we can shut down
-                    catnap rtc shutdown "$shutdowntimer"
+                    catnap until_shutdown "$shutdowntimer"
                     runparts resume &
                 #else
                 #    ; # shouldn't happen
@@ -900,14 +929,42 @@ event_loop()
             reevaluate all
             ;;
 
+        trace-on)
+            tracing on
+            ;;
+        trace-off)
+            tracing off
+            ;;
         esac
+
     done <> $FIFO
 }
 
-# set -x
-# exec 2>$LOGFILE
+tracing()
+{
+    case $1 in
+    on)
+        exec 3>&2
+        exec 2>$LOGFILE
+        set -x
+        : tracing begun
+        tracing=1
+        ;;
+    off)
+        if [ "$tracing" ]
+        then
+            : tracing stopped
+            set +x
+            exec 2>&3
+        fi
+        ;;
+    esac
+}
 
 log starting
+
+# uncomment for startup tracing
+# tracing on
 
 default_config
 if [ ! -r $CONFIGLINK ]

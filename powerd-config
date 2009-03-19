@@ -318,7 +318,14 @@ main()
 {
 
     case $1 in
-    -*) usage ;;
+    -*) # we have no -options
+	usage
+	;;
+    =*) # =foo not really a profile; it's a direct event to the daemon,
+	#  with the '=' removed.
+	echo ${1#=} >/var/run/powerevents
+	exit 0
+	;;
     esac
 
     if [ "$1" ]
