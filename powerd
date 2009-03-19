@@ -822,7 +822,7 @@ event_loop()
 
         case $event in
 
-        power)      # powerbutton
+        power|powerbutton)
             if backlight is_off
             then
                 gotactivity
