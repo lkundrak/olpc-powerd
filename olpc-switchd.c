@@ -60,6 +60,9 @@ char *output_fifo;
 /* sysactive path -- touched once a second for kbd/tpad activity */
 char *sysactive_path;
 
+/* how often to poll AC and battery state */
+int pollinterval;
+
 extern char *optarg;
 extern int optind, opterr, optopt;
 
@@ -97,6 +100,8 @@ usage(void)
         "   '-d' for debugging (repeate for more verbosity).\n"
         "   '-X' don't actually pass on received keystrokes (for debug).\n"
         "\n"
+	"   '-p N' If set, the presence of external power and the condition\n"
+	"        of the battery will be polled every N seconds.\n"
         "   '-A <activity_indicator>'  If set, gives path to file whose\n"
         "        modification time will indicate (approximate) recent\n"
         "        switch/button activity.\n"
@@ -259,7 +264,8 @@ send_event(char *evt, int seconds)
 
 }
 
-void power_event()
+void
+power_button_event()
 {
     struct input_event ev[1];
 
@@ -271,12 +277,13 @@ void power_event()
         ev->type, ev->code, ev->value);
 
     if (ev->type == EV_KEY && ev->code == KEY_POWER && ev->value == 1)
-        send_event("power", ev->time.tv_sec);
+        send_event("powerbutton", ev->time.tv_sec);
 
 
 }
 
-void lid_event()
+void
+lid_event()
 {
     struct input_event ev[1];
 
@@ -296,7 +303,8 @@ void lid_event()
 
 }
 
-void ebook_event()
+void
+ebook_event()
 {
     struct input_event ev[1];
 
@@ -315,11 +323,62 @@ void ebook_event()
     }
 }
 
+void
+poll_power_sources(void)
+{
+    int fd, r;
+    char buf[4];
+    int online, capacity;
+    static int was_online = -1;
+    static int was_capacity = -1;
+
+    fd = open("/sys/class/power_supply/olpc-ac/online", O_RDONLY);
+    if (fd < 0)
+	return;
+
+    r = read(fd, buf, 1);
+    if (r != 1 || (buf[0] != '0' && buf[0] != '1')) {
+	close(fd);
+	return;
+    }
+
+    online = buf[0] - '0';
+
+    if (was_online != online) {
+	send_event(online ? "ac online" : "ac offline", time(0));
+	was_online = online;
+    }
+
+    close(fd);
+
+    fd = open("/sys/class/power_supply/olpc-battery/capacity", O_RDONLY);
+    if (fd < 0)
+	return;
+
+    r = read(fd, buf, 2);
+    if (r < 1 || (buf[0] < '0' || buf[0] > '9')) {
+	close(fd);
+	return;
+    }
+    buf[3] = '\0';
+    capacity = atoi(buf);
+    if (was_capacity != capacity) {
+	char evbuf[32];
+	snprintf(evbuf, 32, "battery %d", capacity);
+	send_event(evbuf, time(0));
+	was_capacity = capacity;
+    }
+    close(fd);
+
+}
 
 void
 data_loop(void)
 {
     fd_set inputs, errors;
+    struct timeval tv;
+    struct timeval *tvp;
+    int r;
 
 
     while (1) {
@@ -335,29 +394,43 @@ data_loop(void)
         FD_SET(lid_fd, &errors);
         FD_SET(ebk_fd, &errors);
 
-        if (select(maxfd+1, &inputs, NULL, &errors, 0) <= 0)
+        if (pollinterval) {
+            tv.tv_sec = pollinterval;
+            tv.tv_usec = 0;
+            tvp = &tv;
+        } else {
+            tvp = 0;
+        }
+
+        r = select(maxfd+1, &inputs, NULL, &errors, tvp);
+        if (r < 0)
             die("select failed");
 
-        if (FD_ISSET(pwr_fd, &errors))
-            die("select reports error on power button");
+	poll_power_sources();
 
-        if (FD_ISSET(lid_fd, &errors))
-            die("select reports error on lid switch");
+	if (r > 0) {
 
-        if (FD_ISSET(ebk_fd, &errors))
-            die("select reports error on ebook switch");
+	    if (FD_ISSET(pwr_fd, &errors))
+		die("select reports error on power button");
 
-        if (FD_ISSET(pwr_fd, &inputs))
-            power_event();
-        
-        if (FD_ISSET(lid_fd, &inputs))
-            lid_event();
-        
-        if (FD_ISSET(ebk_fd, &inputs))
-            ebook_event();
+	    if (FD_ISSET(lid_fd, &errors))
+		die("select reports error on lid switch");
 
-        if (sysactive_path)
-            indicate_activity();
+	    if (FD_ISSET(ebk_fd, &errors))
+		die("select reports error on ebook switch");
+
+	    if (FD_ISSET(pwr_fd, &inputs))
+		power_button_event();
+	    
+	    if (FD_ISSET(lid_fd, &inputs))
+		lid_event();
+	    
+	    if (FD_ISSET(ebk_fd, &inputs))
+		ebook_event();
+
+	    if (sysactive_path)
+		indicate_activity();
+	}
 
     }
 
@@ -381,15 +454,14 @@ int
 main(int argc, char *argv[])
 {
     int foreground = 0;
-    int sched_realtime = 0;
-    char *cp;
+    char *cp, *eargp;
     int c;
 
     me = argv[0];
     cp = strrchr(argv[0], '/');
     if (cp) me = cp + 1;
 
-    while ((c = getopt(argc, argv, "flrdXF:A:")) != -1) {
+    while ((c = getopt(argc, argv, "fldXp:F:A:")) != -1) {
         switch (c) {
 
         /* daemon options */
@@ -399,14 +471,17 @@ main(int argc, char *argv[])
         case 'l':
             logtosyslog = 1;
             break;
-        case 's':
-            sched_realtime = 1;
-            break;
         case 'd':
             debug++;   /* if > 1, syslog will not be used */
             break;
         case 'X':
             noxmit = 1;
+            break;
+
+	case 'p':
+            pollinterval = strtol(optarg, &eargp, 10);
+            if (*eargp != '\0' || pollinterval <= 0)
+                usage();
             break;
 
         case 'F':
