@@ -104,8 +104,9 @@
 # -- conditions:
 #       AC input (boolean)
 #       battery level (numeric)
-# it's unfortunate that these have no corresponding events, since
-# otherwise polling might not be necessary.
+# it's unfortunate that these have no corresponding events.  because
+# they don't, olpc-switchd also monitors these two nodes (under /sys)
+# and synthesizes events to represent their transitions.
 #
 #
 # -- wakeups:
@@ -282,18 +283,6 @@ do_shutdown()
     /sbin/shutdown -h now &
     leavesplash # kill the splasher (leaving splash visible)
     sleep 9999999
-}
-
-check_battery()
-{
-    read capacity < $CAPACITY
-    case $capacity in
-    [54321])   # 5% or less
-        splash critical
-        sleep 1
-        do_shutdown "low battery"
-        ;;
-    esac
 }
 
 cpu_busy()
@@ -644,10 +633,9 @@ choose_config()
     return 0
 }
 
-check_acstate()
+evaluate_ac_state()
 {
-    read on_ac < $AC_ONLINE
-    if [ "$on_ac" = 1 ]
+    if [ "$ac_online" ]
     then
         savepower=;
         yes_or_true ${config_SOLAR} && savepower=true;
@@ -657,7 +645,33 @@ check_acstate()
         yes_or_true ${config_ALWAYSON} && savepower=;
     fi
     # return success if on external power
-    test $on_ac = 1
+    test "$ac_online"
+}
+
+check_acstate()
+{
+    read on_ac < $AC_ONLINE
+    ac_online=;
+    test "$on_ac" = 1 && ac_online=true
+
+    evaluate_ac_state
+}
+
+evaluate_battery_state()
+{
+    case $battery_capacity in
+    [54321])   # 5% or less
+        splash critical
+        sleep 1
+        do_shutdown "low battery"
+        ;;
+    esac
+}
+
+check_battery()
+{
+    read battery_capacity < $CAPACITY
+    evaluate_battery_state
 }
 
 reset_idlecounter()
@@ -728,7 +742,6 @@ set_idletimes()
 
 reevaluate()
 {
-    check_acstate || check_battery
     if [ "${1:-}" = all -o \
          "${o_savepower:-}" != "$savepower" -o \
          "${o_ebook:-}" != "$am_ebook" ]
@@ -812,10 +825,7 @@ event_loop()
         reevaluate
 
         arg1=; arg2=; more=;
-        if ! read -t 10 event arg1 arg2 more
-        then
-            event=timeout
-        fi
+        read event arg1 arg2 more
 
         : -------------------------
         : got "<$event>", arg1: ${arg1:-n/a} arg2: ${arg2:-n/a}
@@ -868,14 +878,19 @@ event_loop()
 
         ebookclose)  # i.e., fully flat in ebook mode
             am_ebook=true
-            yes_or_true $config_USE_EBOOK_PROFILE && choose_config ebook
+            if yes_or_true $config_USE_EBOOK_PROFILE
+            then
+                choose_config ebook
+            fi
             read_config
+            reevaluate
             ;;
 
         ebookopen)
             am_ebook=;
             choose_config previous
             read_config
+            reevaluate
             ;;
 
         useractive|fake_useractive)
@@ -919,13 +934,31 @@ event_loop()
             fi
             ;;
 
-        timeout)
+        ac)
+            case $arg1 in
+            online)  ac_online=true ;;
+            *)       ac_online=; ;;
+            esac
+            evaluate_ac_state
+            reevaluate
+            ;;
+
+        battery)
+            if [ ! "$ac_online" ]  # don't care if we're plugged in
+            then
+                battery_capacity=$arg1
+                evaluate_battery_state
+            fi
+            ;;
+
+        first_activity_timeout)
             check_first_activity
             ;;
 
         reconfig)
             choose_config ${arg1:-}
             read_config
+            check_acstate || check_battery
             reevaluate all
             ;;
 
@@ -973,7 +1006,11 @@ then
 else
     log configuring from \"$(readlink $CONFIGLINK)\"
 fi
+
 read_config
+check_acstate || check_battery
+reevaluate all
+
 
 am_ebook=;
 o_ebook=xxx;

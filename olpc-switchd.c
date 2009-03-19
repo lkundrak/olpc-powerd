@@ -1,9 +1,11 @@
 /*
  *
- * olpc-switchd.c -- low-level support for XO switches (power, lid, ebook)
+ * olpc-switchd.c -- monitors the XO laptops hardware switches
+ * (power, lid, ebook) and generates a common set of events
+ * when they change.  optionally polls the state of AC connection
+ * and battery level, and generates events for those as well.
  *
- * Copyright (C) 2009, Paul G Fox, inspired in places
- *  by code from mouseemu, by Colin Leroy and others.
+ * Copyright (C) 2009, Paul G Fox
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
