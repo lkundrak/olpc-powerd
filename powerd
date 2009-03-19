@@ -757,14 +757,19 @@ selfinject()
     echo $* >$FIFO
 }
 
-sched_timer()
+sched_powertimer()
 {
     # we can't cancel timers, so give them sequence numbers
     : $((timerseqno += 1))
-    (sleep $1; shift 1; selfinject timerdone $timerseqno $*) &
+    (sleep $1; shift 1; selfinject powertimerdone $timerseqno $*) &
 }
 
-invalidate_timer()
+sched_unfreezetimer()
+{
+    (sleep $1; selfinject unfreezetimerdone ) &
+}
+
+invalidate_powertimer()
 {
     # bump the seq number so we won't match a scheduled timer
     # when it arrives.
@@ -783,25 +788,8 @@ dcon()
 
 gotactivity()
 {
-    invalidate_timer  # invalidate timerdone messages
+    invalidate_powertimer  # invalidate powertimerdone messages
     unsplash
-}
-
-check_first_activity()
-{
-    # this is a bit of a hack.  on the XO, the bootanim
-    # script contrives to leave the dcon frozen at the end
-    # of the init sequence.  it remains frozen until sugar
-    # first becomes idle, at which point sugar sends a dbus
-    # message to ohmd, causing ohmd to unfreeze the dcon.
-    # since we don't do dbus, we unfreeze the dcon after
-    # a) 10 seconds have passed since we started, or b)
-    # user activity is detected.
-    if [ "$initial_freeze" ]
-    then
-        dcon thaw
-        initial_freeze=;
-    fi
 }
 
 event_loop()
@@ -822,6 +810,7 @@ event_loop()
 
     while :
     do
+
         reevaluate
 
         arg1=; arg2=; more=;
@@ -832,19 +821,18 @@ event_loop()
 
         case $event in
 
-        power|powerbutton)
+        powerbutton)
             if backlight is_off
             then
                 gotactivity
                 backlight restore
                 reset_idlecounter
-                check_first_activity
             else
                 if [ "$powerseqno" != "$timerseqno" ]
                 then # first press
                     splash confirm
                     reset_idlecounter # reprime for "useractivity"
-                    sched_timer $config_CONFIRM_SECONDS gotosleep
+                    sched_powertimer $config_CONFIRM_SECONDS gotosleep
                     powerseqno=$timerseqno
                     backlight restore
                 else # second press
@@ -855,7 +843,7 @@ event_loop()
             fi
             ;;
 
-        timerdone)
+        powertimerdone)
             # are we still waiting for this timer?
             if [ "$timerseqno" = "$arg1" ]
             then
@@ -897,7 +885,6 @@ event_loop()
             gotactivity
             backlight restore
             test "$event" = fake_useractive && reset_idlecounter
-            check_first_activity
             ;;
 
         useridle1)
@@ -951,16 +938,23 @@ event_loop()
             fi
             ;;
 
-        first_activity_timeout)
-            check_first_activity
-            ;;
-
         reconfig)
             choose_config ${arg1:-}
             read_config
             check_acstate || check_battery
             reevaluate all
             ;;
+
+	unfreezetimerdone)
+	    # this is a bit of a hack.  on the XO, the bootanim
+	    # script contrives to leave the dcon frozen at the end
+	    # of the init sequence.  it remains frozen until sugar
+	    # first becomes idle, at which point sugar sends a dbus
+	    # message to ohmd, causing ohmd to unfreeze the dcon.
+	    # since we don't do dbus, we unfreeze the dcon after 10
+	    # seconds.
+            dcon thaw
+	    ;;
 
         trace-on)
             tracing on
@@ -994,10 +988,22 @@ tracing()
     esac
 }
 
-log starting
-
-# uncomment for startup tracing
+# uncomment for full tracing.
+# (use powerd-control =tracing-on to enable at runtime.)
 # tracing on
+
+am_ebook=;
+o_ebook=xxx;
+o_savepower=xxx;
+dimmed=;
+savebright=;
+last_idletimes=;
+timerseqno=1;
+powerseqno=0;
+
+sched_unfreezetimer 10
+
+log starting
 
 default_config
 if [ ! -r $CONFIGLINK ]
@@ -1011,17 +1017,6 @@ read_config
 check_acstate || check_battery
 reevaluate all
 
-
-am_ebook=;
-o_ebook=xxx;
-o_savepower=xxx;
-dimmed=;
-savebright=;
-last_idletimes=;
-timerseqno=1;
-powerseqno=0;
-
-initial_freeze=true
 
 set_wakeupevents all
 
