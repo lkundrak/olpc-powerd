@@ -1,0 +1,44 @@
+
+    - scheduled shutdowns should be avoided if they were
+	scheduled while on battery and the unit has been plugged
+	in while sleeping.  this should be done by enabling AC
+	wakeup events during that sleep, and changing what's
+	scheduled to happen based on those events.  (imagine the
+	laptop being plugged in, and then unplugged.  if we only
+	check state when the shutdown wakeup happens, and we
+	happen to be plugged in when it does, we'll perhaps sleep
+	forever.  need to do something sensible.) (i'm reluctant
+	to enable the 1% battery SOC wakeup, because that seems
+	like a lot of wakeups, but maybe.  (probably only enable when
+	discharging, in order to allow for critical level shutdown.)
+	(it's still about 100 wakeups -- to bad there's no "wake
+	me at this batter threshold" wakeup.)
+
+    - add monitoring of cpu and/or network load to prevent sleeps
+	when "busy" with other than user input
+
+    - is there a dbus "i'm busy" indicator we could/should be
+	looking at as well?
+
+    - how should mesh and AP connections be treated wrt keeping the
+	wireless alive?  if we sleep with an AP connection, will we
+	eventually lose association anyway?
+
+    - USB keyboards and mice:  need a way to get user activity/idle
+	from them.  unfortunately, the "right" way to do this would
+	mean adding support for USB devices to olpc-kbdshim, which
+	would complicate it quite a bit (needing to monitor plug/unplug
+	etc).  i'd rather keep that daemon very simple.  perhaps
+	another daemon that just does USB?  perhaps there's a way
+	to use dbus to optionally get activity reports when USB
+	devices are in use?
+
+    - powerd-configure has no means of creating a new profile -- just
+	editing existing ones.  (all that's needed is an existing file --
+	current contents is optional.)
+
+    - cahalan asked whether the geode's video stream is ever turned off.
+	can it be?
+
+    - likewise for the lcd panel.  can it be turned off?
+
