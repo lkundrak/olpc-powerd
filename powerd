@@ -362,13 +362,10 @@ slumber()
     set_wakeupevents none
     read_wlan_power wlp
     yes_or_true "$config_MESH_or_WAKE_ON_WLAN" || set_wlan_power 0
-    dcon sleep
     echo mem >/sys/power/state
     selfinject fake_useractive
     set_wakeupevents all
-    dcon wake
     set_wlan_power $wlp
-    unsplash
     reset_idlecounter
 }
 
