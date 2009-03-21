@@ -22,6 +22,11 @@
 	output as well, but that's in the kernel.  currently it never
 	hits "critical".)
 
+	if wakeup happened at 10%, then we could beep (configurable)
+	every 1% thereafter until we hit shutdown.
+
+    - should give a beep warning before critical battery shutdown.
+
     - add monitoring of cpu and/or network load to prevent sleeps
 	when "busy" with other than user input
 
