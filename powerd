@@ -451,7 +451,14 @@ catnap()
                 rtctime=$3
                 ;;
             until_shutdown)
-                do_shutdown "idle timeout"
+                check_acstate || check_battery
+                if [ "$savepower" ]
+                then
+                    do_shutdown "idle timeout"
+                fi
+                # if we didn't shut down, we'll sleep again for
+                # the same time as before, before we check again.
+                log "found external power, sleeping instead of shutdown"
                 ;;
             *) # it's a leftover (spurious?) rtc wakeup.  go back to sleep.
                 ;;
@@ -849,6 +856,7 @@ event_loop()
         lidclose|gotosleep)
             gotactivity
             backlight off
+            runparts suspend
             slumber
             runparts resume &
             ;;
@@ -895,6 +903,7 @@ event_loop()
                 then
                     backlight off
                 else
+                    runparts suspend
                     catnap until_screenoff "$screenofftimer" "$shutdowntimer"
                     runparts resume &
                 fi
@@ -907,6 +916,7 @@ event_loop()
                 if [ "$dark_before_sleep" ]
                 then
                     # schedule a wakeup, so we can shut down
+                    runparts suspend
                     catnap until_shutdown "$shutdowntimer"
                     runparts resume &
                 #else
@@ -939,16 +949,16 @@ event_loop()
             reevaluate all
             ;;
 
-	unfreezetimerdone)
-	    # this is a bit of a hack.  on the XO, the bootanim
-	    # script contrives to leave the dcon frozen at the end
-	    # of the init sequence.  it remains frozen until sugar
-	    # first becomes idle, at which point sugar sends a dbus
-	    # message to ohmd, causing ohmd to unfreeze the dcon.
-	    # since we don't do dbus, we unfreeze the dcon after 10
-	    # seconds.
+        unfreezetimerdone)
+            # this is a bit of a hack.  on the XO, the bootanim
+            # script contrives to leave the dcon frozen at the end
+            # of the init sequence.  it remains frozen until sugar
+            # first becomes idle, at which point sugar sends a dbus
+            # message to ohmd, causing ohmd to unfreeze the dcon.
+            # since we don't do dbus, we unfreeze the dcon after 10
+            # seconds.
             dcon thaw
-	    ;;
+            ;;
 
         trace-on)
             tracing on
