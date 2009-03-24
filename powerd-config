@@ -25,6 +25,9 @@
 # USA.
 #
 
+#exec 2>pc.log
+#set -x
+
 usage()
 {
         (
@@ -202,22 +205,16 @@ edit_profile()
     test "$dim" -eq "$dim" || dim=120
     test "$sleep" -eq "$sleep" || sleep=$(( dim + 60 ))
     test "$blank" -eq "$blank" || blank=$(( dim + 600 ))
-    test "$maxsleep" -eq "$maxsleep" || maxsleep=$(( 3600 ))
 
-    if [ $sleep -gt $blank ]
-    then
-        shut=$(( shut - sleep ))
-    else
-        shut=$(( shut - blank ))
-    fi
+    test "$maxsleep" -eq "$maxsleep" || maxsleep=$(( 3600 ))
 
     if ! dialog \
           --backtitle "$backtitle" --form \
             "Idle timeouts -- either Sleep or Blank may occur first" 0 0 4 \
             "Dim:"         1 1      "$dim"    1  11 9 9 \
       "Sleep:"       2 1      "$sleep"  2  11 9 9 \
-                           "Blank:"       2 25     "$blank"  2  35 9 9 \
-      "How long a sleep lasts before shutdown:"    4 1      "$shut"   4  35 9 9 \
+                           "Blank:"       2 25     "$blank"  2  32 9 9 \
+      "Max sleep until laptop shuts down:"    4 1      "$maxsleep"   4  37 9 9 \
 	2>$TMP
     then
         rm $TMPCONFIG
