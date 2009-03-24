@@ -1,15 +1,4 @@
 
-    - scheduled shutdowns should be avoided if they were
-	scheduled while on battery and the unit has been plugged
-	in while sleeping.  a) enable AC wakeup events during
-	that sleep, and change what's scheduled to happen based
-	on those events.  or b), more simply, check for AC when
-	we awake for shutdown, and if we have AC (rather, if $savepower
-	isn't set), then go back to sleep for the same amount of time.
-	repeat adinfinitum.  this has the drawback that if you only
-	plug in briefly, and happen to hit the wakeup event, then
-	you won't shut down the way you otherwise would have.  but
-	it's probably good enough.
 
     - if the battery goes low while we're sleeping, we won't shut down --
 	we'll just crash.  i'm reluctant to enable the 1% battery
@@ -20,7 +9,12 @@
 	instance -- we could use that to waken and shut down.  (we
 	should fix the /sys/class/power_supply/olpc-battery/capacity_level
 	output as well, but that's in the kernel.  currently it never
-	hits "critical".)
+	hits "critical".)  or, more simply:  create a new form of
+	the "battery_soc" wakeup event that only wakes up on SOC changes
+	below 10%.
+
+	(the EC generates a critical battery SCI.  the kernel just has
+	to watch for it.)
 
 	if wakeup happened at 10%, then we could beep (configurable)
 	every 1% thereafter until we hit shutdown.
@@ -44,7 +38,8 @@
 	etc).  i'd rather keep that daemon very simple.  perhaps
 	another daemon that just does USB?  perhaps there's a way
 	to use dbus to optionally get activity reports when USB
-	devices are in use?
+	devices are in use?  ohmd uses X11's xsync extension.  very
+	messy.
 
     - powerd-configure has no means of creating a new profile -- just
 	editing existing ones.  (all that's needed is an existing file --
@@ -55,3 +50,10 @@
 
     - likewise for the lcd panel.  can it be turned off?
 
+    - if we find we're configured for ebook mode on startup, we should
+	assume that's old data, and reset to default.  i think.
+
+    - convert config to use "max sleep time" variable rather than
+	"time to shutdown".
+
+    - convert powerd-config to present minutes, rather than seconds
