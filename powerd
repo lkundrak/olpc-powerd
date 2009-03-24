@@ -203,12 +203,17 @@ BATTSHUTSPLASH=$PROJECTDIR/shuttingdown.pgm
 FIFO=/var/run/powerevents
 
 # note re: battery capacity:
-# i'd use /sys/.../capacity_level here, but we never hit "critical" --
-# we only get to "low", which then lasts for another half hour.  using
-# /sys/.../capacity (which gives a percentage), and cutting off at 5%
-# means we're shutting down with (on my machine and battery under 2
-# minutes of runtime left.  close enough for jazz...
+# i'd use /sys/.../capacity_level here, but we won't get
+# "critical" -- the EC and kernel can only currently indicate
+# "low", "normal", or "full", and "low" lasts for another half
+# hour -- way too early for shutdown.  using /sys/.../capacity
+# (which gives a percentage), and cutting off at 5% means we're
+# shutting down with (on my machine and battery under 2 minutes
+# of runtime left.  the right answer is to use battery voltage --
+# however, we can't get woken for that.  so we fudge, and use
+# a combination.
 CAPACITY=/sys/class/power_supply/olpc-battery/capacity  # percentage
+MICROVOLTS=/sys/class/power_supply/olpc-battery/voltage_avg  # microvolts
 
 AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1/0
 BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness  # 0-15
@@ -229,6 +234,7 @@ set -u
 log()
 {
     logger -t powerd -p daemon.info -- "$@"
+    test "$tracing" && echo "$(date +'%F %T') $@" >>$LOGFILE
 }
 
 yes_or_true()
@@ -257,7 +263,7 @@ splash()
 
 nextsplash()
 {
-    # kill -USR1 will cause pnmto565fb to display next image
+    # kill -USR1 will cause pnmto565fb to display next image (stays alive)
     test "${splashpid:-}" && kill -USR1 $splashpid
 }
 
@@ -278,8 +284,9 @@ leavesplash()
 do_shutdown()
 {
     log shutting down due to $*
-    /sbin/shutdown -h now &
     leavesplash # kill the splasher (leaving splash visible)
+    usleep 50000
+    /sbin/shutdown -h now &
     sleep 9999999
 }
 
@@ -357,33 +364,16 @@ runparts()
 
 }
 
-slumber()
-{
-    set_wakeupevents none
-    read_wlan_power wlp
-    yes_or_true "$config_MESH_or_WAKE_ON_WLAN" || set_wlan_power 0
-    echo mem >/sys/power/state
-    selfinject fake_useractive
-    set_wakeupevents all
-    set_wlan_power $wlp
-    reset_idlecounter
-}
-
 set_wakeupevents()
 {
-    case $1 in
     # setting "all" to 1/0 sets/clears everything else at once,
     # i.e.,  ac_power battery_error battery_soc battery_state 
     #       ebook_mode_change ps2event wlan"
-    all)
-        echo 1 >$WAKEUP_EVENTS/all
-        echo 0 >$WAKEUP_EVENTS/battery_soc
-        echo 0 >$WAKEUP_EVENTS/battery_state
-        echo 0 >$WAKEUP_EVENTS/ac_power
-        ;;
-    none)
-        echo 0 >$WAKEUP_EVENTS/all
-        ;;
+    case $1 in
+    all)        echo 1 >$WAKEUP_EVENTS/all ;;
+    none)       echo 0 >$WAKEUP_EVENTS/all ;;
+    ac)         echo 1 >$WAKEUP_EVENTS/ac_power ;;
+    battery)    echo 1 >$WAKEUP_EVENTS/battery_soc ;;
     esac
 }
 
@@ -394,8 +384,9 @@ read_wakeupsource()
     eval $1=\"$x\"
 }
 
-catnap()
+snooze()
 {
+    runparts suspend
     read_wlan_power wlp
     yes_or_true "$config_MESH_or_WAKE_ON_WLAN" || set_wlan_power 0
 
@@ -403,21 +394,39 @@ catnap()
     # we've been sleeping for a while, or b) shutdown after we've been
     # sleeping for a while.  if we do a), we'll do b) next.
     rtctype=$1   # "until_screenoff", or "until_shutdown"
-    rtctime=$2
+    orig_rtctime=$2
+    rtctime=$orig_rtctime
+    shutdowntime=${3:-}
 
     while :
     do
+        sleep_started=$(date +%s);
         if [ $rtctype = until_shutdown ]
         then
-            # if we're just waiting for a shutdown, then this
-            # is a sound sleep -- so act like lid close or power button.
+            # if we're waiting for a shutdown, then this is a
+            # pretty sound sleep.
             set_wakeupevents none
+            set_wakeupevents ac
+            if [ ! "$ac_online" ]
+            then
+                if [ "$battery_capacity" -le 20 ]
+                then
+                    set_wakeupevents battery
+                fi
+            fi
+            test "$tracing" && sleep 1
             rtcwake -m mem -a -s $rtctime
             set_wakeupevents all
         else
             # otherwise we want most anything to wake us.
+            test "$tracing" && sleep 1
             rtcwake -m mem -a -s $rtctime
         fi
+
+        # prepare for the default case of simply re-sleeping for
+        # the remaining time.  may be overridden.
+        rtctime=$(( rtctime - ( $(date +%s) - sleep_started ) ))
+        rtctime=$(( (rtctime < 0) ? 0 : rtctime ))
 
         read_wakeupsource wakeupsource
         : wakeupsource is $wakeupsource
@@ -443,27 +452,55 @@ catnap()
                 break
             fi
             ;;
-        "rtc alarm")
-            case $rtctype in
-            until_screenoff)
+
+        "rtc alarm"|"ac power"|battery*)
+
+            : rtctype-wakeupsource is $rtctype-$wakeupsource
+
+            power_check
+
+            case $rtctype-$wakeupsource in
+            until_screenoff-rtc*)
                 backlight off
                 rtctype=until_shutdown
-                rtctime=$3
+                orig_rtctime=$shutdowntime
+                rtctime=$shutdowntime
                 ;;
-            until_shutdown)
-                check_acstate || check_battery
-                if [ "$savepower" ]
+
+            until_shutdown-rtc*)
+                if [ "$savepower" -a ! "$no_auto_shutdown_on_ac" ]
                 then
                     do_shutdown "idle timeout"
                 fi
                 # if we didn't shut down, we'll sleep again for
                 # the same time as before, before we check again.
+                rtctime=$orig_rtctime
                 log "found external power, sleeping instead of shutdown"
                 ;;
+
+            until_shutdown-ac*)
+                # restart the shutdown timer.  the choice of sleep time
+                # is kind of a guess, since we're not tracking how much
+                # charging we're getting while plugged in.  so if we're
+                # plugged in, we sleep forever, otherwise, we sleep (again)
+                # for the original time.
+                if [ "$ac_online" ]
+                then
+                    rtctime=999999999
+                else
+                    rtctime=$orig_rtctime
+                fi
+                ;;
+
+            *-battery*)  # all we do is check level, above.
+                ;;
+
             *) # it's a leftover (spurious?) rtc wakeup.  go back to sleep.
                 ;;
+
             esac
             ;;
+
         *)   # "lid"|"empty sci"|"key press"|"ebook")
             selfinject fake_useractive
             break
@@ -472,6 +509,7 @@ catnap()
     done
     set_wlan_power $wlp
     reset_idlecounter
+    runparts resume &
 }
 
 set_brightness()
@@ -658,21 +696,52 @@ check_acstate()
     evaluate_ac_state
 }
 
-evaluate_battery_state()
+o_maybe_battery_shutdown()  # old version, uses capacity only
 {
-    case $battery_capacity in
-    [54321])   # 5% or less
-        splash critical
-        sleep 1
-        do_shutdown "low battery"
-        ;;
-    esac
+
+    if [ ! "$ac_online" ]
+    then
+        case $battery_capacity in
+        [54321])   # 5% or less
+            splash critical
+            sleep 1
+            do_shutdown "low battery"
+            ;;
+        esac
+    fi
 }
 
-check_battery()
+maybe_battery_shutdown()
+{
+
+    test "$ac_online" && return
+
+    case $battery_capacity in
+    [987654321])
+        read uvolts < $MICROVOLTS
+        if [ $uvolts -le 5700000 ]  # EC's idea of critical voltage: 5.7V
+        then
+            splash critical
+            sleep 1
+            do_shutdown "low battery"
+        fi
+        ;;
+    esac
+
+}
+
+read_battery()
 {
     read battery_capacity < $CAPACITY
-    evaluate_battery_state
+}
+
+power_check()
+{
+    if ! check_acstate
+    then
+        read_battery
+        maybe_battery_shutdown
+    fi
 }
 
 reset_idlecounter()
@@ -789,7 +858,7 @@ dcon()
 
 gotactivity()
 {
-    invalidate_powertimer  # invalidate powertimerdone messages
+    invalidate_powertimer
     unsplash
 }
 
@@ -799,10 +868,9 @@ event_loop()
 
     : starting eventloop
 
-    check_acstate
     set_idletimes
 
-    trap "unsplash; exit" 1 2 3 15
+    trap "unsplash; exit" 0 # 1 2 3 15
     unsplash
 
     # recreate to flush, and to make sure it's a fifo
@@ -854,11 +922,10 @@ event_loop()
             ;;
 
         lidclose|gotosleep)
-            gotactivity
+            invalidate_powertimer
             backlight off
-            runparts suspend
-            slumber
-            runparts resume &
+            # schedule a wakeup, so we can shut down
+            snooze until_shutdown "$shutdowntimer"
             ;;
 
         lidopen)
@@ -903,9 +970,7 @@ event_loop()
                 then
                     backlight off
                 else
-                    runparts suspend
-                    catnap until_screenoff "$screenofftimer" "$shutdowntimer"
-                    runparts resume &
+                    snooze until_screenoff "$screenofftimer" "$shutdowntimer"
                 fi
             fi
             ;;
@@ -916,9 +981,7 @@ event_loop()
                 if [ "$dark_before_sleep" ]
                 then
                     # schedule a wakeup, so we can shut down
-                    runparts suspend
-                    catnap until_shutdown "$shutdowntimer"
-                    runparts resume &
+                    snooze until_shutdown "$shutdowntimer"
                 #else
                 #    ; # shouldn't happen
                 fi
@@ -935,17 +998,16 @@ event_loop()
             ;;
 
         battery)
-            if [ ! "$ac_online" ]  # don't care if we're plugged in
-            then
-                battery_capacity=$arg1
-                evaluate_battery_state
-            fi
+            battery_capacity=$arg1
+            maybe_battery_shutdown
             ;;
 
         reconfig)
             choose_config ${arg1:-}
             read_config
-            check_acstate || check_battery
+
+            power_check
+
             reevaluate all
             ;;
 
@@ -976,7 +1038,7 @@ tracing()
     case $1 in
     on)
         exec 3>&2
-        exec 2>$LOGFILE
+        exec 2>>$LOGFILE
         set -x
         : tracing begun
         tracing=1
@@ -987,10 +1049,13 @@ tracing()
             : tracing stopped
             set +x
             exec 2>&3
+            tracing=;
         fi
         ;;
     esac
 }
+
+tracing=;
 
 # uncomment for full tracing.
 # (use powerd-control =tracing-on to enable at runtime.)
@@ -1005,6 +1070,9 @@ last_idletimes=;
 timerseqno=1;
 powerseqno=0;
 
+# unimplemented
+no_auto_shutdown_on_ac=;
+
 sched_unfreezetimer 10
 
 log starting
@@ -1018,7 +1086,9 @@ else
 fi
 
 read_config
-check_acstate || check_battery
+
+power_check
+
 reevaluate all
 
 
