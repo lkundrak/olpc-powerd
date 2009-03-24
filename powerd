@@ -36,9 +36,10 @@
 # automatic profile switch to the "ebook" profile (if configured
 # to do so with config_USE_EBOOK_PROFILE.)
 #
-# all four idle times are expressed in seconds: 
-# "config_TIME_DIM", "config_TIME_SLEEP", "config_TIME_BLANK",
-# "config_TIME_SHUTDOWN".  dim must happen first.  sleep and
+# all times are expressed in seconds (though a UI could do whatever
+# it wants, of course):
+# the idle timers are "config_TIME_DIM", "config_TIME_SLEEP", and
+# "config_TIME_BLANK".  dim must happen first.  sleep and
 # blanking can happen in either order.  if sleep happens first,
 # the screen will stay on while the rest of the system sleeps. 
 # if blanking is scheduled first, the screen will go dark while
@@ -46,6 +47,8 @@
 # when the screen is dark and the laptop is sleeping, it's a
 # "deep" sleep -- keystrokes will not wake it up, just as if the
 # power button had been used.  shutdown, of course, happens last.
+# the maximum time that any sleep will last before the laptop shuts
+# down is given by "config_MAX_SLEEP".
 #
 # "config_IDLEDIM" is how dim will the screen go when the first
 # timer fires.  (range 0-15.)  if set to 15, the screen will never
@@ -596,7 +599,7 @@ default_config()
     config_TIME_DIM=120
     config_TIME_SLEEP=130
     config_TIME_BLANK=240
-    config_TIME_SHUTDOWN=3600
+    config_MAX_SLEEP=3600
     config_IDLEDIM=5
     config_SOLAR=no
     config_ALWAYSON=no
@@ -754,8 +757,7 @@ set_idletimes()
 {
 
     # have the values changed?
-    idletimes="$config_TIME_DIM $config_TIME_SLEEP \
-                $config_TIME_BLANK $config_TIME_SHUTDOWN"
+    idletimes="$config_TIME_DIM $config_TIME_SLEEP $config_TIME_BLANK"
     test "$idletimes" = "$last_idletimes" && return 1
     last_idletimes="$idletimes"
 
@@ -765,13 +767,11 @@ set_idletimes()
     t1=${config_TIME_DIM:-120}
     t2=${config_TIME_SLEEP:-0}
     t3=${config_TIME_BLANK:-0}
-    t4=${config_TIME_SHUTDOWN:-0}
 
     # force all to be numeric:
     test "$t1" -eq "$t1" || t1=120
     test "$t2" -eq "$t2" || t2=0
     test "$t3" -eq "$t3" || t3=0
-    test "$t4" -eq "$t4" || t4=0
 
     # adjust the ordering of blank/sleep:
     if [ "$t3" -ge "$t2" ]
@@ -790,20 +790,21 @@ set_idletimes()
     test "$t3" -le "$t2"        && t3=$((t2 + 60))
     test "$t3" -le $((t2 + 5))  && t3=$((t2 + 5))
 
-    test "$t4" -le "$t3"        && t4=$((t3 + 600))
-    test "$t4" -le $((t3 + 5))  && t4=$((t3 + 5))
-    
     # give olpc-kbdshim the timeouts
     echo "I $t1 $t2 $t3" >$USER_ACTIVITY_CMDS
+
+    t4=${config_MAX_SLEEP:-0}
+    test "$t4" -eq "$t4" || t4=0
+    test "$t4" -le "10" || t4=10
 
     if [ "$dark_before_sleep" ]
     then
         screenofftimer=;
-        shutdowntimer=$((t4 - t3))
+        shutdowntimer=$t4
         log dim in $t1 seconds, blank in $t2, sleep in $t3, shutdown in $t4
     else
         screenofftimer=$((t3 - t2))
-        shutdowntimer=$((t4 - t3))
+        shutdowntimer=$t4
         log dim in $t1 seconds, sleep in $t2, blank in $t3, shutdown in $t4
     fi
 

@@ -96,7 +96,7 @@ display_profile()
                    -e 's/^config_TIME_DIM=/  1) Seconds until the screen dims: /' \
                    -e 's/^config_TIME_SLEEP=/  2) Seconds until the laptop sleeps: /' \
                    -e 's/^config_TIME_BLANK=/  3) Seconds until the screen blanks: /' \
-                   -e 's/^config_TIME_SHUTDOWN=/  4) Seconds until the laptop shuts down: /' \
+                   -e 's/^config_MAX_SLEEP=/  4) How long the laptop will ever sleep before shutting down: /' \
                    -e 's/^config_IDLEDIM=/  5) How far to dim the screen when idle: /' \
                    -e 's/^config_SOLAR=/  6) Conserve external power: /' \
                    -e 's/^config_MESH_or_WAKE_ON_WLAN=/  7) Try and keep the wireless active: /' \
@@ -197,12 +197,12 @@ edit_profile()
     dim=$(config TIME_DIM)
     sleep=$(config TIME_SLEEP)
     blank=$(config TIME_BLANK)
-    shut=$(config TIME_SHUTDOWN)
+    maxsleep=$(config MAX_SLEEP)
 
     test "$dim" -eq "$dim" || dim=120
     test "$sleep" -eq "$sleep" || sleep=$(( dim + 60 ))
     test "$blank" -eq "$blank" || blank=$(( dim + 600 ))
-    test "$shut" -eq "$shut" || shut=$(( dim + 3600 ))
+    test "$maxsleep" -eq "$maxsleep" || maxsleep=$(( 3600 ))
 
     if [ $sleep -gt $blank ]
     then
@@ -217,9 +217,8 @@ edit_profile()
             "Dim:"         1 1      "$dim"    1  11 9 9 \
       "Sleep:"       2 1      "$sleep"  2  11 9 9 \
                            "Blank:"       2 25     "$blank"  2  35 9 9 \
-      "Sleeping time before shutdown:"    4 1      "$shut"   4  35 9 9 \
-       
-    2>$TMP
+      "How long a sleep lasts before shutdown:"    4 1      "$shut"   4  35 9 9 \
+	2>$TMP
     then
         rm $TMPCONFIG
         return 1
@@ -229,24 +228,18 @@ edit_profile()
     dim=$1
     sleep=$2
     blank=$3
-    shut=$4
+    maxsleep=$4
+
     test "$dim" -eq "$dim" || dim=120
     test "$sleep" -eq "$sleep" || sleep=$(( dim + 60 ))
     test "$blank" -eq "$blank" || blank=$(( dim + 600 ))
-    test "$shut" -eq "$shut" || shut=$(( dim + 3600 ))
 
-    setvar TIME_DIM $1
-    setvar TIME_SLEEP $2
-    setvar TIME_BLANK $3
+    test "$maxsleep" -eq "$maxsleep" || maxsleep=$(( 3600 ))
 
-    if [ $sleep -gt $blank ]
-    then
-        shut=$(( shut + sleep ))
-    else
-        shut=$(( shut + blank ))
-    fi
-    setvar TIME_SHUTDOWN $shut
-
+    setvar TIME_DIM $dim
+    setvar TIME_SLEEP $sleep
+    setvar TIME_BLANK $blank
+    setvar MAX_SLEEP $maxsleep
 
     for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
     do
