@@ -412,6 +412,7 @@ snooze()
             set_wakeupevents ac
             if [ ! "$ac_online" ]
             then
+                read_battery
                 if [ "$battery_capacity" -le 20 ]
                 then
                     set_wakeupevents battery
