@@ -246,7 +246,7 @@ edit_profile()
 
     if ! dialog \
         --radiolist "Dim level" 0 0 0 \
-           15 "" "$r15" \
+         full "" "$r15" \
            14 "" "$r14" \
            13 "" "$r13" \
            12 "" "$r12" \
@@ -268,7 +268,13 @@ edit_profile()
         return 1
     fi
 
-    setvar IDLEDIM $(cat $TMP)
+    val=$(cat $TMP)
+    case $val in
+    full) val=15 ;;
+    off)  val=0 ;;
+    esac
+
+    setvar IDLEDIM $val
 
     seconds=$config_CONFIRM_SECONDS
     if ! dialog \
