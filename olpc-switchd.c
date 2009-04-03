@@ -40,7 +40,6 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <linux/input.h>
-#include <linux/uinput.h>
 #include <time.h>
 #include <utime.h>
 
@@ -59,7 +58,7 @@ int noxmit;
 /* output event fifo */
 char *output_fifo;
 
-/* sysactive path -- touched once a second for kbd/tpad activity */
+/* sysactive path -- touched at most once every 5 seconds for switch activity */
 char *sysactive_path;
 
 /* how often to poll AC and battery state */
@@ -99,14 +98,14 @@ usage(void)
         " Daemon options:\n"
         "   '-f' to keep program in foreground.\n"
         "   '-l' use syslog, rather than stderr, for messages.\n"
-        "   '-d' for debugging (repeate for more verbosity).\n"
+        "   '-d' for debugging (repeat for more verbosity).\n"
         "   '-X' don't actually pass on received keystrokes (for debug).\n"
         "\n"
-	"   '-p N' If set, the presence of external power and the condition\n"
-	"        of the battery will be polled every N seconds.\n"
-        "   '-A <activity_indicator>'  If set, gives path to file whose\n"
-        "        modification time will indicate (approximate) recent\n"
-        "        switch/button activity.\n"
+        "   '-p N' If set, the presence of external power and the condition\n"
+        "        of the battery will be polled every N seconds.\n"
+        "   '-A <activity_indicator>'  Gives path whose modification time\n"
+        "        will indicate (approximate) recent switch/button activity.\n"
+        "        (Touched at most once every 5 seconds)\n"
         "(olpc-switchd version %d)\n"
         , me, VERSION);
     exit(1);
@@ -135,13 +134,12 @@ dbg(int level, const char *fmt, ...)
     if (debug < level) return;
 
     va_start(ap, fmt);
-    if (logtosyslog && debug <= 1) {
+    if (logtosyslog)
         vsyslog(LOG_NOTICE, fmt, ap);
-    } else {
-        fputc(' ', stderr);
-        vfprintf(stderr, fmt, ap);
-        fputc('\n', stderr);
-    }
+
+    fputc(' ', stderr);
+    vfprintf(stderr, fmt, ap);
+    fputc('\n', stderr);
 }
 
 void
@@ -161,8 +159,6 @@ die(const char *fmt, ...)
     }
     exit(1);
 }
-
-/* Manage the uinput device */
 
 
 int
@@ -204,7 +200,10 @@ setup_input()
     if (pwr_fd == -1) report("didn't find power button");
     else if (lid_fd == -1) report("didn't find lid");
     else if (ebk_fd == -1) report("didn't find ebook");
-    else ret = 0;
+    else {
+        report("found all three switches");
+        ret = 0;
+    }
 
     return ret;
 }
@@ -336,39 +335,39 @@ poll_power_sources(void)
 
     fd = open("/sys/class/power_supply/olpc-ac/online", O_RDONLY);
     if (fd < 0)
-	return;
+        return;
 
     r = read(fd, buf, 1);
     if (r != 1 || (buf[0] != '0' && buf[0] != '1')) {
-	close(fd);
-	return;
+        close(fd);
+        return;
     }
 
     online = buf[0] - '0';
 
     if (was_online != online) {
-	send_event(online ? "ac online" : "ac offline", time(0));
-	was_online = online;
+        send_event(online ? "ac online" : "ac offline", time(0));
+        was_online = online;
     }
 
     close(fd);
 
     fd = open("/sys/class/power_supply/olpc-battery/capacity", O_RDONLY);
     if (fd < 0)
-	return;
+        return;
 
     r = read(fd, buf, 2);
     if (r < 1 || (buf[0] < '0' || buf[0] > '9')) {
-	close(fd);
-	return;
+        close(fd);
+        return;
     }
     buf[3] = '\0';
     capacity = atoi(buf);
     if (was_capacity != capacity) {
-	char evbuf[32];
-	snprintf(evbuf, 32, "battery %d", capacity);
-	send_event(evbuf, time(0));
-	was_capacity = capacity;
+        char evbuf[32];
+        snprintf(evbuf, 32, "battery %d", capacity);
+        send_event(evbuf, time(0));
+        was_capacity = capacity;
     }
     close(fd);
 
@@ -408,31 +407,27 @@ data_loop(void)
         if (r < 0)
             die("select failed");
 
-	poll_power_sources();
+        poll_power_sources();
 
-	if (r > 0) {
+        if (r > 0) {
 
 	    if (FD_ISSET(pwr_fd, &errors))
 		die("select reports error on power button");
-
 	    if (FD_ISSET(lid_fd, &errors))
 		die("select reports error on lid switch");
-
 	    if (FD_ISSET(ebk_fd, &errors))
 		die("select reports error on ebook switch");
 
 	    if (FD_ISSET(pwr_fd, &inputs))
 		power_button_event();
-	    
 	    if (FD_ISSET(lid_fd, &inputs))
 		lid_event();
-	    
 	    if (FD_ISSET(ebk_fd, &inputs))
 		ebook_event();
-
-	    if (sysactive_path)
-		indicate_activity();
-	}
+	
+            if (sysactive_path)
+                indicate_activity();
+        }
 
     }
 
@@ -474,13 +469,13 @@ main(int argc, char *argv[])
             logtosyslog = 1;
             break;
         case 'd':
-            debug++;   /* if > 1, syslog will not be used */
+            debug++;
             break;
         case 'X':
             noxmit = 1;
             break;
 
-	case 'p':
+        case 'p':
             pollinterval = strtol(optarg, &eargp, 10);
             if (*eargp != '\0' || pollinterval <= 0)
                 usage();
@@ -510,16 +505,14 @@ main(int argc, char *argv[])
         usage();
     }
 
-    report("starting %s version %d", me, VERSION);
+    report("starting version %d", VERSION);
+    if (pollinterval)
+        report("will poll power sources every %d seconds", pollinterval);
+    else
+        report("not polling power sources", pollinterval);
 
     if (setup_input() < 0)
-        die("%s: unable to find input devices\n", me);
-
-    
-#if 0
-    if (init_fifo() < 0)
-        die("couldn't open fifo for output events");
-#endif
+        die("%s: unable to find all input devices\n", me);
 
     signal(SIGTERM, sighandler);
     signal(SIGHUP, sighandler);
