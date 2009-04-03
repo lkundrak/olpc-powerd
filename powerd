@@ -593,7 +593,7 @@ backlight()
     esac
 }
 
-default_config()
+set_config_defaults()
 {
     # give all config values defaults, so we'll
     # never find them unset
@@ -1079,7 +1079,7 @@ sched_unfreezetimer 10
 
 log starting
 
-default_config
+set_config_defaults
 if [ ! -r $CONFIGLINK ]
 then
     choose_config default
