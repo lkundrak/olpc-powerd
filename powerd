@@ -220,6 +220,7 @@ MICROVOLTS=/sys/class/power_supply/olpc-battery/voltage_avg  # microvolts
 
 AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1/0
 BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness  # 0-15
+MONO_MODE=/sys/devices/platform/dcon/output
 WLAN_ENABLED=/sys/power/wlan-enabled # 1/0 (see comment at set_wlan_power())
 
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
@@ -519,6 +520,7 @@ snooze()
 set_brightness()
 {
     echo $1 >$BRIGHTNESS
+    echo $(( $1 == 0 )) >$MONO_MODE
 }
 
 read_brightness()
@@ -541,10 +543,11 @@ brightness_ramp()
     while :
     do
         : $((i += incr))
-        set_brightness $i
+        echo $i >$BRIGHTNESS
         test $i = $2 && break
         usleep 25000
     done
+    echo $(( $i == 0 )) >$MONO_MODE
 }
 
 backlight()
@@ -895,6 +898,8 @@ event_loop()
         powerbutton|fake_powerbutton)
             if backlight is_off
             then
+                # if the screen is off, the power button should simply
+                # wake the system up.
                 gotactivity
                 backlight restore
                 reset_idlecounter
@@ -1093,6 +1098,8 @@ power_check
 
 reevaluate all
 
+# let user programs control brightness
+chmod a+w $BRIGHTNESS $MONO_MODE
 
 set_wakeupevents all
 
