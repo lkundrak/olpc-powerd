@@ -411,20 +411,20 @@ data_loop(void)
 
         if (r > 0) {
 
-	    if (FD_ISSET(pwr_fd, &errors))
-		die("select reports error on power button");
-	    if (FD_ISSET(lid_fd, &errors))
-		die("select reports error on lid switch");
-	    if (FD_ISSET(ebk_fd, &errors))
-		die("select reports error on ebook switch");
+            if (FD_ISSET(pwr_fd, &errors))
+                die("select reports error on power button");
+            if (FD_ISSET(lid_fd, &errors))
+                die("select reports error on lid switch");
+            if (FD_ISSET(ebk_fd, &errors))
+                die("select reports error on ebook switch");
 
-	    if (FD_ISSET(pwr_fd, &inputs))
-		power_button_event();
-	    if (FD_ISSET(lid_fd, &inputs))
-		lid_event();
-	    if (FD_ISSET(ebk_fd, &inputs))
-		ebook_event();
-	
+            if (FD_ISSET(pwr_fd, &inputs))
+                power_button_event();
+            if (FD_ISSET(lid_fd, &inputs))
+                lid_event();
+            if (FD_ISSET(ebk_fd, &inputs))
+                ebook_event();
+        
             if (sysactive_path)
                 indicate_activity();
         }
