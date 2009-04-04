@@ -2,7 +2,7 @@
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
 VERSION=2
-RELEASE=3
+RELEASE=4
 PACKAGE=olpc-powerd
 MOCK=./mock-wrapper -r olpc-3-i386 --resultdir=$(MOCKDIR)
 MOCKDIR=./rpms
