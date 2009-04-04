@@ -2,7 +2,7 @@
 description     "XO experimental power daemon "
 author          "Paul Fox"
 
-start on starting olpc-switchd
+start on stopping rc5
 
 console output
 

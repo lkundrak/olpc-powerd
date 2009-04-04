@@ -37,6 +37,7 @@ mkdir -p $RPM_BUILD_ROOT/etc/powerd/conf
 %{__install} -m 755 powerd $RPM_BUILD_ROOT/usr/sbin/powerd
 %{__install} -m 755 pnmto565fb $RPM_BUILD_ROOT/usr/bin/pnmto565fb
 %{__install} -m 755 powerd-config $RPM_BUILD_ROOT/usr/bin/powerd-config
+%{__install} -m 755 olpc-brightness $RPM_BUILD_ROOT/usr/bin/olpc-brightness
 %{__install} -m 644 olpc-switchd.upstart $RPM_BUILD_ROOT/etc/event.d/olpc-switchd
 %{__install} -m 644 powerd.upstart $RPM_BUILD_ROOT/etc/event.d/powerd
 %{__install} -m 644 pleaseconfirm.pgm $RPM_BUILD_ROOT/etc/powerd/pleaseconfirm.pgm
@@ -56,6 +57,7 @@ rm -rf $RPM_BUILD_ROOT
 /usr/sbin/powerd
 /usr/bin/pnmto565fb
 /usr/bin/powerd-config
+/usr/bin/olpc-brightness
 /etc/event.d/olpc-switchd
 /etc/event.d/powerd
 /etc/powerd/pleaseconfirm.pgm
@@ -76,6 +78,41 @@ then
     sed -i -e 's/#\+ *-A/ -A/' etc/event.d/olpc-kbdshim
     initctl stop olpc-kbdshim
     initctl start olpc-kbdshim
+fi
+
+KEYHANDLER=/usr/share/sugar/shell/view/keyhandler.py
+if test -e $KEYHANDLER && ! grep -q 'patch v1 by olpc-powerd' $KEYHANDLER
+then
+    sed -i \
+        -e '/    def handle_brightness_max(self):$/a\
+\
+        # patch v1 by olpc-powerd\
+        if os.path.exists("/usr/bin/olpc-brightness"):\
+           os.system("/usr/bin/olpc-brightness high")\
+           return\
+'\
+        -e '/    def handle_brightness_min(self):$/a\
+\
+        # patch v1 by olpc-powerd\
+        if os.path.exists("/usr/bin/olpc-brightness"):\
+           os.system("/usr/bin/olpc-brightness low")\
+           return\
+'\
+        -e '/    def handle_brightness_up(self):$/a\
+\
+        # patch v1 by olpc-powerd\
+        if os.path.exists("/usr/bin/olpc-brightness"):\
+           os.system("/usr/bin/olpc-brightness up")\
+           return\
+'\
+        -e '/    def handle_brightness_down(self):$/a\
+\
+        # patch v1 by olpc-powerd\
+        if os.path.exists("/usr/bin/olpc-brightness"):\
+           os.system("/usr/bin/olpc-brightness down")\
+           return\
+\
+' $KEYHANDLER
 fi
 
 %preun

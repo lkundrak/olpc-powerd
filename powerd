@@ -36,9 +36,10 @@
 # automatic profile switch to the "ebook" profile (if configured
 # to do so with config_USE_EBOOK_PROFILE.)
 #
-# all four idle times are expressed in seconds: 
-# "config_TIME_DIM", "config_TIME_SLEEP", "config_TIME_BLANK",
-# "config_TIME_SHUTDOWN".  dim must happen first.  sleep and
+# all times are expressed in seconds (though a UI could do whatever
+# it wants, of course):
+# the idle timers are "config_TIME_DIM", "config_TIME_SLEEP", and
+# "config_TIME_BLANK".  dim must happen first.  sleep and
 # blanking can happen in either order.  if sleep happens first,
 # the screen will stay on while the rest of the system sleeps. 
 # if blanking is scheduled first, the screen will go dark while
@@ -46,6 +47,8 @@
 # when the screen is dark and the laptop is sleeping, it's a
 # "deep" sleep -- keystrokes will not wake it up, just as if the
 # power button had been used.  shutdown, of course, happens last.
+# the maximum time that any sleep will last before the laptop shuts
+# down is given by "config_MAX_SLEEP".
 #
 # "config_IDLEDIM" is how dim will the screen go when the first
 # timer fires.  (range 0-15.)  if set to 15, the screen will never
@@ -203,15 +206,21 @@ BATTSHUTSPLASH=$PROJECTDIR/shuttingdown.pgm
 FIFO=/var/run/powerevents
 
 # note re: battery capacity:
-# i'd use /sys/.../capacity_level here, but we never hit "critical" --
-# we only get to "low", which then lasts for another half hour.  using
-# /sys/.../capacity (which gives a percentage), and cutting off at 5%
-# means we're shutting down with (on my machine and battery under 2
-# minutes of runtime left.  close enough for jazz...
+# i'd use /sys/.../capacity_level here, but we won't get
+# "critical" -- the EC and kernel can only currently indicate
+# "low", "normal", or "full", and "low" lasts for another half
+# hour -- way too early for shutdown.  using /sys/.../capacity
+# (which gives a percentage), and cutting off at 5% means we're
+# shutting down with (on my machine and battery under 2 minutes
+# of runtime left.  the right answer is to use battery voltage --
+# however, we can't get woken for that.  so we fudge, and use
+# a combination.
 CAPACITY=/sys/class/power_supply/olpc-battery/capacity  # percentage
+MICROVOLTS=/sys/class/power_supply/olpc-battery/voltage_avg  # microvolts
 
 AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1/0
 BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness  # 0-15
+MONO_MODE=/sys/devices/platform/dcon/output
 WLAN_ENABLED=/sys/power/wlan-enabled # 1/0 (see comment at set_wlan_power())
 
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
@@ -229,6 +238,7 @@ set -u
 log()
 {
     logger -t powerd -p daemon.info -- "$@"
+    test "$tracing" && echo "$(date +'%F %T') $@" >>$LOGFILE
 }
 
 yes_or_true()
@@ -257,7 +267,7 @@ splash()
 
 nextsplash()
 {
-    # kill -USR1 will cause pnmto565fb to display next image
+    # kill -USR1 will cause pnmto565fb to display next image (stays alive)
     test "${splashpid:-}" && kill -USR1 $splashpid
 }
 
@@ -278,8 +288,9 @@ leavesplash()
 do_shutdown()
 {
     log shutting down due to $*
-    /sbin/shutdown -h now &
     leavesplash # kill the splasher (leaving splash visible)
+    usleep 50000
+    /sbin/shutdown -h now &
     sleep 9999999
 }
 
@@ -357,36 +368,16 @@ runparts()
 
 }
 
-slumber()
-{
-    set_wakeupevents none
-    read_wlan_power wlp
-    yes_or_true "$config_MESH_or_WAKE_ON_WLAN" || set_wlan_power 0
-    dcon sleep
-    echo mem >/sys/power/state
-    selfinject fake_useractive
-    set_wakeupevents all
-    dcon wake
-    set_wlan_power $wlp
-    unsplash
-    reset_idlecounter
-}
-
 set_wakeupevents()
 {
-    case $1 in
     # setting "all" to 1/0 sets/clears everything else at once,
     # i.e.,  ac_power battery_error battery_soc battery_state 
     #       ebook_mode_change ps2event wlan"
-    all)
-        echo 1 >$WAKEUP_EVENTS/all
-        echo 0 >$WAKEUP_EVENTS/battery_soc
-        echo 0 >$WAKEUP_EVENTS/battery_state
-        echo 0 >$WAKEUP_EVENTS/ac_power
-        ;;
-    none)
-        echo 0 >$WAKEUP_EVENTS/all
-        ;;
+    case $1 in
+    all)        echo 1 >$WAKEUP_EVENTS/all ;;
+    none)       echo 0 >$WAKEUP_EVENTS/all ;;
+    ac)         echo 1 >$WAKEUP_EVENTS/ac_power ;;
+    battery)    echo 1 >$WAKEUP_EVENTS/battery_soc ;;
     esac
 }
 
@@ -397,8 +388,9 @@ read_wakeupsource()
     eval $1=\"$x\"
 }
 
-catnap()
+snooze()
 {
+    runparts suspend
     read_wlan_power wlp
     yes_or_true "$config_MESH_or_WAKE_ON_WLAN" || set_wlan_power 0
 
@@ -406,21 +398,40 @@ catnap()
     # we've been sleeping for a while, or b) shutdown after we've been
     # sleeping for a while.  if we do a), we'll do b) next.
     rtctype=$1   # "until_screenoff", or "until_shutdown"
-    rtctime=$2
+    orig_rtctime=$2
+    rtctime=$orig_rtctime
+    shutdowntime=${3:-}
 
     while :
     do
+        sleep_started=$(date +%s);
         if [ $rtctype = until_shutdown ]
         then
-            # if we're just waiting for a shutdown, then this
-            # is a sound sleep -- so act like lid close or power button.
+            # if we're waiting for a shutdown, then this is a
+            # pretty sound sleep.
             set_wakeupevents none
+            set_wakeupevents ac
+            if [ ! "$ac_online" ]
+            then
+                read_battery
+                if [ "$battery_capacity" -le 20 ]
+                then
+                    set_wakeupevents battery
+                fi
+            fi
+            test "$tracing" && sleep 1
             rtcwake -m mem -a -s $rtctime
             set_wakeupevents all
         else
             # otherwise we want most anything to wake us.
+            test "$tracing" && sleep 1
             rtcwake -m mem -a -s $rtctime
         fi
+
+        # prepare for the default case of simply re-sleeping for
+        # the remaining time.  may be overridden.
+        rtctime=$(( rtctime - ( $(date +%s) - sleep_started ) ))
+        rtctime=$(( (rtctime < 0) ? 0 : rtctime ))
 
         read_wakeupsource wakeupsource
         : wakeupsource is $wakeupsource
@@ -446,20 +457,55 @@ catnap()
                 break
             fi
             ;;
-        "rtc alarm")
-            case $rtctype in
-            until_screenoff)
+
+        "rtc alarm"|"ac power"|battery*)
+
+            : rtctype-wakeupsource is $rtctype-$wakeupsource
+
+            power_check
+
+            case $rtctype-$wakeupsource in
+            until_screenoff-rtc*)
                 backlight off
                 rtctype=until_shutdown
-                rtctime=$3
+                orig_rtctime=$shutdowntime
+                rtctime=$shutdowntime
                 ;;
-            until_shutdown)
-                do_shutdown "idle timeout"
+
+            until_shutdown-rtc*)
+                if [ "$savepower" -a ! "$no_auto_shutdown_on_ac" ]
+                then
+                    do_shutdown "idle timeout"
+                fi
+                # if we didn't shut down, we'll sleep again for
+                # the same time as before, before we check again.
+                rtctime=$orig_rtctime
+                log "found external power, sleeping instead of shutdown"
                 ;;
+
+            until_shutdown-ac*)
+                # restart the shutdown timer.  the choice of sleep time
+                # is kind of a guess, since we're not tracking how much
+                # charging we're getting while plugged in.  so if we're
+                # plugged in, we sleep forever, otherwise, we sleep (again)
+                # for the original time.
+                if [ "$ac_online" ]
+                then
+                    rtctime=999999999
+                else
+                    rtctime=$orig_rtctime
+                fi
+                ;;
+
+            *-battery*)  # all we do is check level, above.
+                ;;
+
             *) # it's a leftover (spurious?) rtc wakeup.  go back to sleep.
                 ;;
+
             esac
             ;;
+
         *)   # "lid"|"empty sci"|"key press"|"ebook")
             selfinject fake_useractive
             break
@@ -468,11 +514,13 @@ catnap()
     done
     set_wlan_power $wlp
     reset_idlecounter
+    runparts resume &
 }
 
 set_brightness()
 {
     echo $1 >$BRIGHTNESS
+    echo $(( $1 == 0 )) >$MONO_MODE
 }
 
 read_brightness()
@@ -495,10 +543,11 @@ brightness_ramp()
     while :
     do
         : $((i += incr))
-        set_brightness $i
+        echo $i >$BRIGHTNESS
         test $i = $2 && break
         usleep 25000
     done
+    echo $(( $i == 0 )) >$MONO_MODE
 }
 
 backlight()
@@ -547,14 +596,14 @@ backlight()
     esac
 }
 
-default_config()
+set_config_defaults()
 {
     # give all config values defaults, so we'll
     # never find them unset
     config_TIME_DIM=120
     config_TIME_SLEEP=130
     config_TIME_BLANK=240
-    config_TIME_SHUTDOWN=3600
+    config_MAX_SLEEP=3600
     config_IDLEDIM=5
     config_SOLAR=no
     config_ALWAYSON=no
@@ -654,21 +703,52 @@ check_acstate()
     evaluate_ac_state
 }
 
-evaluate_battery_state()
+o_maybe_battery_shutdown()  # old version, uses capacity only
 {
-    case $battery_capacity in
-    [54321])   # 5% or less
-        splash critical
-        sleep 1
-        do_shutdown "low battery"
-        ;;
-    esac
+
+    if [ ! "$ac_online" ]
+    then
+        case $battery_capacity in
+        [54321])   # 5% or less
+            splash critical
+            sleep 1
+            do_shutdown "low battery"
+            ;;
+        esac
+    fi
 }
 
-check_battery()
+maybe_battery_shutdown()
+{
+
+    test "$ac_online" && return
+
+    case $battery_capacity in
+    [987654321])
+        read uvolts < $MICROVOLTS
+        if [ $uvolts -le 5700000 ]  # EC's idea of critical voltage: 5.7V
+        then
+            splash critical
+            sleep 1
+            do_shutdown "low battery"
+        fi
+        ;;
+    esac
+
+}
+
+read_battery()
 {
     read battery_capacity < $CAPACITY
-    evaluate_battery_state
+}
+
+power_check()
+{
+    if ! check_acstate
+    then
+        read_battery
+        maybe_battery_shutdown
+    fi
 }
 
 reset_idlecounter()
@@ -681,8 +761,7 @@ set_idletimes()
 {
 
     # have the values changed?
-    idletimes="$config_TIME_DIM $config_TIME_SLEEP \
-                $config_TIME_BLANK $config_TIME_SHUTDOWN"
+    idletimes="$config_TIME_DIM $config_TIME_SLEEP $config_TIME_BLANK"
     test "$idletimes" = "$last_idletimes" && return 1
     last_idletimes="$idletimes"
 
@@ -692,13 +771,11 @@ set_idletimes()
     t1=${config_TIME_DIM:-120}
     t2=${config_TIME_SLEEP:-0}
     t3=${config_TIME_BLANK:-0}
-    t4=${config_TIME_SHUTDOWN:-0}
 
     # force all to be numeric:
     test "$t1" -eq "$t1" || t1=120
     test "$t2" -eq "$t2" || t2=0
     test "$t3" -eq "$t3" || t3=0
-    test "$t4" -eq "$t4" || t4=0
 
     # adjust the ordering of blank/sleep:
     if [ "$t3" -ge "$t2" ]
@@ -717,20 +794,21 @@ set_idletimes()
     test "$t3" -le "$t2"        && t3=$((t2 + 60))
     test "$t3" -le $((t2 + 5))  && t3=$((t2 + 5))
 
-    test "$t4" -le "$t3"        && t4=$((t3 + 600))
-    test "$t4" -le $((t3 + 5))  && t4=$((t3 + 5))
-    
     # give olpc-kbdshim the timeouts
     echo "I $t1 $t2 $t3" >$USER_ACTIVITY_CMDS
+
+    t4=${config_MAX_SLEEP:-0}
+    test "$t4" -eq "$t4" || t4=0
+    test "$t4" -le "5" && t4=300
 
     if [ "$dark_before_sleep" ]
     then
         screenofftimer=;
-        shutdowntimer=$((t4 - t3))
+        shutdowntimer=$t4
         log dim in $t1 seconds, blank in $t2, sleep in $t3, shutdown in $t4
     else
         screenofftimer=$((t3 - t2))
-        shutdowntimer=$((t4 - t3))
+        shutdowntimer=$t4
         log dim in $t1 seconds, sleep in $t2, blank in $t3, shutdown in $t4
     fi
 
@@ -785,7 +863,7 @@ dcon()
 
 gotactivity()
 {
-    invalidate_powertimer  # invalidate powertimerdone messages
+    invalidate_powertimer
     unsplash
 }
 
@@ -795,10 +873,9 @@ event_loop()
 
     : starting eventloop
 
-    check_acstate
     set_idletimes
 
-    trap "unsplash; exit" 1 2 3 15
+    trap "unsplash; exit" 0 # 1 2 3 15
     unsplash
 
     # recreate to flush, and to make sure it's a fifo
@@ -821,6 +898,8 @@ event_loop()
         powerbutton|fake_powerbutton)
             if backlight is_off
             then
+                # if the screen is off, the power button should simply
+                # wake the system up.
                 gotactivity
                 backlight restore
                 reset_idlecounter
@@ -850,10 +929,10 @@ event_loop()
             ;;
 
         lidclose|gotosleep)
-            gotactivity
+            invalidate_powertimer
             backlight off
-            slumber
-            runparts resume &
+            # schedule a wakeup, so we can shut down
+            snooze until_shutdown "$shutdowntimer"
             ;;
 
         lidopen)
@@ -898,8 +977,7 @@ event_loop()
                 then
                     backlight off
                 else
-                    catnap until_screenoff "$screenofftimer" "$shutdowntimer"
-                    runparts resume &
+                    snooze until_screenoff "$screenofftimer" "$shutdowntimer"
                 fi
             fi
             ;;
@@ -910,8 +988,7 @@ event_loop()
                 if [ "$dark_before_sleep" ]
                 then
                     # schedule a wakeup, so we can shut down
-                    catnap until_shutdown "$shutdowntimer"
-                    runparts resume &
+                    snooze until_shutdown "$shutdowntimer"
                 #else
                 #    ; # shouldn't happen
                 fi
@@ -928,30 +1005,29 @@ event_loop()
             ;;
 
         battery)
-            if [ ! "$ac_online" ]  # don't care if we're plugged in
-            then
-                battery_capacity=$arg1
-                evaluate_battery_state
-            fi
+            battery_capacity=$arg1
+            maybe_battery_shutdown
             ;;
 
         reconfig)
             choose_config ${arg1:-}
             read_config
-            check_acstate || check_battery
+
+            power_check
+
             reevaluate all
             ;;
 
-	unfreezetimerdone)
-	    # this is a bit of a hack.  on the XO, the bootanim
-	    # script contrives to leave the dcon frozen at the end
-	    # of the init sequence.  it remains frozen until sugar
-	    # first becomes idle, at which point sugar sends a dbus
-	    # message to ohmd, causing ohmd to unfreeze the dcon.
-	    # since we don't do dbus, we unfreeze the dcon after 10
-	    # seconds.
+        unfreezetimerdone)
+            # this is a bit of a hack.  on the XO, the bootanim
+            # script contrives to leave the dcon frozen at the end
+            # of the init sequence.  it remains frozen until sugar
+            # first becomes idle, at which point sugar sends a dbus
+            # message to ohmd, causing ohmd to unfreeze the dcon.
+            # since we don't do dbus, we unfreeze the dcon after 10
+            # seconds.
             dcon thaw
-	    ;;
+            ;;
 
         trace-on)
             tracing on
@@ -969,7 +1045,7 @@ tracing()
     case $1 in
     on)
         exec 3>&2
-        exec 2>$LOGFILE
+        exec 2>>$LOGFILE
         set -x
         : tracing begun
         tracing=1
@@ -980,14 +1056,17 @@ tracing()
             : tracing stopped
             set +x
             exec 2>&3
+            tracing=;
         fi
         ;;
     esac
 }
 
+tracing=;
+
 # uncomment for full tracing.
 # (use powerd-control =tracing-on to enable at runtime.)
-# tracing on
+tracing on
 
 am_ebook=;
 o_ebook=xxx;
@@ -998,11 +1077,14 @@ last_idletimes=;
 timerseqno=1;
 powerseqno=0;
 
+# unimplemented
+no_auto_shutdown_on_ac=;
+
 sched_unfreezetimer 10
 
 log starting
 
-default_config
+set_config_defaults
 if [ ! -r $CONFIGLINK ]
 then
     choose_config default
@@ -1011,9 +1093,13 @@ else
 fi
 
 read_config
-check_acstate || check_battery
+
+power_check
+
 reevaluate all
 
+# let user programs control brightness
+chmod a+w $BRIGHTNESS $MONO_MODE
 
 set_wakeupevents all
 

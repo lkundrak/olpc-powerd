@@ -3,7 +3,7 @@
 description     "XO hw switch handler"
 author          "Paul Fox"
 
-start on starting olpc-kbdshim
+start on stopping rc5
 
 console output
 

@@ -4,9 +4,10 @@
 # this file is in /bin/sh syntax, and is read directly by the shell.
 # please be careful.
 
-# all four idle times are expressed in seconds: 
-# "config_TIME_DIM", "config_TIME_SLEEP", "config_TIME_BLANK",
-# "config_TIME_SHUTDOWN".  dim must happen first.  sleep and
+# all times are expressed in seconds (though a UI could do whatever
+# it wants, of course):
+# the idle timers are "config_TIME_DIM", "config_TIME_SLEEP", and
+# "config_TIME_BLANK".  dim must happen first.  sleep and
 # blanking can happen in either order.  if sleep happens first,
 # the screen will stay on while the rest of the system sleeps. 
 # if blanking is scheduled first, the screen will go dark while
@@ -14,6 +15,8 @@
 # when the screen is dark and the laptop is sleeping, it's a
 # "deep" sleep -- keystrokes will not wake it up, just as if the
 # power button had been used.  shutdown, of course, happens last.
+# the maximum time that any sleep will last before the laptop shuts
+# down is given by "config_MAX_SLEEP".
 
 # "config_IDLEDIM" is how dim will the screen go when the first
 # timer fires.  (range 0-15.)  if set to 15, the screen will never
@@ -46,7 +49,7 @@
 config_TIME_DIM=120
 config_TIME_SLEEP=150
 config_TIME_BLANK=600
-config_TIME_SHUTDOWN=3600
+config_MAX_SLEEP=3600
 config_IDLEDIM=5
 config_SOLAR=n
 config_ALWAYSON=n
