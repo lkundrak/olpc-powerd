@@ -624,7 +624,7 @@ read_config()
     fi
     source $CONFIGFILE
 
-    yes_or_true "$config_NO_SHUTDOWN_WHEN PLUGGED" &&
+    yes_or_true "$config_NO_SHUTDOWN_WHEN_PLUGGED" &&
 	log configured to never shutdown while plugged in
 
 }
