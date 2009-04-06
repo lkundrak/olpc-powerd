@@ -25,6 +25,8 @@
 # USA.
 #
 
+set -u
+
 #exec 2>pc.log
 #set -x
 
@@ -39,8 +41,11 @@ usage()
 }
 
 # CONFIGDIR=/home/olpc/src/powerd/testconf
-CONFIGDIR=/etc/powerd/conf
-CONFIGLINK=$CONFIGDIR/curconfig.link
+CONFIGDIR=/etc/powerd
+CONFIGDIR=/tmp
+CONFIGFILE=$CONFIGDIR/powerd.conf
+TMPCONFIG=$CONFIGFILE.tmp
+NEWCONFIG=$TMPCONFIG.new
 
 TMP=/tmp/powerdconfig.$$
 
@@ -49,13 +54,12 @@ trap "rm -f $TMP $TMPCONFIG $NEWCONFIG" 0
 
 backtitle="powerd configuration"
 
-yes_or_true()
+yes_no()
 {
     case $1 in
-    [yYtT]*) echo on; return ;;
+    1|[yYtT]*)  echo yes  ;;
+    *)		echo no   ;;
     esac
-
-    echo off
 }
 
 deref()
@@ -89,132 +93,73 @@ setvar()
 }
 
 
-display_profile()
-{
-    
-    dialog --yesno \
-        "$(echo Profile \'$1\' contains:; \
-            echo; \
-                sed  \
-                   -e 's/^config_TIME_DIM=/  1) Seconds until the screen dims: /' \
-                   -e 's/^config_TIME_SLEEP=/  2) Seconds until the laptop sleeps: /' \
-                   -e 's/^config_TIME_BLANK=/  3) Seconds until the screen blanks: /' \
-                   -e 's/^config_MAX_SLEEP=/  4) How long the laptop will ever sleep before shutting down: /' \
-                   -e 's/^config_IDLEDIM=/  5) How far to dim the screen when idle: /' \
-                   -e 's/^config_SOLAR=/  6) Conserve external power: /' \
-                   -e 's/^config_MESH_or_WAKE_ON_WLAN=/  7) Try and keep the wireless active: /' \
-                   -e 's/^config_ALWAYSON=/  8) Run without saving power, even on battery: /' \
-                   -e 's/^config_USE_EBOOK_PROFILE=/  9) Use '\''ebook'\'' profile when folded as ebook: /' \
-                   -e 's/^config_CONFIRM_SECONDS=/ 10) Seconds to wait for a second power button press to shut down: /' \
-                   -e 's/\<n\>/no/' \
-                   -e 's/\<y\>/yes/' \
-                   -e 's/\<false\>/no/' \
-                   -e 's/\<true\>/yes/' \
-                   -e 's/\"/ /g' \
-                   -e 's/^/   /' \
-                   -e '/^[[:space:]]*#.*/d' \
-                   -e '/^[[:space:]]*$/d' \
-            $CONFIGDIR/$1 | sort -n
-            echo; \
-            echo Okay to activate? \
-        )" 0 0
-}
 
-
-edit_profile()
+edit_config()
 {
 
-    CONFIG=$CONFIGDIR/$1
+    source $1
 
-    TMPCONFIG=$CONFIG.tmp
-    NEWCONFIG=$TMPCONFIG.new
+    bat_dim=$config_BATTERY_TIME_DIM
+    bat_sleep=$config_BATTERY_TIME_SLEEP
+    bat_blank=$config_BATTERY_TIME_BLANK
 
-    cp $CONFIG $TMPCONFIG
-
-    source $TMPCONFIG
-
-    solar=$(yes_or_true $(config SOLAR))
-    alwayson=$(yes_or_true $(config ALWAYSON))
-    normal=off
-    test "$solar" = off -a $alwayson = off && normal=on
-
-    if ! dialog \
-        --backtitle "$backtitle" \
-        --radiolist "Power usage" 0 0 0 \
-            "normal" \
-                "Save battery power, but run at full power when plugged in" \
-                $normal \
-            "solar" \
-                "Save both external and battery power" \
-                $solar \
-            "full" \
-                "Run at full power at all times (No dim, sleep, or shutdown)"  \
-                $alwayson \
-        2>$TMP
-    then
-        rm $TMPCONFIG
-        return 1
-    fi
+    # force numeric, and reasonable defaults
+    test "$bat_dim" -eq "$bat_dim" || bat_dim=120
+    test "$bat_sleep" -eq "$bat_sleep" || bat_sleep=$(( bat_dim + 120 ))
+    test "$bat_blank" -eq "$bat_blank" || bat_blank=$(( bat_dim + 240 ))
 
 
-    setvar SOLAR false
-    setvar ALWAYSON false
+    ebook_dim=${config_EBOOK_TIME_DIM:-120}
+    ebook_sleep=${config_EBOOK_TIME_SLEEP:-240}
+    ebook_blank=${config_EBOOK_TIME_BLANK:-480}
 
-    read got junk < $TMP
-    case $got in
-    normal) ;;
-    solar) setvar SOLAR true ;;
-    full)  setvar ALWAYSON true ;;
-    esac
+    # force numeric, and reasonable defaults
+    test "$ebook_dim" -eq "$ebook_dim" || ebook_dim=120
+    test "$ebook_sleep" -eq "$ebook_sleep" || ebook_sleep=$(( ebook_dim + 120 ))
+    test "$ebook_blank" -eq "$ebook_blank" || ebook_blank=$(( ebook_dim + 240 ))
 
-    wake=$(yes_or_true $(config MESH_or_WAKE_ON_WLAN))
-    use_ebook=$(yes_or_true $(config USE_EBOOK_PROFILE))
+    plugged_dim=${config_PLUGGED_TIME_DIM:-120}
+    plugged_sleep=${config_PLUGGED_TIME_SLEEP:-240}
+    plugged_blank=${config_PLUGGED_TIME_BLANK:-480}
 
-    if ! dialog \
-        --backtitle "$backtitle" \
-        --separate-output --checklist "Options" 0 0 0 \
-            "wlanwake" \
-                "Leave WLAN enabled when sleeping" \
-                $wake \
-            "ebookconfig" \
-                "Switch to 'ebook' config profile automatically in ebook mode" \
-                $use_ebook \
-        2>$TMP
-    then
-        rm $TMPCONFIG
-        return 1
-    fi
+    # force numeric, and reasonable defaults
+    test "$plugged_dim" -eq "$plugged_dim" || plugged_dim=120
+    test "$plugged_sleep" -eq "$plugged_sleep" || plugged_sleep=$(( plugged_dim + 120 ))
+    test "$plugged_blank" -eq "$plugged_blank" || plugged_blank=$(( plugged_dim + 240 ))
 
-    setvar MESH_or_WAKE_ON_WLAN false
-    setvar USE_EBOOK_PROFILE false
-    while read got junk
-    do
-        case $got in
-        wlanwake) setvar MESH_or_WAKE_ON_WLAN true;;
-        ebookconfig) setvar USE_EBOOK_PROFILE true ;;
-        esac
-    done < $TMP
+    idledim=$config_IDLE_DIM_LEVEL
+    test "$idledim" -eq "$idledim" || idledim=5
 
+    wlanwake=${config_WAKE_ON_WLAN:-yes}
+    maxsleep=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-3600}
+    test "$maxsleep" -eq "$maxsleep" || maxsleep=5
+    noshut=${config_NO_SHUTDOWN_WHEN_PLUGGED:-no}
 
+    splashdelay=${config_CONFIRM_SECONDS:-8}
 
-    dim=$(config TIME_DIM)
-    sleep=$(config TIME_SLEEP)
-    blank=$(config TIME_BLANK)
-    maxsleep=$(config MAX_SLEEP)
-
-    test "$dim" -eq "$dim" || dim=120
-    test "$sleep" -eq "$sleep" || sleep=$(( dim + 60 ))
-    test "$blank" -eq "$blank" || blank=$(( dim + 600 ))
-
-    test "$maxsleep" -eq "$maxsleep" || maxsleep=$(( 3600 ))
-
+    row=1
     if ! dialog \
           --backtitle "$backtitle" --form \
-            "Idle timeouts -- either Sleep or Blank may occur first" 0 0 4 \
-            "Dim:"         1 1      "$dim"    1  11 9 9 \
-      "Sleep:"       2 1      "$sleep"  2  11 9 9 \
-                           "Blank:"       2 25     "$blank"  2  32 9 9 \
-      "Max sleep until laptop shuts down:"    4 1      "$maxsleep"   4  37 9 9 \
+            "Idle timeouts -- either Sleep or Blank may occur first" 0 0 15 \
+      \
+            "Battery:     Dim"         1 1      "$bat_dim"    1  18 9 9 \
+      "Sleep"       2 12      "$bat_sleep"  2  18 9 9 \
+                           "Blank"       2 28     "$bat_blank"  2  34 9 9 \
+            "Ebook:       Dim"         3 1      "$ebook_dim"    3  18 9 9 \
+      "Sleep"       4 12      "$ebook_sleep"  4  18 9 9 \
+                           "Blank"       4 28     "$ebook_blank"  4  34 9 9 \
+            "Plugged in:  Dim"         5 1      "$plugged_dim"    5  18 9 9 \
+      "Sleep"       6 12      "$plugged_sleep"  6  18 9 9 \
+                           "Blank"       6 28     "$plugged_blank"  6  34 9 9 \
+      \
+      "Screen brightness (0-15) when dimmed:"    8 1      "$idledim"   8  43 3 3 \
+      \
+      "Wake on wireless activity?"    10 1      "$wlanwake"   10  41 5 5 \
+      \
+      "Max sleep before laptop shuts down:"    12 1      "$maxsleep"   12  37 9 9 \
+      "Prevent shutdown when plugged in?"    13 1      "$noshut"   13  41 5 5 \
+      \
+      "Seconds between power button presses:"   15 1 "$splashdelay"  15  43 3 3 \
 	2>$TMP
     then
         rm $TMPCONFIG
@@ -222,75 +167,36 @@ edit_profile()
     fi
 
     set -- $(cat $TMP)
-    dim=$1
-    sleep=$2
-    blank=$3
-    maxsleep=$4
+    bat_dim=$1
+    bat_sleep=$2
+    bat_blank=$3
+    ebook_dim=$4
+    ebook_sleep=$5
+    ebook_blank=$6
+    plugged_dim=$7
+    plugged_sleep=$8
+    plugged_blank=$9
+    idledim=${10}
+    wlanwake=${11}
+    maxsleep=${12}
+    noshut=${13}
+    splashdelay=${14}
 
-    test "$dim" -eq "$dim" || dim=120
-    test "$sleep" -eq "$sleep" || sleep=$(( dim + 60 ))
-    test "$blank" -eq "$blank" || blank=$(( dim + 600 ))
+    config_BATTERY_TIME_DIM=$bat_dim
+    config_BATTERY_TIME_SLEEP=$bat_sleep
+    config_BATTERY_TIME_BLANK=$bat_blank
+    config_EBOOK_TIME_DIM=$ebook_dim
+    config_EBOOK_TIME_SLEEP=$ebook_sleep
+    config_EBOOK_TIME_BLANK=$ebook_blank
+    config_PLUGGED_TIME_DIM=$plugged_dim
+    config_PLUGGED_TIME_SLEEP=$plugged_sleep
+    config_PLUGGED_TIME_BLANK=$plugged_blank
 
-    test "$maxsleep" -eq "$maxsleep" || maxsleep=$(( 3600 ))
-
-    setvar TIME_DIM $dim
-    setvar TIME_SLEEP $sleep
-    setvar TIME_BLANK $blank
-    setvar MAX_SLEEP $maxsleep
-
-    for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
-    do
-        eval r${i}=off
-    done
-    eval r${config_IDLEDIM}=on
-
-    if ! dialog \
-        --radiolist "Dim level" 0 0 0 \
-         full "" "$r15" \
-           14 "" "$r14" \
-           13 "" "$r13" \
-           12 "" "$r12" \
-           11 "" "$r11" \
-           10 "" "$r10" \
-            9 "" "$r9" \
-            8 "" "$r8" \
-            7 "" "$r7" \
-            6 "" "$r6" \
-            5 "" "$r5" \
-            4 "" "$r4" \
-            3 "" "$r3" \
-            2 "" "$r2" \
-            1 "" "$r1" \
-          off "" "$r0" \
-        2>$TMP
-    then
-        rm $TMPCONFIG
-        return 1
-    fi
-
-    val=$(cat $TMP)
-    case $val in
-    full) val=15 ;;
-    off)  val=0 ;;
-    esac
-
-    setvar IDLEDIM $val
-
-    seconds=$config_CONFIRM_SECONDS
-    if ! dialog \
-          --backtitle "$backtitle" \
-          --form "Shutdown confirmation delay" 0 0 1 \
-        "Seconds between power button presses:"   1 1 "$seconds"  1  45 3 3 \
-        2>$TMP
-    then
-        rm $TMPCONFIG
-        return 1
-    fi
-
-    read got junk < $TMP
-    setvar CONFIRM_SECONDS "$got"
-
-    mv $TMPCONFIG $CONFIG
+    config_IDLE_DIM_LEVEL=$idledim
+    config_WAKE_ON_WLAN=$(yes_no $wlanwake)
+    config_MAX_SLEEP_BEFORE_SHUTDOWN=$maxsleep
+    config_NO_SHUTDOWN_WHEN_PLUGGED=$(yes_no $noshut)
+    config_CONFIRM_SECONDS=$splashdelay
 
     return 0
 
@@ -308,61 +214,24 @@ check_root()
     fi
 }
 
-select_profile()
+activate_config()
 {
-    profiles=$(ls -F $CONFIGDIR | grep '^[-a-zA-Z_]*$')
-    curprofile=$(readlink $CONFIGLINK)
-
-    profilelist=;
-    for p in $profiles
-    do
-       profilelist="$profilelist $p -"
-    done
-
-    dialog \
-        --backtitle "$backtitle" \
-        --default-item $curprofile \
-        --extra-button \
-        --extra-label Edit \
-        --menu "Select a profile (to use or edit and then use)" 0 0 0 \
-        $profilelist \
-        2>$TMP
-    ret=$?
-
-    read workingprofile < $TMP
-
-    return $ret
-}
-
-activate_profile()
-{
-    echo reconfig $1 >/var/run/powerevents
+    echo reconfig >/var/run/powerevents
 }
 
 main()
 {
 
-    case $1 in
+    case ${1:-} in
     -*) # we have no -options
         usage
         ;;
-    =*) # =foo not really a profile; it's a direct event to the daemon,
+    =*) # =foo is just a direct event to the daemon,
         #  with the '=' removed.
         echo ${1#=} >/var/run/powerevents
         exit 0
         ;;
     esac
-
-    if [ "$1" ]
-    then
-        if [ ! -r $CONFIGDIR/"${1##*/}" ]
-        then
-            echo "${0##*/} profile $1 (in $CONFIGDIR) not readable" >&2
-            exit 1
-        fi
-        activate_profile ${1##*/}
-        exit
-    fi
 
     if ! type dialog 2>/dev/null
     then
@@ -375,32 +244,22 @@ main()
         exit 1
     fi
 
-    check_root
+    # check_root
 
-    while :
-    do
-        select_profile
-        selectret=$?
+    if [ -f $CONFIGFILE ]
+    then
+	cp $CONFIGFILE $TMPCONFIG
+    else
+	touch $TMPCONFIG
+    fi
 
-        case $selectret in
-        3|0)  ;;
-        *)  exit 1 ;;
-        esac
-
-        test "$workingprofile" -a -e $CONFIGDIR/$workingprofile || continue
-
-        case $selectret in
-        3)  edit_profile $workingprofile && break
-            ;;
-        0)  break
-            ;;
-        esac
-    done
-
-
-    display_profile $workingprofile || exit 0
-
-    activate_profile $workingprofile
+    if edit_config $TMPCONFIG
+    then
+	mv $TMPCONFIG $CONFIGFILE
+	activate_config
+    else
+	echo No changes made.
+    fi
 }
 
 
