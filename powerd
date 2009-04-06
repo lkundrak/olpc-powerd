@@ -408,7 +408,8 @@ snooze()
         if [ $rtctype = until_shutdown ]
         then
             # if we're waiting for a shutdown, then this is a
-            # pretty sound sleep.
+            # pretty sound sleep.  only let AC wake us up, and
+            # battery events if we're close to shutdown levels.
             set_wakeupevents none
             set_wakeupevents ac
             if [ ! "$ac_online" ]
@@ -506,10 +507,15 @@ snooze()
             esac
             ;;
 
-        *)   # "lid"|"empty sci"|"key press"|"ebook")
+        "lid"|"empty sci")  # assume "empty sci" comes from lid (kernel bug)
+            am_ebook=false
             selfinject fake_useractive
             break
             ;;
+
+        *)  # "key press"|"ebook")
+            selfinject fake_useractive
+            break
         esac
     done
     set_wlan_power $wlp
@@ -605,11 +611,13 @@ set_config_defaults()
     config_TIME_BLANK=240
     config_MAX_SLEEP=3600
     config_IDLEDIM=5
+
     config_SOLAR=no
     config_ALWAYSON=no
+    config_USE_EBOOK_PROFILE=false
+
     config_MESH_or_WAKE_ON_WLAN=yes
     config_CONFIRM_SECONDS=7
-    config_USE_EBOOK_PROFILE=false
 } 
 
 read_config()
@@ -928,15 +936,24 @@ event_loop()
             fi
             ;;
 
-        lidclose|gotosleep)
+        gotosleep)
             invalidate_powertimer
             backlight off
-            # schedule a wakeup, so we can shut down
+            # sleep until it's time to shut down
+            snooze until_shutdown "$shutdowntimer"
+            ;;
+
+        lidclose)
+            am_ebook=false
+            invalidate_powertimer
+            backlight off
+            # sleep until it's time to shut down
             snooze until_shutdown "$shutdowntimer"
             ;;
 
         lidopen)
             gotactivity
+            am_ebook=false
             backlight restore
             ;;
 
@@ -977,6 +994,7 @@ event_loop()
                 then
                     backlight off
                 else
+                    # sleep until it's time to darken the screen
                     snooze until_screenoff "$screenofftimer" "$shutdowntimer"
                 fi
             fi
@@ -987,7 +1005,7 @@ event_loop()
             then
                 if [ "$dark_before_sleep" ]
                 then
-                    # schedule a wakeup, so we can shut down
+                    # sleep until it's time to shut down
                     snooze until_shutdown "$shutdowntimer"
                 #else
                 #    ; # shouldn't happen
