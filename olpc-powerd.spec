@@ -129,6 +129,10 @@ then
 fi
 
 %changelog
+* Tue Apr 7 2009 Paul Fox <pgf@laptop.org>
+- 3-1
+- convert to HAL-based operation
+
 * Thu Mar 19 2009 Paul Fox <pgf@laptop.org
 - 2-3
 - removed extra dcon calls.
