@@ -117,7 +117,7 @@ edit_config()
     row=1
     if ! dialog \
           --backtitle "$backtitle" --form \
-            "Idle timeouts -- either Sleep or Blank may occur first" 0 0 15 \
+            "Note: Dim must be first, but either Sleep or screen Blank may be scheduled next." 0 60 15 \
       \
             "Battery:     Dim"         1 1      "$bat_dim"    1  18 9 9 \
       "Sleep"       2 12      "$bat_sleep"  2  18 9 9 \
@@ -136,7 +136,7 @@ edit_config()
       "Max sleep before laptop shuts down:"    12 1      "$maxsleep"   12  37 9 9 \
       "Prevent shutdown when plugged in?"    13 1      "$noshut"   13  41 5 5 \
       \
-      "Seconds between power button presses:"   15 1 "$splashdelay"  15  43 3 3 \
+      "Power button splash screen timeout:"   15 1 "$splashdelay"  15  43 3 3 \
 	2>$TMP
     then
         rm $TMPCONFIG
