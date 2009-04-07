@@ -41,7 +41,7 @@ mkdir -p $RPM_BUILD_ROOT/etc/powerd/postresume.d
 %{__install} -m 644 powerd.upstart $RPM_BUILD_ROOT/etc/event.d/powerd
 %{__install} -m 644 pleaseconfirm.pgm $RPM_BUILD_ROOT/etc/powerd/pleaseconfirm.pgm
 %{__install} -m 644 shuttingdown.pgm $RPM_BUILD_ROOT/etc/powerd/shuttingdown.pgm
-%{__install} -m 644 powerd.conf $RPM_BUILD_ROOT/etc/powerd/powerd.conf
+%{__install} -m 644 powerd.conf.dist $RPM_BUILD_ROOT/etc/powerd/powerd.conf
 
 
 %clean
