@@ -1,40 +1,34 @@
 
 
     - currently i enable the 1% battery SOC wakeup when the battery is
-	getting low.  but that's only possible if we're awake to
+	getting low, and check the voltage against critical (5.7V) then.
+	but that's only possible if we're awake to
 	notice.  i'm reluctant to enable the 1% battery SOC
 	wakeup all the time, because that seems like a lot of
-	wakeups.  too bad there's no "wake me at this batter
-	threshold" wakeup.  if we created one in the EC -- reuse
-	the battery_error event, and have it occur when we cross
-	the 5% threshold, for instance -- we could use that to
-	waken and shut down.  (we should fix the
+	wakeups.  too bad there's no "wake me at this battery
+	threshold" wakeup -- preferably for voltage, which is what
+	really matters.  (we should fix the
 	/sys/class/power_supply/olpc-battery/capacity_level
 	output as well, but that's in the kernel.  currently it
-	never hits "critical".) or, more simply:  create a new
-	form of the "battery_soc" wakeup event that only wakes up
-	on SOC changes below 10%.
+	never hits "critical".)
 
-	(the EC generates a critical battery SCI.  the kernel
-	just has to watch for it.)
+	[ later:  it seems the EC generates a critical battery
+	SCI.  the kernel just needs to start watching for it. ]
 
-	if wakeup happened at 10%, then we could beep
-	(configurable) every 1% thereafter until we hit shutdown.
-
-    - should give a beep warning before critical battery shutdown.
+	if wakeup happened a bit early then we could beep
+	(configurable) every so often thereafter until we hit shutdown
+	or the condition cleared.
 
     - add monitoring of cpu and/or network load to prevent sleeps
 	when "busy" with other than user input
 
-    - is there a dbus "i'm busy" indicator we could/should be
-	looking at as well?
+    - ohmd provides a "keystore" object which activities can use to
+	set/get a few inhibit states.  i haven't been able to figure
+	out how to monitor this traffic with dbus-monitor.  it's
+	unfortunate that this api is ohmd-specific, but not surprising.
+	it would be good to emulate it, since olpc-update, at least, and
+	probably others use it to inhibit suspend while they're active.
 
     - how should mesh and AP connections be treated wrt keeping the
 	wireless alive?  if we sleep with an AP connection, will we
 	eventually lose association anyway?
-
-    - powerd-configure has no means of creating a new profile -- just
-	editing existing ones.  (all that's needed is an existing file --
-	current contents is optional.)
-
-    - maybe convert powerd-config to present minutes, rather than seconds
