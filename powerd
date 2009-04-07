@@ -621,10 +621,10 @@ set_config_defaults()
 
 read_config()
 {
-    if [ ! -r $CONFIGFILE ]
+    if [ ! -e $CONFIGFILE ]
     then
-        log cannot read configuration from $CONFIGFILE
-        exit 1
+        log "cannot find $CONFIGFILE, recreating (empty)"
+        touch $CONFIGFILE
     fi
     source $CONFIGFILE
 
