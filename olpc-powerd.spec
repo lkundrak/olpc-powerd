@@ -31,7 +31,6 @@ mkdir -p $RPM_BUILD_ROOT/usr/bin
 mkdir -p $RPM_BUILD_ROOT/etc/event.d
 mkdir -p $RPM_BUILD_ROOT/etc/powerd
 mkdir -p $RPM_BUILD_ROOT/etc/powerd/postresume.d
-mkdir -p $RPM_BUILD_ROOT/etc/powerd/conf
 
 %{__install} -m 755 olpc-switchd $RPM_BUILD_ROOT/usr/sbin/olpc-switchd
 %{__install} -m 755 powerd $RPM_BUILD_ROOT/usr/sbin/powerd
@@ -42,8 +41,7 @@ mkdir -p $RPM_BUILD_ROOT/etc/powerd/conf
 %{__install} -m 644 powerd.upstart $RPM_BUILD_ROOT/etc/event.d/powerd
 %{__install} -m 644 pleaseconfirm.pgm $RPM_BUILD_ROOT/etc/powerd/pleaseconfirm.pgm
 %{__install} -m 644 shuttingdown.pgm $RPM_BUILD_ROOT/etc/powerd/shuttingdown.pgm
-%{__install} -m 644 conf/default $RPM_BUILD_ROOT/etc/powerd/conf/default
-%{__install} -m 644 conf/ebook $RPM_BUILD_ROOT/etc/powerd/conf/ebook
+%{__install} -m 644 powerd.conf $RPM_BUILD_ROOT/etc/powerd/powerd.conf
 
 
 %clean
@@ -62,8 +60,7 @@ rm -rf $RPM_BUILD_ROOT
 /etc/event.d/powerd
 /etc/powerd/pleaseconfirm.pgm
 /etc/powerd/shuttingdown.pgm
-/etc/powerd/conf/default
-/etc/powerd/conf/ebook
+/etc/powerd/powerd.conf
 
 %post
 if test -e /etc/init.d/ohmd
