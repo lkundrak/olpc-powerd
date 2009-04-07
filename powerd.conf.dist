@@ -13,9 +13,9 @@
 #  If the laptop sleeps, it will shut down after this amount
 #  of time.
 #
-# config_NO_SHUTDOWN_WHEN_PLUGGED
-#  If set, the laptop will never automatically shut down when using
-#  external power.
+# config_ALLOW_SHUTDOWN_WHEN_PLUGGED
+#  If this is disabled, the laptop will never automatically shut
+#  down when using external power.  (It may still sleep, however.)
 #
 # config_IDLE_DIM_LEVEL
 #  Brightness level when the screen is automatically dimmed.  Set
@@ -33,17 +33,17 @@
 #  setting.
 #
 #
-config_BATTERY_TIME_DIM=120
-config_BATTERY_TIME_SLEEP=130
-config_BATTERY_TIME_BLANK=240
-config_EBOOK_TIME_DIM=120
-config_EBOOK_TIME_SLEEP=130
-config_EBOOK_TIME_BLANK=240
-config_CHARGING_TIME_DIM=120
-config_CHARGING_TIME_SLEEP=130
-config_CHARGING_TIME_BLANK=240
-config_IDLE_DIM_LEVEL=5
-config_WAKE_ON_WLAN=yes
-config_MAX_SLEEP_BEFORE_SHUTDOWN=3600
-config_NO_SHUTDOWN_WHEN_PLUGGED=false
-config_CONFIRM_SECONDS=7
+config_BATTERY_TIME_DIM="120"
+config_BATTERY_TIME_SLEEP="130"
+config_BATTERY_TIME_BLANK="240"
+config_EBOOK_TIME_DIM="120"
+config_EBOOK_TIME_SLEEP="130"
+config_EBOOK_TIME_BLANK="240"
+config_CHARGING_TIME_DIM="120"
+config_CHARGING_TIME_SLEEP="130"
+config_CHARGING_TIME_BLANK="240"
+config_IDLE_DIM_LEVEL="5"
+config_WAKE_ON_WLAN="yes"
+config_MAX_SLEEP_BEFORE_SHUTDOWN="3600"
+config_ALLOW_SHUTDOWN_WHEN_PLUGGED="no"
+config_CONFIRM_SECONDS="7"

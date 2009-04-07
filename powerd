@@ -33,10 +33,14 @@
 # event fifo (/var/run/powerevents).
 #
 # All times are expressed in seconds (though a UI could do
-# whatever it wants, of course).  There are "dim", "sleep", and
-# "blank" timers for each of "plugged in", "battery", and "ebook"
-# modes.  (If the laptop is plugged in while in ebook mode, the
-# plugged in timers are used.)  The nine idle timers are:
+# whatever it wants, of course).  Booleans can be enabled with
+# "yes", "Yes", "true", "True", or "1".  Anything else will turn
+# them off.
+#
+# There are "dim", "sleep", and "blank" timers for each of
+# "plugged in", "battery", and "ebook" modes.  (If the laptop is
+# plugged in while in ebook mode, the plugged in timers are
+# used.) The nine idle timers are:
 #   config_BATTERY_TIME_{DIM,SLEEP,BLANK}
 #   config_EBOOK_TIME_{DIM,SLEEP,BLANK}
 #   config_PLUGGED_TIME_{DIM,SLEEP,BLANK}
@@ -51,8 +55,8 @@
 # shuts down is given by "config_MAX_SLEEP_BEFORE_SHUTDOWN".
 #
 # If it's never desirable for the laptop to completely shut down
-# when plugged in, then "config_NO_SHUTDOWN_WHEN_PLUGGED" should
-# be set true.
+# when plugged in, then "config_ALLOW_SHUTDOWN_WHEN_PLUGGED" should
+# be turned off.
 #
 # "config_IDLE_DIM_LEVEL" is how dim will the screen go when the first
 # timer fires.  (range is 0-15.)  If set to 15, the screen will never
@@ -466,7 +470,7 @@ snooze()
                 ;;
 
             until_shutdown-rtc*)
-                if [ ! yes_or_true "$config_NO_SHUTDOWN_WHEN_PLUGGED" ]
+                if [ yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED" ]
                 then
                     do_shutdown "idle timeout"
                 fi
@@ -612,7 +616,7 @@ set_config_defaults()
 
     config_WAKE_ON_WLAN=yes
     config_MAX_SLEEP_BEFORE_SHUTDOWN=3600
-    config_NO_SHUTDOWN_WHEN_PLUGGED=false
+    config_ALLOW_SHUTDOWN_WHEN_PLUGGED=no
 
     #config_USE_EBOOK_PROFILE=false
 
@@ -628,7 +632,7 @@ read_config()
     fi
     source $CONFIGFILE
 
-    yes_or_true "$config_NO_SHUTDOWN_WHEN_PLUGGED" &&
+    yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED" ||
         log configured to never shutdown while plugged in
 
 }
