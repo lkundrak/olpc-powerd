@@ -40,9 +40,8 @@ usage()
         exit 1
 }
 
-# CONFIGDIR=/home/olpc/src/powerd/testconf
+# CONFIGDIR=/tmp
 CONFIGDIR=/etc/powerd
-CONFIGDIR=/tmp
 CONFIGFILE=$CONFIGDIR/powerd.conf
 TMPCONFIG=$CONFIGFILE.tmp
 NEWCONFIG=$TMPCONFIG.new
@@ -62,37 +61,15 @@ yes_no()
     esac
 }
 
-deref()
-{
-    for x; do
-        echo ${!x}   # or more portably: eval echo \$$x
-    done
-}
-
-configvarname()
-{
-    m=$m
-    test "$m" && u=_
-    v=$1
-    echo config${u}${m}_${v}
-}
-
-config()
-{
-    deref $(configvarname $1)
-}
-
 setvar()
 {
-    varname=$(configvarname $1)
+    varname=$1
     val=$2
 
     grep -v "^$varname=" $TMPCONFIG >$NEWCONFIG
     echo $varname="\"$val\"" >>$NEWCONFIG
     mv $NEWCONFIG $TMPCONFIG
 }
-
-
 
 edit_config()
 {
@@ -182,21 +159,21 @@ edit_config()
     noshut=${13}
     splashdelay=${14}
 
-    config_BATTERY_TIME_DIM=$bat_dim
-    config_BATTERY_TIME_SLEEP=$bat_sleep
-    config_BATTERY_TIME_BLANK=$bat_blank
-    config_EBOOK_TIME_DIM=$ebook_dim
-    config_EBOOK_TIME_SLEEP=$ebook_sleep
-    config_EBOOK_TIME_BLANK=$ebook_blank
-    config_PLUGGED_TIME_DIM=$plugged_dim
-    config_PLUGGED_TIME_SLEEP=$plugged_sleep
-    config_PLUGGED_TIME_BLANK=$plugged_blank
+    setvar config_BATTERY_TIME_DIM $bat_dim
+    setvar config_BATTERY_TIME_SLEEP $bat_sleep
+    setvar config_BATTERY_TIME_BLANK $bat_blank
+    setvar config_EBOOK_TIME_DIM $ebook_dim
+    setvar config_EBOOK_TIME_SLEEP $ebook_sleep
+    setvar config_EBOOK_TIME_BLANK $ebook_blank
+    setvar config_PLUGGED_TIME_DIM $plugged_dim
+    setvar config_PLUGGED_TIME_SLEEP $plugged_sleep
+    setvar config_PLUGGED_TIME_BLANK $plugged_blank
 
-    config_IDLE_DIM_LEVEL=$idledim
-    config_WAKE_ON_WLAN=$(yes_no $wlanwake)
-    config_MAX_SLEEP_BEFORE_SHUTDOWN=$maxsleep
-    config_NO_SHUTDOWN_WHEN_PLUGGED=$(yes_no $noshut)
-    config_CONFIRM_SECONDS=$splashdelay
+    setvar config_IDLE_DIM_LEVEL $idledim
+    setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
+    setvar config_MAX_SLEEP_BEFORE_SHUTDOWN $maxsleep
+    setvar config_NO_SHUTDOWN_WHEN_PLUGGED $(yes_no $noshut)
+    setvar config_CONFIRM_SECONDS $splashdelay
 
     return 0
 
@@ -244,7 +221,7 @@ main()
         exit 1
     fi
 
-    # check_root
+    check_root
 
     if [ -f $CONFIGFILE ]
     then
@@ -255,6 +232,7 @@ main()
 
     if edit_config $TMPCONFIG
     then
+	mv $CONFIGFILE $CONFIGFILE.bak
 	mv $TMPCONFIG $CONFIGFILE
 	activate_config
     else
