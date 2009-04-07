@@ -470,7 +470,7 @@ snooze()
                 ;;
 
             until_shutdown-rtc*)
-                if [ yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED" ]
+                if yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
                 then
                     do_shutdown "idle timeout"
                 fi
