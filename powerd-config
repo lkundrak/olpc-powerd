@@ -117,7 +117,8 @@ edit_config()
     row=1
     if ! dialog \
           --backtitle "$backtitle" --form \
-            "Note: Dim must be first, but either Sleep or screen Blank may be scheduled next." 0 60 15 \
+            "Note: Dim must happen first, but either Sleep or Screen Blank may be scheduled next." \
+	    22 60 15 \
       \
             "Battery:     Dim"         1 1      "$bat_dim"    1  18 9 9 \
       "Sleep"       2 12      "$bat_sleep"  2  18 9 9 \
