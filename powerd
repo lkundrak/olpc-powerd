@@ -427,7 +427,8 @@ snooze()
         # which is buggy in the kernel, and b) trying to sleep for
         # 0 seconds, which might happen if we wake up due to an AC
         # event at just the same time that rtcwake should have expired.
-        rtctime=$(( rtctime - ( $(date +%s) - sleep_started ) ))
+        now=$(date +%s)
+        rtctime=$(( rtctime - ( now - sleep_started ) ))
         rtctime=$(( (rtctime <= 1) ? 2 : rtctime ))
 
         read_wakeupsource wakeupsource
