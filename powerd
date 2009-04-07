@@ -234,7 +234,7 @@ yes_or_true()
 {
     case $1 in
     1|[yYtT]*)  return 0 ;;
-    *)		return 1 ;;
+    *)          return 1 ;;
     esac
 }
 
@@ -418,9 +418,13 @@ snooze()
         fi
 
         # prepare for the default case of simply re-sleeping for
-        # the remaining time.  may be overridden.
+        # the remaining time.  may be overridden.  note that this
+        # also protects against a) sleeping for less than a second,
+        # which is buggy in the kernel, and b) trying to sleep for
+        # 0 seconds, which might happen if we wake up due to an AC
+        # event at just the same time that rtcwake should have expired.
         rtctime=$(( rtctime - ( $(date +%s) - sleep_started ) ))
-        rtctime=$(( (rtctime < 0) ? 0 : rtctime ))
+        rtctime=$(( (rtctime <= 1) ? 2 : rtctime ))
 
         read_wakeupsource wakeupsource
         : wakeupsource is $wakeupsource
@@ -625,7 +629,7 @@ read_config()
     source $CONFIGFILE
 
     yes_or_true "$config_NO_SHUTDOWN_WHEN_PLUGGED" &&
-	log configured to never shutdown while plugged in
+        log configured to never shutdown while plugged in
 
 }
 
@@ -634,11 +638,11 @@ check_acstate()
     read on_ac < $AC_ONLINE
     if [ "$on_ac" = 1 ]
     then
-	ac_online=true
-	return 0
+        ac_online=true
+        return 0
     else
-	ac_online=;
-	return 1
+        ac_online=;
+        return 1
     fi
 }
 
@@ -701,20 +705,20 @@ set_idletimes()
 
     if [ "$ac_online" ]
     then
-	t1=$config_PLUGGED_TIME_DIM
-	t2=$config_PLUGGED_TIME_SLEEP
-	t3=$config_PLUGGED_TIME_BLANK
+        t1=$config_PLUGGED_TIME_DIM
+        t2=$config_PLUGGED_TIME_SLEEP
+        t3=$config_PLUGGED_TIME_BLANK
     else
-	if [ "$am_ebook" ]
-	then
-	    t1=$config_EBOOK_TIME_DIM
-	    t2=$config_EBOOK_TIME_SLEEP
-	    t3=$config_EBOOK_TIME_BLANK
-	else
-	    t1=$config_BATTERY_TIME_DIM
-	    t2=$config_BATTERY_TIME_SLEEP
-	    t3=$config_BATTERY_TIME_BLANK
-	fi
+        if [ "$am_ebook" ]
+        then
+            t1=$config_EBOOK_TIME_DIM
+            t2=$config_EBOOK_TIME_SLEEP
+            t3=$config_EBOOK_TIME_BLANK
+        else
+            t1=$config_BATTERY_TIME_DIM
+            t2=$config_BATTERY_TIME_SLEEP
+            t3=$config_BATTERY_TIME_BLANK
+        fi
     fi
 
     # have the values changed?
@@ -746,12 +750,8 @@ set_idletimes()
     test "$t3" -le "$t2"        && t3=$((t2 + 60))
     test "$t3" -le $((t2 + 5))  && t3=$((t2 + 5))
 
-    # convert to deltas
-    t3=$((t3 - t2))
-    t2=$((t2 - t1))
-
-    # give olpc-kbdshim the timeouts
-    echo "I $t1 $t2 $t3" >$USER_ACTIVITY_CMDS
+    # give olpc-kbdshim the timeouts, in delta form
+    echo "I $t1 $((t2 - t1)) $((t3 - t2))" >$USER_ACTIVITY_CMDS
 
     t4=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-0}
     test "$t4" -eq "$t4" || t4=0
@@ -922,7 +922,7 @@ event_loop()
             ;;
 
         useridle1)
-	    backlight dim
+            backlight dim
             ;;
 
         useridle2)
