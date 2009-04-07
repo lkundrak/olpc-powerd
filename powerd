@@ -396,7 +396,7 @@ snooze()
 
     while :
     do
-        sleep_started=$(date +%s);
+        sleep_started=$(date +%s)
         if [ $rtctype = until_shutdown ]
         then
             # if we're waiting for a shutdown, then this is a
@@ -470,7 +470,8 @@ snooze()
                 ;;
 
             until_shutdown-rtc*)
-                if yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
+                if [ ! "$ac_online" ] || \
+                        yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
                 then
                     do_shutdown "idle timeout"
                 fi
