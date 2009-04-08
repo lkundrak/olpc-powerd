@@ -506,7 +506,7 @@ snooze()
             ;;
 
         "lid"|"empty sci")  # assume "empty sci" comes from lid (kernel bug)
-            am_ebook=false
+            am_ebook=;
             selfinject fake_useractive
             break
             ;;
@@ -898,7 +898,7 @@ event_loop()
             ;;
 
         lidclose)
-            am_ebook=false
+            am_ebook=;
             invalidate_powertimer
             backlight off
             # sleep until it's time to shut down
@@ -907,7 +907,7 @@ event_loop()
 
         lidopen)
             gotactivity
-            am_ebook=false
+            am_ebook=;
             backlight restore
             ;;
 
