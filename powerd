@@ -260,12 +260,12 @@ if [ "$SECONDS" ]
 then
     seconds()
     {
-	echo $SECONDS
+        echo $SECONDS
     }
 else
     seconds()
     {
-	date +%s
+        date +%s
     }
 fi
 
@@ -340,17 +340,11 @@ touchfile_is_recent()
 {
     if [ -e $INHIBIT_BY_TOUCH ]
     then
-	touched=$(stat --format=%Y $INHIBIT_BY_TOUCH)
-	now=$(seconds)
-	return $(( ( now - touched ) > last_activity ))
+        touched=$(stat --format=%Y $INHIBIT_BY_TOUCH)
+        now=$(seconds)
+        return $(( ( now - touched ) > last_activity ))
     fi
     return 1
-}
-
-create_inhibit_dir()
-{
-    mkdir -p $INHIBITDIR
-    chmod a+rwt $INHIBITDIR
 }
 
 inhibit_files_present()
@@ -372,12 +366,18 @@ inhibit_files_present()
     return $inhibit_ret
 }
 
+create_inhibit_dir()
+{
+    mkdir -p $INHIBITDIR
+    chmod a+rwt $INHIBITDIR
+}
+
 laptop_busy()
 {
     return  inhibit_files_present || \
-	    touchfile_is_recent || \
-	    cpu_busy || \
-	    network_busy
+            touchfile_is_recent || \
+            cpu_busy || \
+            network_busy
 }
 
 set_wlan_power()
@@ -681,6 +681,16 @@ backlight()
     esac
 }
 
+dcon()
+{
+    case $1 in
+    freeze) echo 1 > $DCON_FREEZE ;;
+    thaw)   echo 0 > $DCON_FREEZE ;;
+    sleep)  echo 1 > $DCON_SLEEP ;;
+    wake)   echo 0 > $DCON_SLEEP ;;
+    esac
+}
+
 set_config_defaults()
 {
     # give all config values defaults, so we'll
@@ -722,19 +732,6 @@ read_config()
 
 }
 
-check_acstate()
-{
-    read on_ac < $AC_ONLINE
-    if [ "$on_ac" = 1 ]
-    then
-        ac_online=true
-        return 0
-    else
-        ac_online=;
-        return 1
-    fi
-}
-
 o_maybe_battery_shutdown()  # old version, uses capacity only
 {
 
@@ -774,9 +771,22 @@ read_battery()
     read battery_capacity < $CAPACITY
 }
 
+plugged_in()
+{
+    read on_ac < $AC_ONLINE
+    if [ "$on_ac" = 1 ]
+    then
+        ac_online=true
+        return 0
+    else
+        ac_online=;
+        return 1
+    fi
+}
+
 power_check()
 {
-    if ! check_acstate
+    if ! plugged_in
     then
         read_battery
         maybe_battery_shutdown
@@ -900,16 +910,6 @@ invalidate_powertimer()
     : $((timerseqno += 1))
 }
 
-dcon()
-{
-    case $1 in
-    freeze) echo 1 > $DCON_FREEZE ;;
-    thaw)   echo 0 > $DCON_FREEZE ;;
-    sleep)  echo 1 > $DCON_SLEEP ;;
-    wake)   echo 0 > $DCON_SLEEP ;;
-    esac
-}
-
 gotactivity()
 {
     invalidate_powertimer
@@ -1009,7 +1009,7 @@ event_loop()
             ;;
 
         useractive|fake_useractive)
-	    last_activity=$(seconds)
+            last_activity=$(seconds)
             gotactivity
             backlight restore
             test "$event" = fake_useractive && reset_idlecounters
@@ -1019,16 +1019,16 @@ event_loop()
             if laptop_busy
             then
                 reset_idlecounters  # restart the timers
-		continue
+                continue
             fi
-	    backlight dim
+            backlight dim
             ;;
 
         useridle2)
             if laptop_busy
             then
                 reset_idlecounters  # restart the timers
-		continue
+                continue
             fi
             if [ "$dark_before_sleep" ]
             then
@@ -1043,7 +1043,7 @@ event_loop()
             if laptop_busy
             then
                 reset_idlecounters  # restart the timers
-		continue
+                continue
             fi
             if [ "$dark_before_sleep" ]
             then
