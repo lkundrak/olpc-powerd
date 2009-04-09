@@ -19,15 +19,12 @@
 	(configurable) every so often thereafter until we hit shutdown
 	or the condition cleared.
 
-    - add monitoring of cpu and/or network load to prevent sleeps
-	when "busy" with other than user input
+    - add monitoring of network load (how?) to prevent sleeps?
 
-    - ohmd provides a "keystore" object which activities can use to
-	set/get a few inhibit states.  i haven't been able to figure
-	out how to monitor this traffic with dbus-monitor.  it's
-	unfortunate that this api is ohmd-specific, but not surprising.
-	it would be good to emulate it, since olpc-update, at least, and
-	probably others use it to inhibit suspend while they're active.
+    - someone should write an ohmd "keystore-to-inhibit-file" translator
+	to convert the get/set that some activities and processes do
+	in order to inhibit suspend into something powerd can use.
+	or else, augment the activities.
 
     - how should mesh and AP connections be treated wrt keeping the
 	wireless alive?  if we sleep with an AP connection, will we
