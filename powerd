@@ -76,8 +76,14 @@
 # below which we're unwilling to suspend, on the assumption that
 # system is doing something "important" for the user.
 #
-# Idle suspend can be manually inhibited by creating the file
-#    /var/run/inhibit-idle-suspend
+# Idle dim/blank/sleep can be inhibited by creating a file in
+#    /var/run/powerd-inhibit-suspend
+# The file must be named after the pid of the process, and may be
+# empty.  Stale inhibit files will be reaped when the next suspend
+# is attempted.  To manually inhibit suspend one can simply create
+# a file named after a long-running process:  e.g.,
+#    touch /var/run/powerd-inhibit-suspend/1
+# Such a file will need to be manually removed, of course.
 #
 # Post-resume scripts can be put in /etc/powerd/postresume.d -- the
 # scripts will be run in lexicographic order.  The scripts are run
@@ -196,6 +202,8 @@ RUNPARTSDIR=$CONFIGDIR//postresume.d
 
 LOGFILE=$CONFIGDIR/powerd.log   # only used for debug, currently
 
+INHIBITDIR=/var/run/powerd-inhibit-suspend
+
 CONFIRMSPLASH=$CONFIGDIR/pleaseconfirm.pgm
 SHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
 BATTSHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
@@ -312,9 +320,34 @@ network_busy()
     return 1
 }
 
+create_inhibit_dir()
+{
+    mkdir -p $INHIBITDIR
+    chmod a+rwt $INHIBITDIR
+}
+
+check_inhibit_files()
+{
+    inhibit_ret=1
+    for f in $(ls $INHIBITDIR )
+    do
+
+        if kill -0 $f 2>/dev/null
+        then
+            inhibit_ret=0
+            break
+        fi
+
+        rm -f $INHIBITDIR/$f
+
+    done
+
+    return $inhibit_ret
+}
+
 laptop_idle()
 {
-    test -f /var/run/inhibit-idle-suspend && return 1
+    check_inhibit_files && return 1
     cpu_busy && return 1
     network_busy && return 1
     return 0
@@ -1062,6 +1095,8 @@ if [ -r $CONFIGFILE ]
 then
     log configuring from $CONFIGFILE
 fi
+
+create_inhibit_dir
 
 read_config
 
