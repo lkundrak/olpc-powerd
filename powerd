@@ -774,8 +774,8 @@ set_idletimes()
     test "$t3" -le "$t2"        && t3=$((t2 + 60))
     test "$t3" -le $((t2 + 5))  && t3=$((t2 + 5))
 
-    # give olpc-kbdshim the timeouts, in delta form
-    reset_idlecounters $t1 $((t2 - t1)) $((t3 - t2))
+    # give olpc-kbdshim the timeouts
+    reset_idlecounters $t1 $t2 $t3
 
     t4=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-0}
     test "$t4" -eq "$t4" || t4=0
