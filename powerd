@@ -329,17 +329,15 @@ create_inhibit_dir()
 check_inhibit_files()
 {
     inhibit_ret=1
+    # check for pid files.  remove any non-pid files
     for f in $(ls $INHIBITDIR )
     do
-
         if kill -0 $f 2>/dev/null
         then
             inhibit_ret=0
             break
         fi
-
         rm -f $INHIBITDIR/$f
-
     done
 
     return $inhibit_ret
