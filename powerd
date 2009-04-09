@@ -20,7 +20,7 @@
 # -- ease of customization, given that its written in shell.
 #
 # Unimplemented:
-# -- inhibiting idle suspend based on system or network load.
+# -- inhibiting idle suspend based network load.
 # -- any special support for the mesh, whatsoever.
 # -- there's some support for wake-on-lan, but it's not well tested.
 # -- probably more.
@@ -159,8 +159,8 @@
 #
 #
 #
-# -- Other system activity (cpu load, network load, etc):
-#       unimplemented
+# -- Other system activity: cpu load (implemented), network load
+#       (unimplemented), etc.
 #
 # Note that X11 DPMS is neither consulted nor configured, and it
 # may still blank the display after some period of inactivity. 
@@ -203,6 +203,7 @@ RUNPARTSDIR=$CONFIGDIR//postresume.d
 LOGFILE=$CONFIGDIR/powerd.log   # only used for debug, currently
 
 INHIBITDIR=/var/run/powerd-inhibit-suspend
+INHIBIT_BY_TOUCH=$INHIBITDIR/.inhibit-suspend
 
 CONFIRMSPLASH=$CONFIGDIR/pleaseconfirm.pgm
 SHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
@@ -253,6 +254,21 @@ yes_or_true()
     *)          return 1 ;;
     esac
 }
+
+# use $SECONDS for timing when possible
+if [ "$SECONDS" ]
+then
+    seconds()
+    {
+	echo $SECONDS
+    }
+else
+    seconds()
+    {
+	date +%s
+    }
+fi
+
 
 splash()
 {
@@ -320,15 +336,28 @@ network_busy()
     return 1
 }
 
+touchfile_is_recent()
+{
+    if [ -e $INHIBIT_BY_TOUCH ]
+    then
+	touched=$(stat --format=%Y $INHIBIT_BY_TOUCH)
+	now=$(seconds)
+	return $(( ( now - touched ) > last_activity ))
+    fi
+    return 1
+}
+
 create_inhibit_dir()
 {
     mkdir -p $INHIBITDIR
     chmod a+rwt $INHIBITDIR
 }
 
-check_inhibit_files()
+inhibit_files_present()
 {
+
     inhibit_ret=1
+
     # check for pid files.  remove any non-pid files
     for f in $(ls $INHIBITDIR )
     do
@@ -343,12 +372,12 @@ check_inhibit_files()
     return $inhibit_ret
 }
 
-laptop_idle()
+laptop_busy()
 {
-    check_inhibit_files && return 1
-    cpu_busy && return 1
-    network_busy && return 1
-    return 0
+    return  inhibit_files_present || \
+	    touchfile_is_recent || \
+	    cpu_busy || \
+	    network_busy
 }
 
 set_wlan_power()
@@ -429,7 +458,14 @@ snooze()
 {
     runparts suspend
     read_wlan_power wlp
-    yes_or_true "$config_WAKE_ON_WLAN" || set_wlan_power 0
+    # ohmd uses this:
+    #    nm-tool | grep msh0 -A4 | grep Active | awk '{print $2}'\"
+    # to determine whether mesh is active before turning off wireless.
+    # i guess we should do the same.
+    if ! yes_or_true "$config_WAKE_ON_WLAN"
+    then
+        set_wlan_power 0
+    fi
 
     # we only use rtc alarms to either a) turn of the screen when
     # we've been sleeping for a while, or b) shutdown after we've been
@@ -441,7 +477,7 @@ snooze()
 
     while :
     do
-        sleep_started=$(date +%s)
+        sleep_started=$(seconds)
         if [ $rtctype = until_shutdown ]
         then
             # if we're waiting for a shutdown, then this is a
@@ -472,7 +508,7 @@ snooze()
         # which is buggy in the kernel, and b) trying to sleep for
         # 0 seconds, which might happen if we wake up due to an AC
         # event at just the same time that rtcwake should have expired.
-        now=$(date +%s)
+        now=$(seconds)
         rtctime=$(( rtctime - ( now - sleep_started ) ))
         rtctime=$(( (rtctime <= 1) ? 2 : rtctime ))
 
@@ -973,21 +1009,27 @@ event_loop()
             ;;
 
         useractive|fake_useractive)
+	    last_activity=$(seconds)
             gotactivity
             backlight restore
             test "$event" = fake_useractive && reset_idlecounters
             ;;
 
         useridle1)
-            if laptop_idle
+            if laptop_busy
             then
-                backlight dim
-            else
                 reset_idlecounters  # restart the timers
+		continue
             fi
+	    backlight dim
             ;;
 
         useridle2)
+            if laptop_busy
+            then
+                reset_idlecounters  # restart the timers
+		continue
+            fi
             if [ "$dark_before_sleep" ]
             then
                 backlight off
@@ -998,6 +1040,11 @@ event_loop()
             ;;
 
         useridle3)
+            if laptop_busy
+            then
+                reset_idlecounters  # restart the timers
+		continue
+            fi
             if [ "$dark_before_sleep" ]
             then
                 # sleep until it's time to shut down
@@ -1081,6 +1128,7 @@ o_ebook=xxx;
 dimmed=;
 savebright=;
 last_t_values=;
+last_activity=0;
 timerseqno=1;
 powerseqno=0;
 
