@@ -78,12 +78,12 @@
 #
 # Idle dim/blank/sleep can be inhibited by creating a file in
 #    /var/run/powerd-inhibit-suspend
-# The file must be named after the pid of the process, and may be
-# empty.  Stale inhibit files will be reaped when the next suspend
-# is attempted.  To manually inhibit suspend one can simply create
-# a file named after a long-running process:  e.g.,
-#    touch /var/run/powerd-inhibit-suspend/1
-# Such a file will need to be manually removed, of course.
+# The file must be named after the pid of the process doing the
+# inhibiting, and may be empty.  Stale inhibit files will be
+# removed when the next suspend is attempted.  To manually inhibit
+# suspend one can simply create a file named after a long-running
+# process:  e.g., touch /var/run/powerd-inhibit-suspend/1 Such a
+# file will need to be manually removed, of course.
 #
 # Post-resume scripts can be put in /etc/powerd/postresume.d -- the
 # scripts will be run in lexicographic order.  The scripts are run
