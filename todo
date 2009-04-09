@@ -19,6 +19,12 @@
 	(configurable) every so often thereafter until we hit shutdown
 	or the condition cleared.
 
+    - there's no way to specify no dimming for just one of the
+	modes.  i.e., i'd like dimming when on battery in laptop
+	mode, but not in ebook mode (where i want it to sleep
+	right away, but at full brightness).  i think this means
+	a per-mode dimlevel.
+
     - add monitoring of network load (how?) to prevent sleeps?
 
     - someone should write an ohmd "keystore-to-inhibit-file" translator
