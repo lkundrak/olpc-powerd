@@ -76,14 +76,25 @@
 # below which we're unwilling to suspend, on the assumption that
 # system is doing something "important" for the user.
 #
-# Idle dim/blank/sleep can be inhibited by creating a file in
-#    /var/run/powerd-inhibit-suspend
-# The file must be named after the pid of the process doing the
-# inhibiting, and may be empty.  Stale inhibit files will be
-# removed when the next suspend is attempted.  To manually inhibit
-# suspend one can simply create a file named after a long-running
-# process:  e.g., touch /var/run/powerd-inhibit-suspend/1 Such a
-# file will need to be manually removed, of course.
+# Idle dim/blank/sleep can be inhibited externally by two separate
+# means: 
+#
+# 1) A file may be created in
+#     /var/run/powerd-inhibit-suspend/
+# The file must be named after the PID of the process doing the
+# inhibiting (and may be empty).  Stale inhibit files will be
+# removed when the next dim is attempted.  To manually inhibit
+# dim/blank/sleep one can simply create a file named after a
+# long-running process:  e.g., "touch /var/run/powerd-inhibit-suspend/1".
+# Such a file will need to be manually removed, of course.
+#
+# 2) The modification time of the file
+#     /var/run/powerd-inhibit-suspend/.fake_activity
+# will be checked before any dim/blank/sleep occurs, and compared
+# to the time of the last "real" user activity.  If it is newer,
+# the dim/blank/sleep will be avoided.  So a program wishing to
+# indicate that it is "active" can simply touch this file periodically
+# to keep it up-to-date.
 #
 # Post-resume scripts can be put in /etc/powerd/postresume.d -- the
 # scripts will be run in lexicographic order.  The scripts are run
@@ -203,7 +214,7 @@ RUNPARTSDIR=$CONFIGDIR//postresume.d
 LOGFILE=$CONFIGDIR/powerd.log   # only used for debug, currently
 
 INHIBITDIR=/var/run/powerd-inhibit-suspend
-INHIBIT_BY_TOUCH=$INHIBITDIR/.inhibit-suspend
+INHIBIT_BY_TOUCH=$INHIBITDIR/.fake_activity
 
 CONFIRMSPLASH=$CONFIGDIR/pleaseconfirm.pgm
 SHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
@@ -258,6 +269,7 @@ yes_or_true()
 # use $SECONDS for timing when possible
 if [ "$SECONDS" ]
 then
+    SECONDS=$(date +%s)
     seconds()
     {
         echo $SECONDS
@@ -341,8 +353,7 @@ touchfile_is_recent()
     if [ -e $INHIBIT_BY_TOUCH ]
     then
         touched=$(stat --format=%Y $INHIBIT_BY_TOUCH)
-        now=$(seconds)
-        return $(( ( now - touched ) > last_activity ))
+        return $(( touched <= last_activity ))
     fi
     return 1
 }
@@ -374,10 +385,11 @@ create_inhibit_dir()
 
 laptop_busy()
 {
-    return  inhibit_files_present || \
-            touchfile_is_recent || \
+    inhibit_files_present || \
+        touchfile_is_recent || \
             cpu_busy || \
-            network_busy
+                network_busy && return 0
+    return 1
 }
 
 set_wlan_power()
