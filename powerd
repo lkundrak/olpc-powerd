@@ -72,6 +72,10 @@
 # entirely (e.g., with "echo 0>/sys/power/wlan-enabled"), which
 # may override this setting.
 #
+# "config_CPU_IDLE_LIMIT" (integer) is the cpu idle percentage
+# below which we're unwilling to suspend, on the assumption that
+# system is doing something "important" for the user.
+#
 # Idle suspend can be manually inhibited by creating the file
 #    /var/run/inhibit-idle-suspend
 #
@@ -288,7 +292,17 @@ do_shutdown()
 
 cpu_busy()
 {
-    # TBD
+    # pull the cpu idle percentage (over one second) out of the
+    # third-to-last field of vmstat output.  (this metric
+    # taken straight from ohmd.)
+    field='[[:space:]]\+\([[:digit:]]\+\)'
+    idle=$(vmstat 1 2  | sed -n "\$s/.*$field$field$field\$/\1/p")
+
+    # ensure numeric.  if failure, assume we're not busy.
+    test "$idle" && test "$idle" -eq "$idle" >/dev/null || return 1
+
+    test "$idle" -le $config_CPU_IDLE_LIMIT && return 0
+
     return 1
 }
 
@@ -517,7 +531,7 @@ snooze()
         esac
     done
     set_wlan_power $wlp
-    reset_idlecounter
+    reset_idlecounters
     runparts resume &
 }
 
@@ -623,6 +637,8 @@ set_config_defaults()
     #config_USE_EBOOK_PROFILE=false
 
     config_CONFIRM_SECONDS=7
+
+    config_CPU_IDLE_LIMIT=10
 } 
 
 read_config()
@@ -700,10 +716,12 @@ power_check()
     fi
 }
 
-reset_idlecounter()
+reset_idlecounters()
 {
-    # olpc-kbdshim will reset its idle timers when the deadlines are reset
-    echo "I $t1 $t2 $t3" >$USER_ACTIVITY_CMDS
+    # if given arguments, remember then for reuse later on.
+    # (olpc-kbdshim will reset its idle timers when the deadlines are reset)
+    test "${1:-}" && last_idlecounters="$*"
+    echo "I $last_idlecounters" >$USER_ACTIVITY_CMDS
 }
 
 set_idletimes()
@@ -728,9 +746,9 @@ set_idletimes()
     fi
 
     # have the values changed?
-    idletimes="$t1 $t2 $t3"
-    test "$t1 $t2 $t3" = "$last_idletimes" && return 1
-    last_idletimes="$idletimes"
+    t_values="$t1 $t2 $t3"
+    test "$t1 $t2 $t3" = "$last_t_values" && return 1
+    last_t_values="$t_values"
 
     # now validate the configured times...
 
@@ -757,7 +775,7 @@ set_idletimes()
     test "$t3" -le $((t2 + 5))  && t3=$((t2 + 5))
 
     # give olpc-kbdshim the timeouts, in delta form
-    echo "I $t1 $((t2 - t1)) $((t3 - t2))" >$USER_ACTIVITY_CMDS
+    reset_idlecounters $t1 $((t2 - t1)) $((t3 - t2))
 
     t4=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-0}
     test "$t4" -eq "$t4" || t4=0
@@ -767,11 +785,13 @@ set_idletimes()
     then
         screenofftimer=;
         shutdowntimer=$t4
-        log dim in $t1 seconds, blank in $t2, then sleep in $t3, then shutdown in $t4
+        log dim in $t1 seconds, blank in $t2, sleep in $t3, \
+                then shutdown after $t4
     else
         screenofftimer=$((t3 - t2))
         shutdowntimer=$t4
-        log dim in $t1 seconds, sleep in $t2, then blank in $t3, then shutdown in $t4
+        log dim in $t1 seconds, sleep in $t2, blank in $t3, \
+                then shutdown after $t4
     fi
 
     return 0
@@ -783,7 +803,7 @@ reevaluate()
          "${o_ac_online:-}" != "$ac_online" -o \
          "${o_ebook:-}" != "$am_ebook" ]
     then
-        set_idletimes || reset_idlecounter
+        set_idletimes || reset_idlecounters
     fi
     o_ebook=$am_ebook
     o_ac_online=$ac_online
@@ -864,12 +884,12 @@ event_loop()
                 # wake the system up.
                 gotactivity
                 backlight restore
-                reset_idlecounter
+                reset_idlecounters
             else
                 if [ "$powerseqno" != "$timerseqno" ]
                 then # first press
                     splash confirm
-                    reset_idlecounter # reprime for "useractivity"
+                    reset_idlecounters # reprime for "useractivity"
                     sched_powertimer $config_CONFIRM_SECONDS gotosleep
                     powerseqno=$timerseqno
                     backlight restore
@@ -924,36 +944,35 @@ event_loop()
         useractive|fake_useractive)
             gotactivity
             backlight restore
-            test "$event" = fake_useractive && reset_idlecounter
+            test "$event" = fake_useractive && reset_idlecounters
             ;;
 
         useridle1)
-            backlight dim
+            if laptop_idle
+            then
+                backlight dim
+            else
+                reset_idlecounters  # restart the timers
+            fi
             ;;
 
         useridle2)
-            if laptop_idle
+            if [ "$dark_before_sleep" ]
             then
-                if [ "$dark_before_sleep" ]
-                then
-                    backlight off
-                else
-                    # sleep until it's time to darken the screen
-                    snooze until_screenoff "$screenofftimer" "$shutdowntimer"
-                fi
+                backlight off
+            else
+                # sleep until it's time to darken the screen
+                snooze until_screenoff "$screenofftimer" "$shutdowntimer"
             fi
             ;;
 
         useridle3)
-            if laptop_idle
+            if [ "$dark_before_sleep" ]
             then
-                if [ "$dark_before_sleep" ]
-                then
-                    # sleep until it's time to shut down
-                    snooze until_shutdown "$shutdowntimer"
-                #else
-                #    ; # shouldn't happen
-                fi
+                # sleep until it's time to shut down
+                snooze until_shutdown "$shutdowntimer"
+            #else
+            #    ; # shouldn't happen
             fi
             ;;
 
@@ -1030,7 +1049,7 @@ am_ebook=;
 o_ebook=xxx;
 dimmed=;
 savebright=;
-last_idletimes=;
+last_t_values=;
 timerseqno=1;
 powerseqno=0;
 
