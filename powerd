@@ -1140,7 +1140,6 @@ o_ebook=xxx;
 dimmed=;
 savebright=;
 last_t_values=;
-last_activity=0;
 timerseqno=1;
 powerseqno=0;
 
@@ -1161,6 +1160,7 @@ read_config
 power_check
 
 reevaluate all
+last_activity=$(seconds)
 
 # let user programs control brightness
 chmod a+w $BRIGHTNESS $MONO_MODE
