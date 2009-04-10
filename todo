@@ -22,16 +22,28 @@
     - there's no way to specify no dimming for just one of the
 	modes.  i.e., i'd like dimming when on battery in laptop
 	mode, but not in ebook mode (where i want it to sleep
-	right away, but at full brightness).  i think this means
+	right away, but at full brightness).  this would mean
 	a per-mode dimlevel.
+
+	better to create separate configurations, and switch among
+	them using "powerd-config <profilename>", which will
+	swap in a different config and signal powerd to reconfigure.
+	this lets one manage different configs for different
+	uses.  the way the laptop is used on vacation might be
+	different than at school, or than at the beach, etc.)
 
     - add monitoring of network load (how?) to prevent sleeps?
 
-    - someone should write an ohmd "keystore-to-inhibit-file" translator
-	to convert the get/set that some activities and processes do
-	in order to inhibit suspend into something powerd can use.
-	or else, augment the activities.
+    - someone should write an ohmd "keystore" to powerd
+	"inhibit-file" translator to convert the get/set that
+	some activities and processes do in order to inhibit
+	suspend into something powerd can use.  or else, augment
+	the activities to use the new api as well as, or in place
+	of, the old.
 
     - how should mesh and AP connections be treated wrt keeping the
 	wireless alive?  if we sleep with an AP connection, will we
 	eventually lose association anyway?
+
+
+
