@@ -25,6 +25,8 @@
 # -- there's some support for wake-on-lan, but it's not well tested.
 # -- probably more.
 #
+#####
+#
 # Configuration:
 #
 # Major config variables are documented below.  powerd reads
@@ -41,26 +43,29 @@
 # "plugged in", "battery", and "ebook" modes.  (If the laptop is
 # plugged in while in ebook mode, the plugged in timers are
 # used.) The nine idle timers are:
+#
 #   config_BATTERY_TIME_{DIM,SLEEP,BLANK}
 #   config_EBOOK_TIME_{DIM,SLEEP,BLANK}
 #   config_PLUGGED_TIME_{DIM,SLEEP,BLANK}
-# Dim must happen first.  Sleep and blanking can happen in either
-# order.  If sleep happens first, the screen will stay on while
-# the rest of the system sleeps.  If blanking is scheduled first,
-# the screen will go dark while the laptop remains otherwise
-# fully active.  In either case, when the screen is dark and the
-# laptop is sleeping, it's a "deep" sleep -- keystrokes will not
-# wake it up, just as if the power button had been used. 
-# The maximum time that any sleep will last before the laptop
-# shuts down is given by "config_MAX_SLEEP_BEFORE_SHUTDOWN".
+#
+# Dimming must happen first.  Sleep and blanking can happen in
+# either order.  If "sleep" happens first, the screen will stay on
+# while the rest of the system sleeps, but any keystroke or
+# touchpad activity will awaken it.  If blanking is scheduled
+# first, the screen will go dark while the laptop remains
+# otherwise fully active.  In either case, when the screen is
+# dark and the laptop is sleeping, it's a "deep" sleep --
+# keystrokes will not wake it up, just as if the power button had
+# been used.  The maximum time that any sleep will last before
+# the laptop shuts down is given by "config_MAX_SLEEP_BEFORE_SHUTDOWN".
 #
 # If it's never desirable for the laptop to completely shut down
 # when plugged in, then "config_ALLOW_SHUTDOWN_WHEN_PLUGGED" should
 # be turned off.
 #
-# "config_IDLE_DIM_LEVEL" is how dim will the screen go when the first
-# timer fires.  (range is 0-15.)  If set to 15, the screen will never
-# dim.
+# "config_IDLE_DIM_LEVEL" specifies how dim will the screen go
+# when the first ("config_..._TIME_DIM") timer fires.  The range
+# is 0-15.  If set to 15, the screen will never dim.
 #
 # "config_CONFIRM_SECONDS" determines how long the shutdown/suspend
 # confirmation splash screen stays visible before the laptop
@@ -76,56 +81,74 @@
 # below which we're unwilling to suspend, on the assumption that
 # system is doing something "important" for the user.
 #
+# If /etc/powerd.conf is a symlink to another file, then powerd-config
+# can be used to easily manage a set of configuration "profiles".
+# So different configurations can be used at different times of day,
+# or during different tasks, etc.
+#
+######
+#
+# Inhibiting sleep
+#
 # Idle dim/blank/sleep can be inhibited externally by two separate
 # means: 
 #
 # 1) A file may be created in
 #     /var/run/powerd-inhibit-suspend/
-# The file must be named after the PID of the process doing the
-# inhibiting (and may be empty).  Stale inhibit files will be
-# removed when the next dim is attempted.  To manually inhibit
-# dim/blank/sleep one can simply create a file named after a
-# long-running process:  e.g., "touch /var/run/powerd-inhibit-suspend/1".
-# Such a file will need to be manually removed, of course.
+#   The file must be named after the PID of the process doing the
+#   inhibiting (and may be empty).  Stale inhibit files will be
+#   removed when the next dim is attempted.  To manually inhibit
+#   dim/blank/sleep one can simply create a file named after a
+#   long-running process:  e.g., "touch /var/run/powerd-inhibit-suspend/1".
+#   Such a file will need to be manually removed, of course.
 #
 # 2) The modification time of the file
 #     /var/run/powerd-inhibit-suspend/.fake_activity
-# will be checked before any dim/blank/sleep occurs, and compared
-# to the time of the last "real" user activity.  If it is newer,
-# the dim/blank/sleep will be avoided.  So a program wishing to
-# indicate that it is "active" can simply touch this file periodically
-# to keep it up-to-date.
-#
+#   will be checked before any dim/blank/sleep occurs, and compared
+#   to the time of the last "real" user activity.  If it is newer,
+#   the dim/blank/sleep will be avoided.  So a program wishing to
+#   indicate that it is "active" can simply touch this file
+#   periodically to keep it up-to-date.  The command:
+#     powerd-config -a
+#   will do this touch.  For example, to keep the laptop alive while
+#   an ssh session is in use, add:
+#     export PROMPT_COMMAND='powerd-config -a'
+#   into your .bash_profile.
+# 
 # Post-resume scripts can be put in /etc/powerd/postresume.d -- the
 # scripts will be run in lexicographic order.  The scripts are run
 # detached from powerd, so they won't impede its operation -- however,
 # they should be kept as short as possible.
 #
 #
+######
+#
+# Background discussion:
+#
 # The inputs that contribute to power management are:
 #
-# -- Switches:
+# - Switches:
 #       power button
 #       ebook
 #       lid
-# Actions on these switches appear as events on /dev/input/event[012]. 
-# Powerd relies on the companion program "olpc-switchd" to report
-# these events via the /var/run/powerevents fifo it creates for the
-# purpose.  It's unfortunate that these events have no corresponding
-# /sys state indicators, since knowing the state of the lid (or of
-# ebook mode) would be useful in the absence of events (at startup,
-# for instance).
+#   Actions on these switches appear as events on /dev/input/event[012]. 
+#   Powerd relies on the companion program "olpc-switchd" to report
+#   these events via the /var/run/powerevents fifo it creates for the
+#   purpose.  It's unfortunate that these events have no corresponding
+#   /sys state indicators, since knowing the state of the lid (or of
+#   ebook mode) would be useful in the absence of events (at startup,
+#   for instance).
 #
 #
-# -- Conditions:
+# - Conditions:
 #       AC input (boolean)
 #       battery capacity (numeric)
-# It's unfortunate that these have no corresponding events.  Because
-# they don't, olpc-switchd also monitors these two nodes (under /sys)
-# and synthesizes events to represent their transitions.
+#   It's unfortunate that these have no corresponding events.  Because
+#   they don't, olpc-switchd also monitors these two nodes (under /sys)
+#   and synthesizes events to represent their transitions.
 #
 #
-# -- Wakeups:
+# - Wakeups:
 #       ac_power
 #       battery_error
 #       battery_soc (i.e. "state of charge" --> capacity)
@@ -134,22 +157,22 @@
 #       ps2event
 #       wlan
 #       lid (or sometimes "empty sci")
-# When the system wakes from sleep, /sys/power/wakeup-source reports
-# the cause.  Lid reporting is not reliable -- sometimes "empty sci"
-# is reported instead.  (I've not yet seen a case where "empty sci" is
-# reported for lid close I'm not ruling it out.)
+#   When the system wakes from sleep, /sys/power/wakeup-source reports
+#   the cause.  Lid reporting is not reliable -- sometimes "empty sci"
+#   is reported instead.  (I've not yet seen a case where "empty sci" is
+#   reported for lid close I'm not ruling it out.)
 #
 #
-# -- User activity/idleness:
-# powerd expects user activity and user idle events to be delivered via
-# the olpc-kbdshim daemon, when invoked with "-A /var/run/powerevents".
-# The possible events are:
+# - User activity/idleness:
+#   powerd expects user activity and user idle events to be delivered via
+#   the olpc-kbdshim daemon, when invoked with "-A /var/run/powerevents".
+#   The possible events are:
 #       useractivity
 #       useridle1
 #       useridle2
 #       useridle3
 #
-# These events are used in the following ways:
+#   These events are used in the following ways:
 #
 #                  screen          cpu
 #                  ------          ---
@@ -158,8 +181,8 @@
 #     rtcwake1      off            sleep
 #     rtcwake2           shutdown
 #
-# Or, if $config_TIME_BLANK is less than $config_TIME_SLEEP, then
-# this sequence, which is more like a "normal" laptop behaves:
+#   Or, if $config_TIME_BLANK is less than $config_TIME_SLEEP, then
+#   this sequence, which is more like a "normal" laptop behaves:
 #
 #                  screen          cpu
 #                  ------          ---
@@ -169,22 +192,25 @@
 #     rtcwake2           shutdown
 #
 #
-#
-# -- Other system activity: cpu load (implemented), network load
+# - Other system activity: cpu load (implemented), network load
 #       (unimplemented), etc.
 #
-# Note that X11 DPMS is neither consulted nor configured, and it
+#
+# Note that X11 DPMS is neither consulted nor modified, and it
 # may still blank the display after some period of inactivity. 
 # (This won't happen, of course, unless the DPMS "standby" time
-# is shorter than powerd's "config_TIME_SLEEP" time.  The affect
-# of DPMS doing this will result in confusion, since when DPMS
-# blanks the screen, powerd can't tell that it's been done. 
+# is shorter than powerd's "config_..._TIME_SLEEP" time.)  The
+# effect of DPMS doing this will result in confusion, since when
+# DPMS blanks the screen, powerd can't tell that it's been done. 
 # I.e., a laptop with a screen blanked by DPMS may behave
 # differently than one blanked by powerd.  So "xset -dpms" is
 # recommended, preferably in olpc-session.
 #
-# My intention is that this be runnable with most any shell.  No
-# bash-specific features were used, unless by accident.
+# My intention is that powerd be runnable with most any modern
+# shell.  No bash-specific features were used, unless by
+# accident.
+#
+# Please send commends/suggestions/patches to pgf@laptop.org.
 #
 # -----------------------------------------------
 #
