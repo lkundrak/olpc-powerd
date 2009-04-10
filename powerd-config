@@ -27,26 +27,37 @@
 
 set -u
 
-#exec 2>pc.log
-#set -x
-
-usage()
-{
-        (
-        echo "usage: ${0##*/} [ profile-name ]"
-        echo "will activate 'profile-name' if given,"
-        echo "or bring up interactive selection/edit dialogs."
-        ) >&2
-        exit 1
-}
-
-# CONFIGDIR=/tmp
+INHIBITDIR=/var/run/powerd-inhibit-suspend
+INHIBIT_BY_TOUCH=$INHIBITDIR/.fake_activity
 CONFIGDIR=/etc/powerd
 CONFIGFILE=$CONFIGDIR/powerd.conf
 TMPCONFIG=$CONFIGFILE.tmp
 NEWCONFIG=$TMPCONFIG.new
+EVENTFIFO=/var/run/powerevents
 
 TMP=/tmp/powerdconfig.$$
+
+
+#exec 2>pc.log
+#set -x
+
+me=${0##*/}
+
+usage()
+{
+    cat <<EOF >&2
+usage: $me [ -a | =<eventname> | configname ]"
+    -a         Will cause pseudo-activity, to keep the laptop awake"
+    =foo       Will send event 'foo' to powerd"
+    configname If $CONFIGFILE is a symlink,"
+               specifying the name of a file in $CONFIGDIR will"
+               repoint the symlink and cause powerd to reconfigure itself."
+    Otherwise, giving no arguments will bring up a configuration"
+    editor on the current $CONFIGFILE"
+
+EOF
+    exit 1
+}
 
 
 trap "rm -f $TMP $TMPCONFIG $NEWCONFIG" 0
@@ -57,7 +68,7 @@ yes_no()
 {
     case $1 in
     1|[yYtT]*)  echo yes  ;;
-    *)		echo no   ;;
+    *)          echo no   ;;
     esac
 }
 
@@ -118,7 +129,7 @@ edit_config()
     if ! dialog \
           --backtitle "$backtitle" --form \
             "Note: Dim must happen first, but either Sleep or Screen Blank may be scheduled next." \
-	    22 60 15 \
+            22 60 15 \
       \
             "Battery:     Dim"         1 1      "$bat_dim"    1  18 9 9 \
       "Sleep"       2 12      "$bat_sleep"  2  18 9 9 \
@@ -138,7 +149,7 @@ edit_config()
       "Prevent shutdown when plugged in?"    13 1      "$noshut"   13  41 5 5 \
       \
       "Power button splash screen timeout:"   15 1 "$splashdelay"  15  43 3 3 \
-	2>$TMP
+        2>$TMP
     then
         rm $TMPCONFIG
         return 1
@@ -180,6 +191,30 @@ edit_config()
 
 }
 
+activate_config()
+{
+    echo reconfig >$EVENTFIFO
+}
+
+newconfig()
+{
+    new="$1"
+
+    if [ ! -L $CONFIGFILE ]
+    then
+        echo "$me: $CONFIGFILE isn't a symlink." >&2
+        echo " configuration switching unavailable." >&2
+        exit
+    fi
+    if [ ! -s $CONFIGDIR/$new ]
+    then
+        echo "$me: $CONFIGDIR/$new doesn't exist or is empty." >&2
+        exit
+    fi
+
+    ln -sf $new $CONFIGFILE && activate_config
+}
+
 check_root()
 {
     if [ "$(whoami)" != root ]
@@ -192,22 +227,42 @@ check_root()
     fi
 }
 
-activate_config()
-{
-    echo reconfig >/var/run/powerevents
-}
-
 main()
 {
 
     case ${1:-} in
-    -*) # we have no -options
+    -a) # force pseudo-activity by touching the magic file
+        if [ -d $INHIBITDIR ]
+        then
+            touch $INHIBIT_BY_TOUCH
+        else
+            echo "$me: no powerd running?" >&2
+        fi
+        exit
+        ;;
+    -*) # we have no other -options
         usage
         ;;
+    esac
+
+    check_root
+
+    case ${1:-} in
     =*) # =foo is just a direct event to the daemon,
         #  with the '=' removed.
-        echo ${1#=} >/var/run/powerevents
-        exit 0
+        if [ ! -p $EVENTFIFO ]
+        then
+            echo $me: problem with $EVENTFIFO >&2
+            exit 1
+        fi
+        echo ${1#=} >$EVENTFIFO
+        exit
+        ;;
+    "")
+        ;;
+    *)
+        newconfig $1
+        exit
         ;;
     esac
 
@@ -222,22 +277,28 @@ main()
         exit 1
     fi
 
-    check_root
-
     if [ -f $CONFIGFILE ]
     then
-	cp $CONFIGFILE $TMPCONFIG
+        cp $CONFIGFILE $TMPCONFIG
+        r=$?
     else
-	touch $TMPCONFIG
+        > $TMPCONFIG
+        r=$?
+    fi
+
+    if [ $r != 0 ]
+    then
+        echo $me: problem with config file >&2
+        exit 1
     fi
 
     if edit_config $TMPCONFIG
     then
-	mv $CONFIGFILE $CONFIGFILE.bak
-	mv $TMPCONFIG $CONFIGFILE
-	activate_config
+        mv $CONFIGFILE $CONFIGFILE.bak
+        mv $TMPCONFIG $CONFIGFILE
+        activate_config
     else
-	echo No changes made.
+        echo No changes made.
     fi
 }
 
