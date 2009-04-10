@@ -129,7 +129,7 @@ then
 fi
 
 %changelog
-* Thu Apr 9 2009 Paul Fox <pgf@laptop.org>
+* Fri Apr 10 2009 Paul Fox <pgf@laptop.org>
 - 3-2
 - fix bugs, implement cpu idleness check, and add suspend inhibit mechanism
 
