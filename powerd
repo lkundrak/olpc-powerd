@@ -220,7 +220,7 @@ CONFIRMSPLASH=$CONFIGDIR/pleaseconfirm.pgm
 SHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
 BATTSHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
 
-FIFO=/var/run/powerevents
+EVENTFIFO=/var/run/powerevents
 
 # note re: battery capacity:
 # i'd use /sys/.../capacity_level here, but we won't get
@@ -900,7 +900,7 @@ reevaluate()
 
 selfinject()
 {
-    echo $* >$FIFO
+    echo $* >$EVENTFIFO
 }
 
 sched_powertimer()
@@ -940,8 +940,9 @@ event_loop()
     unsplash
 
     # recreate to flush, and to make sure it's a fifo
-    rm -f $FIFO
-    mkfifo $FIFO
+    rm -f $EVENTFIFO
+    mkfifo $EVENTFIFO
+    chmod 600 $EVENTFIFO
 
     while :
     do
@@ -984,7 +985,7 @@ event_loop()
             # are we still waiting for this timer?
             if [ "$timerseqno" = "$arg1" ]
             then
-                echo $arg2 >$FIFO
+                echo $arg2 >$EVENTFIFO
                 : $((timerseqno += 1))
             fi
             ;;
@@ -1104,7 +1105,7 @@ event_loop()
             ;;
         esac
 
-    done <> $FIFO
+    done <> $EVENTFIFO
 }
 
 tracing()
