@@ -378,8 +378,14 @@ touchfile_is_recent()
 {
     if [ -e $INHIBIT_BY_TOUCH ]
     then
+        # see if there's been touchfile "activity" more
+        # during the recent idle period
+        timer=$1
         touched=$(stat --format=%Y $INHIBIT_BY_TOUCH)
-        return $(( touched <= last_activity ))
+        now=$(seconds)
+        # NB: comparison inverted -- expression returns boolean, but
+        # we want a shell success value.
+        return $(( now - touched > timer ))
     fi
     return 1
 }
@@ -411,8 +417,9 @@ create_inhibit_dir()
 
 laptop_busy()
 {
+    timer=$1
     inhibit_files_present || \
-        touchfile_is_recent || \
+        touchfile_is_recent $timer || \
             cpu_busy || \
                 network_busy && return 0
     return 1
@@ -1048,14 +1055,13 @@ event_loop()
             ;;
 
         useractive|fake_useractive)
-            last_activity=$(seconds)
             gotactivity
             backlight restore
             test "$event" = fake_useractive && reset_idlecounters
             ;;
 
         useridle1)
-            if laptop_busy
+            if laptop_busy $t1
             then
                 reset_idlecounters  # restart the timers
                 continue
@@ -1064,7 +1070,7 @@ event_loop()
             ;;
 
         useridle2)
-            if laptop_busy
+            if laptop_busy $t2
             then
                 reset_idlecounters  # restart the timers
                 continue
@@ -1079,7 +1085,7 @@ event_loop()
             ;;
 
         useridle3)
-            if laptop_busy
+            if laptop_busy $t3
             then
                 reset_idlecounters  # restart the timers
                 continue
@@ -1187,7 +1193,6 @@ read_config
 power_check
 
 reevaluate all
-last_activity=$(seconds)
 
 # let user programs control brightness
 chmod a+w $BRIGHTNESS $MONO_MODE
