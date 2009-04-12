@@ -2,10 +2,10 @@
 #
 # powerd -- experimental power management for the XO
 # 
-# This daemon is a more transparent and flexible (if
-# incompatible, and perhaps less robust!) replacement for ohmd on
-# the XO.  powerd is independent of X, dbus, and hald, and so
-# might be attractive to very lightweight software distributions.
+# This daemon is a more transparent and flexible (if somewhat
+# incompatible) replacement for ohmd on the XO.  powerd is
+# independent of X, dbus, and hald, and so might be attractive to
+# very lightweight software distributions.
 #
 # In addition to "standard" XO/ohmd functionality, powerd adds:
 # -- a power button splash screen (allowing cancel, suspend, or shutdown).
