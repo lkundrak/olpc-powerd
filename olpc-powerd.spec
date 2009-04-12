@@ -77,6 +77,9 @@ then
     initctl start olpc-kbdshim
 fi
 
+# sugar handles brightness via ohmd until (and perhaps beyond)
+# version 0.84.  we patch the brightness handlers to directly invoke
+# our script instead.
 KEYHANDLER=/usr/share/sugar/shell/view/keyhandler.py
 if test -e $KEYHANDLER && ! grep -q 'patch v1 by olpc-powerd' $KEYHANDLER
 then
