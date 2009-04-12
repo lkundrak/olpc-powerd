@@ -19,6 +19,11 @@ all: $(PROG1) $(PROG2)
 clean:
 	rm -f *.o $(PROG1) $(PROG2)
 
+release: tarball srpm rpms/$(PKGVER)-$(RELEASE).src.rpm
+	scp $(PKGVER).tar.gz $(PKGVER)-$(RELEASE).src.rpm  \
+		crank:public_html/rpms/srpms
+	scp rpms/$(PKGVER)-$(RELEASE).src.rpm \
+		crank:public_html/rpms
 
 # mock-ish rules for building an rpm
 # (leveraged from cscott's olpc-update makefile)
