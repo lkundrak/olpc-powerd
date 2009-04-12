@@ -129,8 +129,8 @@ edit_config()
     row=1
     if ! dialog \
           --backtitle "$backtitle" --form \
-            "${editing:-}Dim must be first, either Sleep or Screen Blank next." \
-            22 60 16 \
+            "${editing:-}Dim must be first; either Sleep or Blank may be next." \
+            22 60 15 \
       \
             "Battery:     Dim"         1 1      "$bat_dim"    1  18 9 9 \
       "Sleep"       2 12      "$bat_sleep"  2  18 9 9 \
@@ -146,11 +146,11 @@ edit_config()
       \
       "Wake on wireless activity?"    10 1      "$wlanwake"   10  41 5 5 \
       \
-      "Max sleep before laptop shuts down:"    12 1      "$maxsleep"   12  37 9 9 \
-      "Prevent shutdown when plugged in?"    13 1      "$noshut"   13  41 5 5 \
-      "Always sleep when lid closed?"    14 1      "$lidsleep"   14  41 5 5 \
+      "Max sleep before laptop shuts down:"    11 1      "$maxsleep"   11  37 9 9 \
+      "Prevent shutdown when plugged in?"    12 1      "$noshut"   12  41 5 5 \
+      "Always sleep when lid closed?"    13 1      "$lidsleep"   13  41 5 5 \
       \
-      "Power button splash screen timeout:"   16 1 "$splashdelay"  16  43 3 3 \
+      "Power button splash screen timeout:"   15 1 "$splashdelay"  15  43 3 3 \
         2>$TMP
     then
         rm $TMPCONFIG
