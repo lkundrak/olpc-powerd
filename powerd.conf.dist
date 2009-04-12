@@ -32,6 +32,14 @@
 #   "echo0>/sys/power/wlan-enabled"), which may override this
 #  setting.
 #
+# config_CPU_IDLE_LIMIT
+#  If the cpu is idle less than this percentage, then the laptop
+#  won't suspend.
+#
+# config_SLEEP_WHEN_LID_CLOSED
+#  This is normally left enabled, and causes the laptop to go to sleep
+#  when closed.  If disabled, it will stay awake when the lid is
+#  closed, and will only sleep because of other timeouts.
 #
 config_BATTERY_TIME_DIM="120"
 config_BATTERY_TIME_SLEEP="130"
@@ -48,3 +56,4 @@ config_MAX_SLEEP_BEFORE_SHUTDOWN="3600"
 config_ALLOW_SHUTDOWN_WHEN_PLUGGED="no"
 config_CONFIRM_SECONDS="7"
 config_CPU_IDLE_LIMIT="10"
+config_SLEEP_WHEN_LID_CLOSED="yes"

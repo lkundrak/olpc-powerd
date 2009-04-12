@@ -77,9 +77,17 @@
 # entirely (e.g., with "echo 0>/sys/power/wlan-enabled"), which
 # may override this setting.
 #
-# "config_CPU_IDLE_LIMIT" (integer) is the cpu idle percentage
-# below which we're unwilling to suspend, on the assumption that
-# system is doing something "important" for the user.
+# "config_CPU_IDLE_LIMIT" (integer)  If the cpu is idle less than
+# this percentage, then the laptop won't suspend, on the
+# assumption that the system is doing something "important" for the
+# user.
+#
+# "config_SLEEP_WHEN_LID_CLOSED" causes the laptop to go to sleep
+# when closed, and is usually desirable.  Cases where one might
+# want to turn this off might be a laptop being used as a server
+# on a shelf, or perhaps when running an application which needs
+# to remain active while the laptop is transported.  The screen
+# will be turned off in any case, of course.
 #
 # If /etc/powerd.conf is a symlink to another file, then powerd-config
 # can be used to easily manage a set of configuration "profiles".
@@ -755,12 +763,12 @@ set_config_defaults()
     config_WAKE_ON_WLAN=yes
     config_MAX_SLEEP_BEFORE_SHUTDOWN=3600
     config_ALLOW_SHUTDOWN_WHEN_PLUGGED=no
-
-    #config_USE_EBOOK_PROFILE=false
+    config_SLEEP_WHEN_LID_CLOSED=yes
 
     config_CONFIRM_SECONDS=7
 
     config_CPU_IDLE_LIMIT=10
+
 } 
 
 read_config()
@@ -1032,10 +1040,13 @@ event_loop()
 
         lidclose)
             am_ebook=;
-            invalidate_powertimer
             backlight off
-            # sleep until it's time to shut down
-            snooze until_shutdown "$shutdowntimer"
+            if yes_or_true "$config_SLEEP_WHEN_LID_CLOSED"
+            then
+        	invalidate_powertimer
+                # sleep until it's time to shut down
+                snooze until_shutdown "$shutdowntimer"
+            fi
             ;;
 
         lidopen)

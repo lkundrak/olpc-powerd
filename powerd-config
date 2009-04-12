@@ -122,6 +122,7 @@ edit_config()
     maxsleep=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-3600}
     test "$maxsleep" -eq "$maxsleep" || maxsleep=5
     noshut=${config_NO_SHUTDOWN_WHEN_PLUGGED:-no}
+    lidsleep=${config_SLEEP_WHEN_LID_CLOSED:-yes}
 
     splashdelay=${config_CONFIRM_SECONDS:-8}
 
@@ -129,7 +130,7 @@ edit_config()
     if ! dialog \
           --backtitle "$backtitle" --form \
             "${editing:-}Dim must be first, either Sleep or Screen Blank next." \
-            22 60 15 \
+            22 60 16 \
       \
             "Battery:     Dim"         1 1      "$bat_dim"    1  18 9 9 \
       "Sleep"       2 12      "$bat_sleep"  2  18 9 9 \
@@ -147,8 +148,9 @@ edit_config()
       \
       "Max sleep before laptop shuts down:"    12 1      "$maxsleep"   12  37 9 9 \
       "Prevent shutdown when plugged in?"    13 1      "$noshut"   13  41 5 5 \
+      "Always sleep when lid closed?"    14 1      "$lidsleep"   14  41 5 5 \
       \
-      "Power button splash screen timeout:"   15 1 "$splashdelay"  15  43 3 3 \
+      "Power button splash screen timeout:"   16 1 "$splashdelay"  16  43 3 3 \
         2>$TMP
     then
         rm $TMPCONFIG
@@ -169,7 +171,8 @@ edit_config()
     wlanwake=${11}
     maxsleep=${12}
     noshut=${13}
-    splashdelay=${14}
+    lidsleep=${14}
+    splashdelay=${15}
 
     setvar config_BATTERY_TIME_DIM $bat_dim
     setvar config_BATTERY_TIME_SLEEP $bat_sleep
@@ -185,6 +188,7 @@ edit_config()
     setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
     setvar config_MAX_SLEEP_BEFORE_SHUTDOWN $maxsleep
     setvar config_NO_SHUTDOWN_WHEN_PLUGGED $(yes_no $noshut)
+    setvar config_SLEEP_WHEN_LID_CLOSED $(yes_no $lidsleep)
     setvar config_CONFIRM_SECONDS $splashdelay
 
     return 0
