@@ -1,8 +1,8 @@
 # Copyright (C) 2009 Paul G. Fox
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
-VERSION=3
-RELEASE=3
+VERSION=4
+RELEASE=1
 PACKAGE=olpc-powerd
 MOCK=./mock-wrapper -r olpc-3-i386 --resultdir=$(MOCKDIR)
 MOCKDIR=./rpms
