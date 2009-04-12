@@ -1,7 +1,7 @@
 Summary: OLPC XO experimental power management
 Name: olpc-powerd
 Version: 3
-Release: 1
+Release: 3
 License: GPLv2
 Group: System Environment/Base
 URL: http://dev.laptop.org/git?p=users/pgf/olpc-powerd
@@ -10,7 +10,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: gcc, kernel-headers
 Requires: olpc-kbdshim >= 2-2
 BuildArch: i386
-Provides: olpc-powerd = 3-1
+Provides: olpc-powerd = 3-3
 
 %description
 The olpc-powerd can function as an easily customizable replacement
@@ -77,6 +77,9 @@ then
     initctl start olpc-kbdshim
 fi
 
+# sugar handles brightness via ohmd until (and perhaps beyond)
+# version 0.84.  we patch the brightness handlers to directly invoke
+# our script instead.
 KEYHANDLER=/usr/share/sugar/shell/view/keyhandler.py
 if test -e $KEYHANDLER && ! grep -q 'patch v1 by olpc-powerd' $KEYHANDLER
 then
@@ -129,6 +132,14 @@ then
 fi
 
 %changelog
+* Sat Apr 11 2009 Paul Fox <pgf@laptop.org>
+- 3-3
+- fixed powerd-config behavior wrt symlinked configs
+
+* Fri Apr 10 2009 Paul Fox <pgf@laptop.org>
+- 3-2
+- fix bugs, implement cpu idleness check, and add suspend inhibit mechanism
+
 * Tue Apr 7 2009 Paul Fox <pgf@laptop.org>
 - 3-1
 - convert to HAL-based operation
