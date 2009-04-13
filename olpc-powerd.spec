@@ -132,6 +132,11 @@ then
 fi
 
 %changelog
+* Sun Apr 12 2009 Paul Fox <pgf@laptop.org>
+- 4-1
+- add control over sleep on lid-close
+- resync version numbers
+
 * Sat Apr 11 2009 Paul Fox <pgf@laptop.org>
 - 3-3
 - fixed powerd-config behavior wrt symlinked configs
