@@ -315,6 +315,16 @@ else
     }
 fi
 
+if [ -e /dev/fb ]
+then
+    framebuffer=/dev/fb
+elif [ -e /dev/fb0 ]
+then
+    framebuffer=/dev/fb0
+else
+    log "no framebuffer?"
+fi
+
 
 splash()
 {
@@ -327,7 +337,7 @@ splash()
         ;;
     esac
 
-    pnmto565fb -d -s 9999999 $args &
+    pnmto565fb -d -f $framebuffer -s 9999999 $args &
     splashpid=$!
 }
 
