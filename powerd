@@ -373,15 +373,14 @@ do_shutdown()
 cpu_busy()
 {
     # pull the cpu idle percentage (over one second) out of the
-    # third-to-last field of vmstat output.  (this metric
-    # taken straight from ohmd.)
-    field='[[:space:]]\+\([[:digit:]]\+\)'
-    idle=$(vmstat 1 2  | sed -n "\$s/.*$field$field$field\$/\1/p")
+    # 15th field of vmstat output.  (this metric borrowed from ohmd.)
+    field='\([[:space:]]\+[[:digit:]]\+\)'
+    idle=$(vmstat 1 2  | sed -n "\$s/$field\{15\}.*/\1/p")
 
     # ensure numeric.  if failure, assume we're not busy.
-    test "$idle" && test "$idle" -eq "$idle" >/dev/null || return 1
+    test "$idle" && test $idle -eq $idle >/dev/null || return 1
 
-    test "$idle" -le $config_CPU_IDLE_LIMIT && return 0
+    test $idle -le $config_CPU_IDLE_LIMIT && return 0
 
     return 1
 }
