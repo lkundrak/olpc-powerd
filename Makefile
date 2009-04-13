@@ -22,7 +22,7 @@ clean:
 release: tarball srpm rpms/$(PKGVER)-$(RELEASE).src.rpm
 	scp $(PKGVER).tar.gz $(PKGVER)-$(RELEASE).src.rpm $(PACKAGE).spec \
 		crank:public_html/rpms/srpms
-	scp rpms/$(PKGVER)-$(RELEASE).src.rpm \
+	scp rpms/$(PKGVER)-$(RELEASE).i386.rpm \
 		crank:public_html/rpms
 
 # mock-ish rules for building an rpm
