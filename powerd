@@ -365,7 +365,7 @@ do_shutdown()
 {
     log shutting down due to $*
     leavesplash # kill the splasher (leaving splash visible)
-    usleep 50000
+    sleep .05s
     /sbin/shutdown -h now &
     sleep 9999999
 }
@@ -693,7 +693,7 @@ brightness_ramp()
         : $((i += incr))
         echo $i >$BRIGHTNESS
         test $i = $2 && break
-        usleep 25000
+        sleep .025s
     done
     echo $(( $i == 0 )) >$MONO_MODE
 }
