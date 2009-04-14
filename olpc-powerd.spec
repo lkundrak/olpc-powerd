@@ -4,7 +4,9 @@ Version: 4
 Release: 1
 License: GPLv2
 Group: System Environment/Base
-URL: http://dev.laptop.org/git?p=users/pgf/olpc-powerd
+URL: http://dev.laptop.org/git/users/pgf/powerd/tree/powerd
+# the source tarball is created by "make tarball" from within
+# a clone of this git tree: git://dev.laptop.org/users/pgf/powerd
 Source0: %{name}-%{version}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: gcc, kernel-headers
@@ -13,10 +15,10 @@ BuildArch: i386
 Provides: olpc-powerd = 4-1
 
 %description
-The olpc-powerd can function as an easily customizable replacement
-for ohmd, which is independent of X, dbus, and hald.  This package
-provides the powerd and olpc-switchd daemons (and related
-utilities).  This package
+The olpc-powerd package function as an easily customizable
+replacement for the XO's ohmd package.  It is independent of X,
+dbus, and hald.  This package provides the powerd and
+olpc-switchd daemons (and related utilities).
 
 %prep
 %setup -q
