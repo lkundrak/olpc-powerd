@@ -701,18 +701,19 @@ backlight()
 {
     case $1 in
     restore)
-        dcon wake
         if [ "$dimmed" -a "$savebright" ]
         then
-            read_brightness curbright
-            if [ $curbright -lt $savebright ]
-            then
-                # could ramp here, but it wastes time while
-                # the user is starting to work again
-                set_brightness $savebright
-            fi
+            # could ramp here, but it wastes time while
+            # the user is starting to work again
+            # read_brightness curbright
+            # if [ $curbright -lt $savebright ]
+            # then
+            #     brightness_ramp $curbright $savebright
+            # fi
+            set_brightness $savebright
             dimmed=;
         fi
+        dcon wake
         ;;
     dim)
         if [ ! "${dimmed}" ]
@@ -726,18 +727,20 @@ backlight()
         fi
         ;;
     off)
-        if [ ! "${dimmed}" ]
-        then
-            read_brightness savebright
-            dimmed=true
-        fi
-        set_brightness 0
+        # this is all unneeded: sleeping the dcon disables BL.
+        #if [ ! "${dimmed}" ]
+        #then
+        #    read_brightness savebright
+        #    dimmed=true
+        #fi
+        # set_brightness 0
         dcon sleep
         ;;
 
     is_off)
-        read_brightness b
-        test $b = 0
+        local d
+        read d < $DCON_SLEEP
+        test $d = 1
         return
         ;;
     esac
@@ -1052,7 +1055,7 @@ event_loop()
             backlight off
             if yes_or_true "$config_SLEEP_WHEN_LID_CLOSED"
             then
-        	invalidate_powertimer
+                invalidate_powertimer
                 # sleep until it's time to shut down
                 snooze until_shutdown "$shutdowntimer"
             fi
