@@ -80,7 +80,8 @@
 # "config_CPU_IDLE_LIMIT" (integer)  If the cpu is idle less than
 # this percentage, then the laptop won't suspend, on the
 # assumption that the system is doing something "important" for the
-# user.
+# user.  Set this to 0 to to allow the system to sleep no matter
+# how busy the CPU.
 #
 # "config_SLEEP_WHEN_LID_CLOSED" causes the laptop to go to sleep
 # when closed, and is usually desirable.  Cases where one might
@@ -380,7 +381,7 @@ cpu_busy()
     # ensure numeric.  if failure, assume we're not busy.
     test "$idle" && test $idle -eq $idle >/dev/null || return 1
 
-    test $idle -le $config_CPU_IDLE_LIMIT && return 0
+    test $idle -lt $config_CPU_IDLE_LIMIT && return 0
 
     return 1
 }
