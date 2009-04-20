@@ -87,6 +87,9 @@ edit_config()
 
     source $1
 
+    ro=;
+    test "$readonly" && ro=2
+
     bat_dim=$config_BATTERY_TIME_DIM
     bat_sleep=$config_BATTERY_TIME_SLEEP
     bat_blank=$config_BATTERY_TIME_BLANK
@@ -128,29 +131,29 @@ edit_config()
 
     row=1
     if ! dialog \
-          --backtitle "$backtitle" --form \
+          --backtitle "$backtitle" --mixedform \
             "${editing:-}Dim must be first; either Sleep or Blank may be next." \
             22 60 15 \
       \
-            "Battery:     Dim"         1 1      "$bat_dim"    1  18 9 9 \
-      "Sleep"       2 12      "$bat_sleep"  2  18 9 9 \
-                           "Blank"       2 28     "$bat_blank"  2  34 9 9 \
-            "Ebook:       Dim"         3 1      "$ebook_dim"    3  18 9 9 \
-      "Sleep"       4 12      "$ebook_sleep"  4  18 9 9 \
-                           "Blank"       4 28     "$ebook_blank"  4  34 9 9 \
-            "Plugged in:  Dim"         5 1      "$plugged_dim"    5  18 9 9 \
-      "Sleep"       6 12      "$plugged_sleep"  6  18 9 9 \
-                           "Blank"       6 28     "$plugged_blank"  6  34 9 9 \
+            "Battery:     Dim"         1 1      "$bat_dim"    1  18 9 9 "$ro" \
+      "Sleep"       2 12      "$bat_sleep"  2  18 9 9 "$ro" \
+                           "Blank"       2 28     "$bat_blank"  2  34 9 9 "$ro" \
+            "Ebook:       Dim"         3 1      "$ebook_dim"    3  18 9 9 "$ro" \
+      "Sleep"       4 12      "$ebook_sleep"  4  18 9 9 "$ro" \
+                           "Blank"       4 28     "$ebook_blank"  4  34 9 9 "$ro" \
+            "Plugged in:  Dim"         5 1      "$plugged_dim"    5  18 9 9 "$ro" \
+      "Sleep"       6 12      "$plugged_sleep"  6  18 9 9 "$ro" \
+                           "Blank"       6 28     "$plugged_blank"  6  34 9 9 "$ro" \
       \
-      "Screen brightness (0-15) when dimmed:"    8 1      "$idledim"   8  43 3 3 \
+      "Screen brightness (0-15) when dimmed:"    8 1      "$idledim"   8  43 3 3 "$ro" \
       \
-      "Wake on wireless activity?"    10 1      "$wlanwake"   10  41 5 5 \
+      "Wake on wireless activity?"    10 1      "$wlanwake"   10  41 5 5 "$ro" \
       \
-      "Max sleep before laptop shuts down:"    11 1      "$maxsleep"   11  37 9 9 \
-      "Prevent shutdown when plugged in?"    12 1      "$noshut"   12  41 5 5 \
-      "Always sleep when lid closed?"    13 1      "$lidsleep"   13  41 5 5 \
+      "Max sleep before laptop shuts down:"    11 1      "$maxsleep"   11  37 9 9 "$ro" \
+      "Prevent shutdown when plugged in?"    12 1      "$noshut"   12  41 5 5 "$ro" \
+      "Always sleep when lid closed?"    13 1      "$lidsleep"   13  41 5 5 "$ro" \
       \
-      "Power button splash screen timeout:"   15 1 "$splashdelay"  15  43 3 3 \
+      "Power button splash screen timeout:"   15 1 "$splashdelay"  15  43 3 3 "$ro" \
         2>$TMP
     then
         rm $TMPCONFIG
@@ -231,7 +234,7 @@ newconfig()
     ln -sf $new $CONFIGFILE && activate_config
 }
 
-check_root()
+o_check_root()
 {
     if [ "$(whoami)" != root ]
     then
@@ -241,6 +244,12 @@ check_root()
             "You must be root to run this configuration program" 0 0
         exit 1
     fi
+}
+
+check_root()
+{
+    am_root=;
+    test "$(whoami)" = root && am_root=yes
 }
 
 main()
@@ -263,7 +272,15 @@ main()
 
     check_root
 
+    if [ "$1" -a ! "$am_root" ]
+    then
+	echo "You must be root to control powerd" >&2
+	exit 1
+    fi
+
     case ${1:-} in
+    "")
+        ;;
     =*) # =foo is just a direct event to the daemon,
         #  with the '=' removed.
         if [ ! -p $EVENTFIFO ]
@@ -273,8 +290,6 @@ main()
         fi
         echo ${1#=} >$EVENTFIFO
         exit
-        ;;
-    "")
         ;;
     *)
         newconfig $1
@@ -295,10 +310,20 @@ main()
 
     if [ -f $CONFIGFILE ]
     then
+        if [ "$am_root" ]
+        then
+            editing="Editing "
+            readonly=;
+        else
+            editing="Showing read-only contents of "
+            readonly=yes
+        fi
         linked_name=$(readlink $CONFIGFILE 2>/dev/null)
         if [ "$linked_name" ]
         then
-            editing="Editing profile '$linked_name'.\n"
+            editing="${editing}profile '$linked_name'.\n"
+        else
+            editing="$editing'${CONFIGFILE}'.\n"
         fi
         cp $CONFIGFILE $TMPCONFIG
         r=$?
