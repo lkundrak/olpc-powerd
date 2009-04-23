@@ -272,7 +272,7 @@ main()
 
     check_root
 
-    if [ "$1" -a ! "$am_root" ]
+    if [ "${1:-}" -a ! "$am_root" ]
     then
 	echo "You must be root to control powerd" >&2
 	exit 1
