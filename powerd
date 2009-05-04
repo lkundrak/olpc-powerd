@@ -20,7 +20,7 @@
 # -- ease of customization, given that its written in shell.
 #
 # Unimplemented:
-# -- inhibiting idle suspend based network load.
+# -- inhibiting idle suspend based on network load.
 # -- any special support for the mesh, whatsoever.
 # -- there's some support for wake-on-lan, but it's not well tested.
 # -- probably more.
