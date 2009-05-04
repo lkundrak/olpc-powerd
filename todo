@@ -46,4 +46,9 @@
 	eventually lose association anyway?
 
 
+debxo:
+    - rtcwake doesn't work -- kernel config?
+
+      /sys/class/rtc/rtc0/device/power/wakeup: No such file or directory
+      rtcwake: /dev/rtc0 not enabled for wakeup events
 

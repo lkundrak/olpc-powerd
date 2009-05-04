@@ -1,7 +1,7 @@
 # Copyright (C) 2009 Paul G. Fox
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
-VERSION=4
+VERSION=5
 RELEASE=1
 PACKAGE=olpc-powerd
 MOCK=./mock-wrapper -r olpc-3-i386 --resultdir=$(MOCKDIR)
@@ -19,10 +19,12 @@ all: $(PROG1) $(PROG2)
 clean:
 	rm -f *.o $(PROG1) $(PROG2)
 
-release: tarball srpm rpms/$(PKGVER)-$(RELEASE).src.rpm
-	scp $(PKGVER).tar.gz $(PKGVER)-$(RELEASE).src.rpm $(PACKAGE).spec \
+release: tarball srpm rpms/$(PKGVER)-$(RELEASE).*.i386.rpm
+	scp $(PKGVER).tar.gz $(PKGVER)-$(RELEASE).src.rpm  \
 		crank:public_html/rpms/srpms
-	scp rpms/$(PKGVER)-$(RELEASE).i386.rpm \
+	scp $(PACKAGE).spec \
+		crank:public_html/rpms/srpms/$(PACKAGE).spec-$(VERSION)-$(RELEASE)
+	scp rpms/$(PKGVER)-$(RELEASE).*.i386.rpm \
 		crank:public_html/rpms
 
 # mock-ish rules for building an rpm
@@ -30,9 +32,8 @@ release: tarball srpm rpms/$(PKGVER)-$(RELEASE).src.rpm
 
 update-version:
 	sed -i \
-	-e 's/^Version: .*/Version: $(VERSION)/' \
-	-e 's/^Release: .*/Release: $(RELEASE)/' \
-	-e 's/^Provides: .*/Provides: $(PACKAGE) = $(VERSION)-$(RELEASE)/' \
+	-e 's/^Version: [[:digit:]]\+/Version: $(VERSION)/' \
+	-e 's/^Release: [[:digit:]]\+/Release: $(RELEASE)/' \
 	$(PACKAGE).spec
 
 tarball: $(PKGVER).tar.gz

@@ -2,10 +2,10 @@
 #
 # powerd -- experimental power management for the XO
 # 
-# This daemon is a more transparent and flexible (if
-# incompatible, and perhaps less robust!) replacement for ohmd on
-# the XO.  powerd is independent of X, dbus, and hald, and so
-# might be attractive to very lightweight software distributions.
+# This daemon is a more transparent and flexible (if somewhat
+# incompatible) replacement for ohmd on the XO.  powerd is
+# independent of X, dbus, and hald, and so might be attractive to
+# very lightweight software distributions.
 #
 # In addition to "standard" XO/ohmd functionality, powerd adds:
 # -- a power button splash screen (allowing cancel, suspend, or shutdown).
@@ -20,7 +20,7 @@
 # -- ease of customization, given that its written in shell.
 #
 # Unimplemented:
-# -- inhibiting idle suspend based network load.
+# -- inhibiting idle suspend based on network load.
 # -- any special support for the mesh, whatsoever.
 # -- there's some support for wake-on-lan, but it's not well tested.
 # -- probably more.
@@ -80,7 +80,8 @@
 # "config_CPU_IDLE_LIMIT" (integer)  If the cpu is idle less than
 # this percentage, then the laptop won't suspend, on the
 # assumption that the system is doing something "important" for the
-# user.
+# user.  Set this to 0 to to allow the system to sleep no matter
+# how busy the CPU.
 #
 # "config_SLEEP_WHEN_LID_CLOSED" causes the laptop to go to sleep
 # when closed, and is usually desirable.  Cases where one might
@@ -315,6 +316,16 @@ else
     }
 fi
 
+if [ -e /dev/fb ]
+then
+    framebuffer=/dev/fb
+elif [ -e /dev/fb0 ]
+then
+    framebuffer=/dev/fb0
+else
+    log "no framebuffer?"
+fi
+
 
 splash()
 {
@@ -327,7 +338,7 @@ splash()
         ;;
     esac
 
-    pnmto565fb -d -s 9999999 $args &
+    pnmto565fb -d -f $framebuffer -s 9999999 $args &
     splashpid=$!
 }
 
@@ -355,7 +366,7 @@ do_shutdown()
 {
     log shutting down due to $*
     leavesplash # kill the splasher (leaving splash visible)
-    usleep 50000
+    sleep .05s
     /sbin/shutdown -h now &
     sleep 9999999
 }
@@ -363,15 +374,14 @@ do_shutdown()
 cpu_busy()
 {
     # pull the cpu idle percentage (over one second) out of the
-    # third-to-last field of vmstat output.  (this metric
-    # taken straight from ohmd.)
-    field='[[:space:]]\+\([[:digit:]]\+\)'
-    idle=$(vmstat 1 2  | sed -n "\$s/.*$field$field$field\$/\1/p")
+    # 15th field of vmstat output.  (this metric borrowed from ohmd.)
+    field='\([[:space:]]\+[[:digit:]]\+\)'
+    idle=$(vmstat 1 2  | sed -n "\$s/$field\{15\}.*/\1/p")
 
     # ensure numeric.  if failure, assume we're not busy.
-    test "$idle" && test "$idle" -eq "$idle" >/dev/null || return 1
+    test "$idle" && test $idle -eq $idle >/dev/null || return 1
 
-    test "$idle" -le $config_CPU_IDLE_LIMIT && return 0
+    test $idle -lt $config_CPU_IDLE_LIMIT && return 0
 
     return 1
 }
@@ -683,7 +693,7 @@ brightness_ramp()
         : $((i += incr))
         echo $i >$BRIGHTNESS
         test $i = $2 && break
-        usleep 25000
+        sleep .025s
     done
     echo $(( $i == 0 )) >$MONO_MODE
 }
@@ -692,18 +702,19 @@ backlight()
 {
     case $1 in
     restore)
-        dcon wake
         if [ "$dimmed" -a "$savebright" ]
         then
-            read_brightness curbright
-            if [ $curbright -lt $savebright ]
-            then
-                # could ramp here, but it wastes time while
-                # the user is starting to work again
-                set_brightness $savebright
-            fi
+            # could ramp here, but it wastes time while
+            # the user is starting to work again
+            # read_brightness curbright
+            # if [ $curbright -lt $savebright ]
+            # then
+            #     brightness_ramp $curbright $savebright
+            # fi
+            set_brightness $savebright
             dimmed=;
         fi
+        dcon wake
         ;;
     dim)
         if [ ! "${dimmed}" ]
@@ -717,18 +728,20 @@ backlight()
         fi
         ;;
     off)
-        if [ ! "${dimmed}" ]
-        then
-            read_brightness savebright
-            dimmed=true
-        fi
-        set_brightness 0
+        # this is all unneeded: sleeping the dcon disables BL.
+        #if [ ! "${dimmed}" ]
+        #then
+        #    read_brightness savebright
+        #    dimmed=true
+        #fi
+        # set_brightness 0
         dcon sleep
         ;;
 
     is_off)
-        read_brightness b
-        test $b = 0
+        local d
+        read d < $DCON_SLEEP
+        test $d = 1
         return
         ;;
     esac
@@ -1043,7 +1056,7 @@ event_loop()
             backlight off
             if yes_or_true "$config_SLEEP_WHEN_LID_CLOSED"
             then
-        	invalidate_powertimer
+                invalidate_powertimer
                 # sleep until it's time to shut down
                 snooze until_shutdown "$shutdowntimer"
             fi

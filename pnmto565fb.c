@@ -58,6 +58,8 @@ extern int optind, opterr, optopt;
 int fill_it;
 int dcon;
 
+char *devfb = "/dev/fb";
+
 static void vt_deinit(void);
 int consolefd;
 int activevt;
@@ -222,10 +224,12 @@ void
 usage(void)
 {
     fprintf(stderr,
-        "usage: %s [-s SECS] [-d ] pnmfile ...\n"
+        "usage: %s [-s SECS] [-d ] [ -f <devfb-name> ]pnmfile ...\n"
         " writes 565 data from successive images to /dev/fb)\n"
         "    -d to freeze the dcon while an image is being painted\n"
-        "    -s SECS  to sleep between images\n",
+        "    -s SECS  to sleep between images\n"
+        "    -f /dev/fb0 to open /dev/fb0 (defaults to /dev/fb)\n"
+	,
         prog);
     exit(1);
 }
@@ -356,7 +360,7 @@ main(int argc, char *argv[])
 
     prog = argv[0];
 
-    while ((c = getopt(argc, argv, "ds:")) != -1) {
+    while ((c = getopt(argc, argv, "ds:f:")) != -1) {
         switch (c) {
         case 's':
             sleeptime = atoi(optarg);
@@ -364,6 +368,9 @@ main(int argc, char *argv[])
         case 'd':
             dcon = 1;
             break;
+	case 'f':
+	    devfb = optarg;
+	    break;
         default:
             usage();
             break;
@@ -388,9 +395,9 @@ main(int argc, char *argv[])
 
     signal(SIGUSR1, SigNextImage);
 
-    fb = open("/dev/fb", O_RDWR);
+    fb = open(devfb, O_RDWR);
     if (fb < 0) {
-        perror("open of /dev/fb");
+        fprintf(stderr, "open of %s: %s\n", devfb, strerror(errno));
         exit(1);
     }
 
