@@ -18,10 +18,10 @@ case $1 in
 	    echo $curbright
 	    exit
 	    ;;
-    high)
+    max|high)
 	    newbright=15
 	    ;;
-    low)	
+    min|low)	
 	    newbright=0
 	    ;;
     up)
