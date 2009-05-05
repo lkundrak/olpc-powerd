@@ -160,39 +160,42 @@ edit_config()
         return 1
     fi
 
-    set -- $(cat $TMP)
-    bat_dim=$1
-    bat_sleep=$2
-    bat_blank=$3
-    ebook_dim=$4
-    ebook_sleep=$5
-    ebook_blank=$6
-    plugged_dim=$7
-    plugged_sleep=$8
-    plugged_blank=$9
-    idledim=${10}
-    wlanwake=${11}
-    maxsleep=${12}
-    noshut=${13}
-    lidsleep=${14}
-    splashdelay=${15}
+    if [ ! "$readonly" ]
+    then
+        set -- $(cat $TMP)
+        bat_dim=$1
+        bat_sleep=$2
+        bat_blank=$3
+        ebook_dim=$4
+        ebook_sleep=$5
+        ebook_blank=$6
+        plugged_dim=$7
+        plugged_sleep=$8
+        plugged_blank=$9
+        idledim=${10}
+        wlanwake=${11}
+        maxsleep=${12}
+        noshut=${13}
+        lidsleep=${14}
+        splashdelay=${15}
 
-    setvar config_BATTERY_TIME_DIM $bat_dim
-    setvar config_BATTERY_TIME_SLEEP $bat_sleep
-    setvar config_BATTERY_TIME_BLANK $bat_blank
-    setvar config_EBOOK_TIME_DIM $ebook_dim
-    setvar config_EBOOK_TIME_SLEEP $ebook_sleep
-    setvar config_EBOOK_TIME_BLANK $ebook_blank
-    setvar config_PLUGGED_TIME_DIM $plugged_dim
-    setvar config_PLUGGED_TIME_SLEEP $plugged_sleep
-    setvar config_PLUGGED_TIME_BLANK $plugged_blank
+        setvar config_BATTERY_TIME_DIM $bat_dim
+        setvar config_BATTERY_TIME_SLEEP $bat_sleep
+        setvar config_BATTERY_TIME_BLANK $bat_blank
+        setvar config_EBOOK_TIME_DIM $ebook_dim
+        setvar config_EBOOK_TIME_SLEEP $ebook_sleep
+        setvar config_EBOOK_TIME_BLANK $ebook_blank
+        setvar config_PLUGGED_TIME_DIM $plugged_dim
+        setvar config_PLUGGED_TIME_SLEEP $plugged_sleep
+        setvar config_PLUGGED_TIME_BLANK $plugged_blank
 
-    setvar config_IDLE_DIM_LEVEL $idledim
-    setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
-    setvar config_MAX_SLEEP_BEFORE_SHUTDOWN $maxsleep
-    setvar config_NO_SHUTDOWN_WHEN_PLUGGED $(yes_no $noshut)
-    setvar config_SLEEP_WHEN_LID_CLOSED $(yes_no $lidsleep)
-    setvar config_CONFIRM_SECONDS $splashdelay
+        setvar config_IDLE_DIM_LEVEL $idledim
+        setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
+        setvar config_MAX_SLEEP_BEFORE_SHUTDOWN $maxsleep
+        setvar config_NO_SHUTDOWN_WHEN_PLUGGED $(yes_no $noshut)
+        setvar config_SLEEP_WHEN_LID_CLOSED $(yes_no $lidsleep)
+        setvar config_CONFIRM_SECONDS $splashdelay
+    fi
 
     return 0
 
@@ -274,8 +277,8 @@ main()
 
     if [ "${1:-}" -a ! "$am_root" ]
     then
-	echo "You must be root to control powerd" >&2
-	exit 1
+        echo "You must be root to control powerd" >&2
+        exit 1
     fi
 
     case ${1:-} in
@@ -297,7 +300,7 @@ main()
         ;;
     esac
 
-    if ! type dialog 2>/dev/null
+    if ! type dialog >/dev/null 2>&1
     then
         (
         echo "${0##*/}: the 'dialog' program isn't available, quitting."
@@ -314,9 +317,11 @@ main()
         then
             editing="Editing "
             readonly=;
+            cp $CONFIGFILE $TMPCONFIG
         else
             editing="Showing read-only contents of "
             readonly=yes
+            TMPCONFIG=$CONFIGFILE
         fi
         linked_name=$(readlink $CONFIGFILE 2>/dev/null)
         if [ "$linked_name" ]
@@ -325,7 +330,6 @@ main()
         else
             editing="$editing'${CONFIGFILE}'.\n"
         fi
-        cp $CONFIGFILE $TMPCONFIG
         r=$?
     else
         > $TMPCONFIG
@@ -341,10 +345,13 @@ main()
 
     if edit_config $TMPCONFIG
     then
-        cp $CONFIGFILE $CONFIGFILE.bak
-        # don't disturb possible symlink
-        cat $TMPCONFIG >$CONFIGFILE
-        activate_config
+        if [ ! "$readonly" ]
+        then
+            cp $CONFIGFILE $CONFIGFILE.bak
+            # don't disturb possible symlink
+            cat $TMPCONFIG >$CONFIGFILE
+            activate_config
+        fi
     else
         echo No changes made.
     fi
