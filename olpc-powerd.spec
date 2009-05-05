@@ -84,6 +84,11 @@ then
 fi
 
 %changelog
+* Tue May 5 2009 Paul Fox <pgf@laptop.org>
+- 5-1
+- fixed ability to shut down with backlight off.  oops.
+- various utility bug fixes (powerd-config, olpc-brightness)
+
 * Sun Apr 12 2009 Paul Fox <pgf@laptop.org>
 - 4-1
 - add control over sleep on lid-close
