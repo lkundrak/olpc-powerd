@@ -26,9 +26,11 @@ case $1 in
 	    ;;
     up)
 	    newbright=$(($curbright + 1))
+	    newbright=$(( ( $newbright > 15 ) ? 15 : $newbright ))
 	    ;;
     down)
 	    newbright=$(($curbright - 1))
+	    newbright=$(( ( $newbright < 0 ) ? 0 : $newbright ))
 	    ;;
 
     [0-9]|1[0-5])
@@ -45,6 +47,6 @@ monochrome=$(( newbright == 0 ))
 # echo "brightness $newbright $monochrome" > $POWEREVENTS
 
 echo $newbright >$LEVEL
-echo $monochrom >$MONOMODE
+echo $monochrome >$MONOMODE
 
 
