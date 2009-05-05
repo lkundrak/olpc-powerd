@@ -1,7 +1,7 @@
 Summary: OLPC XO power management
 Name: olpc-powerd
 Version: 5
-Release: 1
+Release: 1%{?dist}
 License: GPLv2+
 Group: System Environment/Base
 URL:  http://dev.laptop.org/git/users/pgf/powerd/tree/powerd
