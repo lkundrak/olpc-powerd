@@ -85,10 +85,12 @@ setvar()
 edit_config()
 {
 
-    source $1
+    cfg=$1
 
     ro=;
     test "$readonly" && ro=2
+
+    source $cfg
 
     bat_dim=$config_BATTERY_TIME_DIM
     bat_sleep=$config_BATTERY_TIME_SLEEP
@@ -156,7 +158,6 @@ edit_config()
       "Power button splash screen timeout:"   15 1 "$splashdelay"  15  43 3 3 "$ro" \
         2>$TMP
     then
-        rm $TMPCONFIG
         return 1
     fi
 
@@ -321,16 +322,15 @@ main()
         else
             editing="Showing read-only contents of "
             readonly=yes
-            TMPCONFIG=$CONFIGFILE
         fi
         linked_name=$(readlink $CONFIGFILE 2>/dev/null)
+        r=$?
         if [ "$linked_name" ]
         then
             editing="${editing}profile '$linked_name'.\n"
         else
             editing="$editing'${CONFIGFILE}'.\n"
         fi
-        r=$?
     else
         > $TMPCONFIG
         r=$?
@@ -343,17 +343,20 @@ main()
     fi
 
 
-    if edit_config $TMPCONFIG
+    if [ $readonly ]
     then
-        if [ ! "$readonly" ]
-        then
-            cp $CONFIGFILE $CONFIGFILE.bak
-            # don't disturb possible symlink
-            cat $TMPCONFIG >$CONFIGFILE
-            activate_config
-        fi
+	edit_config $CONFIGFILE
     else
-        echo No changes made.
+	if edit_config $TMPCONFIG
+	then
+	    cp $CONFIGFILE $CONFIGFILE.bak
+	    # don't disturb possible symlink
+	    cat $TMPCONFIG >$CONFIGFILE
+	    activate_config
+	else
+	    rm $TMPCONFIG
+	    echo No changes made.
+	fi
     fi
 }
 
