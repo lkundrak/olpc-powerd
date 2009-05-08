@@ -111,14 +111,14 @@ edit_config()
     test "$ebook_sleep" -eq "$ebook_sleep" || ebook_sleep=$(( ebook_dim + 120 ))
     test "$ebook_blank" -eq "$ebook_blank" || ebook_blank=$(( ebook_dim + 240 ))
 
-    plugged_dim=${config_PLUGGED_TIME_DIM:-120}
-    plugged_sleep=${config_PLUGGED_TIME_SLEEP:-240}
-    plugged_blank=${config_PLUGGED_TIME_BLANK:-480}
+    plug_dim=${config_PLUGGED_TIME_DIM:-120}
+    plug_sleep=${config_PLUGGED_TIME_SLEEP:-240}
+    plug_blank=${config_PLUGGED_TIME_BLANK:-480}
 
     # force numeric, and reasonable defaults
-    test "$plugged_dim" -eq "$plugged_dim" || plugged_dim=120
-    test "$plugged_sleep" -eq "$plugged_sleep" || plugged_sleep=$(( plugged_dim + 120 ))
-    test "$plugged_blank" -eq "$plugged_blank" || plugged_blank=$(( plugged_dim + 240 ))
+    test "$plug_dim" -eq "$plug_dim" || plug_dim=120
+    test "$plug_sleep" -eq "$plug_sleep" || plug_sleep=$(( plug_dim + 120 ))
+    test "$plug_blank" -eq "$plug_blank" || plug_blank=$(( plug_dim + 240 ))
 
     idledim=$config_IDLE_DIM_LEVEL
     test "$idledim" -eq "$idledim" || idledim=5
@@ -134,28 +134,30 @@ edit_config()
     row=1
     if ! dialog \
           --backtitle "$backtitle" --mixedform \
-            "${editing:-}Dim must be first; either Sleep or Blank may be next." \
-            22 60 15 \
+            "${editing:-}Dim, Sleep and Blank may be scheduled in any order." \
+            22 67 15 \
       \
-            "Battery:     Dim"         1 1      "$bat_dim"    1  18 9 9 "$ro" \
-      "Sleep"       2 12      "$bat_sleep"  2  18 9 9 "$ro" \
-                           "Blank"       2 28     "$bat_blank"  2  34 9 9 "$ro" \
-            "Ebook:       Dim"         3 1      "$ebook_dim"    3  18 9 9 "$ro" \
-      "Sleep"       4 12      "$ebook_sleep"  4  18 9 9 "$ro" \
-                           "Blank"       4 28     "$ebook_blank"  4  34 9 9 "$ro" \
-            "Plugged in:  Dim"         5 1      "$plugged_dim"    5  18 9 9 "$ro" \
-      "Sleep"       6 12      "$plugged_sleep"  6  18 9 9 "$ro" \
-                           "Blank"       6 28     "$plugged_blank"  6  34 9 9 "$ro" \
+      "Battery:    Dim"         1 1      "$bat_dim"     1  17 9 9 "$ro" \
+                  "Sleep"       1 28     "$bat_sleep"   1  34 9 9 "$ro" \
+                  "Blank"       1 45     "$bat_blank"   1  51 9 9 "$ro" \
       \
-      "Screen brightness (0-15) when dimmed:"    8 1      "$idledim"   8  43 3 3 "$ro" \
+      "Ebook:      Dim"         2 1      "$ebook_dim"   2  17 9 9 "$ro" \
+                  "Sleep"       2 28     "$ebook_sleep" 2  34 9 9 "$ro" \
+                  "Blank"       2 45     "$ebook_blank" 2  51 9 9 "$ro" \
       \
-      "Wake on wireless activity?"    10 1      "$wlanwake"   10  41 5 5 "$ro" \
+      "Plugged:    Dim"         3 1      "$plug_dim"    3  17 9 9 "$ro" \
+                  "Sleep"       3 28     "$plug_sleep"  3  34 9 9 "$ro" \
+                  "Blank"       3 45     "$plug_blank"  3  51 9 9 "$ro" \
       \
-      "Max sleep before laptop shuts down:"    11 1      "$maxsleep"   11  37 9 9 "$ro" \
-      "Prevent shutdown when plugged in?"    12 1      "$noshut"   12  41 5 5 "$ro" \
-      "Always sleep when lid closed?"    13 1      "$lidsleep"   13  41 5 5 "$ro" \
+      "Screen brightness (0-15) when dimmed:"    5 1      "$idledim"   5  43 3 3 "$ro" \
       \
-      "Power button splash screen timeout:"   15 1 "$splashdelay"  15  43 3 3 "$ro" \
+      "Wake on wireless activity?"    7 1      "$wlanwake"   7  41 5 5 "$ro" \
+      \
+      "Max sleep before laptop shuts down:"    9 1      "$maxsleep"   9  37 9 9 "$ro" \
+      "Prevent shutdown when plugged in?"    10 1      "$noshut"   10  41 5 5 "$ro" \
+      "Always sleep when lid closed?"    11 1      "$lidsleep"   11  41 5 5 "$ro" \
+      \
+      "Power button splash screen timeout:"   13 1 "$splashdelay"  13  43 3 3 "$ro" \
         2>$TMP
     then
         return 1
@@ -170,9 +172,9 @@ edit_config()
         ebook_dim=$4
         ebook_sleep=$5
         ebook_blank=$6
-        plugged_dim=$7
-        plugged_sleep=$8
-        plugged_blank=$9
+        plug_dim=$7
+        plug_sleep=$8
+        plug_blank=$9
         idledim=${10}
         wlanwake=${11}
         maxsleep=${12}
@@ -186,9 +188,9 @@ edit_config()
         setvar config_EBOOK_TIME_DIM $ebook_dim
         setvar config_EBOOK_TIME_SLEEP $ebook_sleep
         setvar config_EBOOK_TIME_BLANK $ebook_blank
-        setvar config_PLUGGED_TIME_DIM $plugged_dim
-        setvar config_PLUGGED_TIME_SLEEP $plugged_sleep
-        setvar config_PLUGGED_TIME_BLANK $plugged_blank
+        setvar config_PLUGGED_TIME_DIM $plug_dim
+        setvar config_PLUGGED_TIME_SLEEP $plug_sleep
+        setvar config_PLUGGED_TIME_BLANK $plug_blank
 
         setvar config_IDLE_DIM_LEVEL $idledim
         setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
@@ -345,18 +347,18 @@ main()
 
     if [ $readonly ]
     then
-	edit_config $CONFIGFILE
+        edit_config $CONFIGFILE
     else
-	if edit_config $TMPCONFIG
-	then
-	    cp $CONFIGFILE $CONFIGFILE.bak
-	    # don't disturb possible symlink
-	    cat $TMPCONFIG >$CONFIGFILE
-	    activate_config
-	else
-	    rm $TMPCONFIG
-	    echo No changes made.
-	fi
+        if edit_config $TMPCONFIG
+        then
+            cp $CONFIGFILE $CONFIGFILE.bak
+            # don't disturb possible symlink
+            cat $TMPCONFIG >$CONFIGFILE
+            activate_config
+        else
+            rm $TMPCONFIG
+            echo No changes made.
+        fi
     fi
 }
 

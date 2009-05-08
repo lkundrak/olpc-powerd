@@ -12,8 +12,8 @@
 # -- the ability to run arbitrary scripts after a resume.
 # -- configurable timeouts until screen dim and sleep, and configurable
 #    dim level.
-# -- idle screen blanking after laptop has slept
-# -- idle shutdown after laptop has slept
+# -- screen dimming and blanking after laptop has slept
+# -- shutdown after laptop has slept
 # -- low battery shutdown (only when not sleeping)
 # -- different power management behavior when on wall power vs. battery.
 # -- different behavior when in ebook mode
@@ -48,24 +48,27 @@
 #   config_EBOOK_TIME_{DIM,SLEEP,BLANK}
 #   config_PLUGGED_TIME_{DIM,SLEEP,BLANK}
 #
-# Dimming must happen first.  Sleep and blanking can happen in
-# either order.  If "sleep" happens first, the screen will stay on
-# while the rest of the system sleeps, but any keystroke or
-# touchpad activity will awaken it.  If blanking is scheduled
-# first, the screen will go dark while the laptop remains
-# otherwise fully active.  In either case, when the screen is
-# dark and the laptop is sleeping, it's a "deep" sleep --
-# keystrokes will not wake it up, just as if the power button had
-# been used.  The maximum time that any sleep will last before
-# the laptop shuts down is given by "config_MAX_SLEEP_BEFORE_SHUTDOWN".
+# Dimming, blanking, and sleep can be scheduled in any order.  If
+# "sleep" happens first, the screen will stay on (potentially
+# dimmed) while the rest of the system sleeps, but any keystroke
+# or touchpad activity will awaken it.  If "sleep" is scheduled
+# after "dim" or "blank", the screen will go dim and/or dark
+# while the laptop remains otherwise fully active.  Obviously,
+# scheduling dimming after blanking only serves to skip the
+# dimming state, since a blanked screen can't be dimmed.  In any
+# case, when the screen is dark and the laptop is sleeping, it's
+# in a "deep" sleep -- keystrokes will not wake it up, just as if
+# the power button had been used.  The maximum time that any
+# sleep will last before the laptop shuts down is given by
+# "config_MAX_SLEEP_BEFORE_SHUTDOWN".
 #
 # If it's never desirable for the laptop to completely shut down
 # when plugged in, then "config_ALLOW_SHUTDOWN_WHEN_PLUGGED" should
 # be turned off.
 #
-# "config_IDLE_DIM_LEVEL" specifies how dim will the screen go
-# when the first ("config_..._TIME_DIM") timer fires.  The range
-# is 0-15.  If set to 15, the screen will never dim.
+# "config_IDLE_DIM_LEVEL" specifies how far the screen will dim
+# when the ("config_..._TIME_DIM") timer fires.  The range is
+# 0-15.  If set to 15, the screen will never dim.
 #
 # "config_CONFIRM_SECONDS" determines how long the shutdown/suspend
 # confirmation splash screen stays visible before the laptop
@@ -105,24 +108,27 @@
 # 1) A file may be created in
 #     /var/run/powerd-inhibit-suspend/
 #   The file must be named after the PID of the process doing the
-#   inhibiting (and may be empty).  Stale inhibit files will be
-#   removed when the next dim is attempted.  To manually inhibit
-#   dim/blank/sleep one can simply create a file named after a
-#   long-running process:  e.g., "touch /var/run/powerd-inhibit-suspend/1".
-#   Such a file will need to be manually removed, of course.
+#   inhibiting (and may be empty).  Stale inhibit files (i.e.,
+#   their owner pid doesn't exist) will be removed when the next
+#   dim is attempted.  To manually inhibit dim/blank/sleep one can
+#   simply create a file named after a long-running process:  e.g.,
+#   "touch /var/run/powerd-inhibit-suspend/1".  Such a file will
+#   need to be manually removed, of course.
 #
 # 2) The modification time of the file
 #     /var/run/powerd-inhibit-suspend/.fake_activity
-#   will be checked before any dim/blank/sleep occurs, and compared
-#   to the time of the last "real" user activity.  If it is newer,
-#   the dim/blank/sleep will be avoided.  So a program wishing to
-#   indicate that it is "active" can simply touch this file
-#   periodically to keep it up-to-date.  The command:
+#   will be checked before any dim/blank/sleep occurs, and will be
+#   compared to the time of the last "real" user activity.  If it
+#   is newer, the dim/blank/sleep will be skipped.  So a program
+#   wishing to indicate that it is "active" can simply touch this
+#   file periodically to keep it up-to-date.  As a convenience, the
+#   command:
 #     powerd-config -a
 #   will do this touch.  For example, to keep the laptop alive while
 #   an ssh session is in use, add:
 #     export PROMPT_COMMAND='powerd-config -a'
-#   into your .bash_profile.
+#   to your .bash_profile.  This will cause the file to be touched
+#   at ever shell prompt.
 # 
 # Post-resume scripts can be put in /etc/powerd/postresume.d -- the
 # scripts will be run in lexicographic order.  The scripts are run
@@ -140,21 +146,21 @@
 #       power button
 #       ebook
 #       lid
-#   Actions on these switches appear as events on /dev/input/event[012]. 
-#   Powerd relies on the companion program "olpc-switchd" to report
-#   these events via the /var/run/powerevents fifo it creates for the
-#   purpose.  It's unfortunate that these events have no corresponding
-#   /sys state indicators, since knowing the state of the lid (or of
-#   ebook mode) would be useful in the absence of events (at startup,
-#   for instance).
+#   Actions on these switches appear as input events on
+#   /dev/input/event[012].  Powerd relies on the companion program
+#   "olpc-switchd" to report these events via the /var/run/powerevents
+#   fifo it creates for the purpose.  It's unfortunate that these
+#   events have no corresponding /sys state indicators, since
+#   knowing the state of the lid (or of ebook mode) would be useful
+#   in the absence of events (at startup, for instance).
 #
 #
 # - Conditions:
 #       AC input (boolean)
 #       battery capacity (numeric)
 #   It's unfortunate that these have no corresponding events.  Because
-#   they don't, olpc-switchd also monitors these two nodes (under /sys)
-#   and synthesizes events to represent their transitions.
+#   they don't, olpc-switchd also monitors these two status nodes (under
+#   /sys) and synthesizes events to represent their transitions.
 #
 #
 # - Wakeups:
@@ -181,43 +187,70 @@
 #       useridle2
 #       useridle3
 #
-#   These events are used in the following ways:
-#
-#                  screen          cpu
-#                  ------          ---
-#     useridle1     dim            on
-#     useridle2     dim            sleep
-#     rtcwake1      off            sleep
-#     rtcwake2           shutdown
-#
-#   Or, if $config_TIME_BLANK is less than $config_TIME_SLEEP, then
-#   this sequence, which is more like a "normal" laptop behaves:
-#
-#                  screen          cpu
-#                  ------          ---
-#     useridle1     dim            on
-#     useridle2     off            on
-#     useridle3     off            sleep
-#     rtcwake2           shutdown
-#
+#   These events may be used to dim the screen, blank the screen, and/or
+#   put the CPU to sleep, in any order.
 #
 # - Other system activity: cpu load (implemented), network load
 #       (unimplemented), etc.
 #
 #
-# Note that X11 DPMS is neither consulted nor modified, and it
-# may still blank the display after some period of inactivity. 
-# (This won't happen, of course, unless the DPMS "standby" time
-# is shorter than powerd's "config_..._TIME_SLEEP" time.)  The
-# effect of DPMS doing this will result in confusion, since when
-# DPMS blanks the screen, powerd can't tell that it's been done. 
-# I.e., a laptop with a screen blanked by DPMS may behave
-# differently than one blanked by powerd.  So "xset -dpms" is
-# recommended, preferably in olpc-session.
+######
 #
-# My intention is that powerd be runnable with most any modern
-# shell.  No bash-specific features were used, unless by
-# accident.
+# Implementation notes:
+#
+# - System transitions
+#
+#   The system can be configured to go through the following 6
+#   transition sequences:
+#          
+#       #1      dim     sleep    {blank}  {shutdown}      
+#       #2      dim     blank    sleep    {shutdown}      
+#       #3      blank   [dim]    sleep    {shutdown}      
+#       #4      blank   sleep    {[dim]}  {shutdown}      
+#       #5      sleep   {blank}  {[dim]}  {shutdown}      
+#       #6      sleep   {dim}    {blank}  {shutdown}      
+#
+#      {xxx} -- any transition that follows "sleep" is handled in
+#          the snooze() function, and not by the useridleN events.
+#      [dim] -- this state is a no-op, since it follows "blank".
+#     
+#   Transitions up through and including "sleep" are driven by the
+#   useridle1,2,3 events, and handled by the action routines 
+#   (dim_action(), blank_action(), and sleep_action()).  These are
+#   relatively straightforward.  Once the system is sleeping (using
+#   rtcwake), the transitions are handled within the snooze()
+#   function.
+#
+#   As a result of the no-op "[dim]" transition, the snooze()
+#   implementation of snooze() for sequences #1 and #5 is
+#   identical, as is the implementation for #2, #3 and #4.  So
+#   snooze() only really has three separate cases to deal with,
+#   represented by sequences #2, #1, and #6.  These cases are:
+#      - dim then blank then shutdown
+#      - blank then shutdown
+#      - shutdown
+#
+#
+# - X11
+#
+#   Note that X11 DPMS is neither consulted nor modified, and it
+#   may still blank the display after some period of inactivity. 
+#   (This won't happen, of course, unless the DPMS "standby" time
+#   is shorter than powerd's "sleep" time.)  The effect of DPMS
+#   doing this will result in confusion, since when DPMS blanks the
+#   screen, powerd can't tell that it's been done.  I.e., a laptop
+#   with a screen blanked by DPMS may behave differently than one
+#   blanked by powerd.  So "xset -dpms" is recommended, preferably
+#   in olpc-session.
+#
+#
+# - Posix shell
+#
+#   The intention is that powerd be runnable with most any modern
+#   shell.  No bash-specific features were used, unless by accident.
+#
+#
+######
 #
 # Please send commends/suggestions/patches to pgf@laptop.org.
 #
@@ -533,10 +566,23 @@ snooze()
     # we only use rtc alarms to either a) turn of the screen when
     # we've been sleeping for a while, or b) shutdown after we've been
     # sleeping for a while.  if we do a), we'll do b) next.
-    rtctype=$1   # "until_screenoff", or "until_shutdown"
-    orig_rtctime=$2
+    rtctype=$1   # "until_dim", "until_blank", or "until_shutdown"
+    shutdowntime=${2:-}
+    case $rtctype in
+    until_dim)
+        dimtime=${3:-}
+        blanktime=${4:-}
+        orig_rtctime=$dimtime
+        ;;
+    until_blank)
+        blanktime=${3:-}
+        orig_rtctime=$blanktime
+        ;;
+    until_shutdown)
+        orig_rtctime=$shutdowntime
+    esac
+
     rtctime=$orig_rtctime
-    shutdowntime=${3:-}
 
     while :
     do
@@ -586,7 +632,7 @@ snooze()
                 # when the screen was lit when it was pushed.
                 selfinject fake_useractive
             else
-                # we're waiting until_screenoff, so screen is still on
+                # waiting until_dim or until_blank, so screen is still on
                 selfinject fake_powerbutton
             fi
             break
@@ -607,7 +653,14 @@ snooze()
             power_check
 
             case $rtctype-$wakeupsource in
-            until_screenoff-rtc*)
+            until_dim-rtc*)
+                backlight dim
+                rtctype=until_blank
+                orig_rtctime=$blanktime
+                rtctime=$blanktime
+                ;;
+
+            until_blank-rtc*)
                 backlight off
                 rtctype=until_shutdown
                 orig_rtctime=$shutdowntime
@@ -900,22 +953,37 @@ set_idletimes()
     test "$t2" -eq "$t2" || t2=0
     test "$t3" -eq "$t3" || t3=0
 
-    # adjust the ordering of blank/sleep:
-    if [ "$t3" -ge "$t2" ]
-    then
-        dark_before_sleep=;
-    else
-        tt="$t2"; t2="$t3"; t3="$tt"
-        dark_before_sleep=true
-    fi
+    # we want the timers in time order, so we sort them, along
+    # with their associated action routines and names (for logging).
+    actions=( $( (
+        echo $t1  "dim"   dim_action
+        echo $t2  "sleep" sleep_action
+        echo $t3  "blank" blank_action
+                    ) | sort -n) )
 
-    #if any delta is 0 or negative, make it 60
-    #if any delta is less than 5, make it at least 5
+    # three timers
+    t1=${actions[0]}
+    t2=${actions[3]}
+    t3=${actions[6]}
+
+    # three names
+    aname1=${actions[1]}
+    aname2=${actions[4]}
+    aname3=${actions[7]}
+
+    # three action routines, stored in "function pointers"
+    useridle1_action=${actions[2]}
+    useridle2_action=${actions[5]}
+    useridle3_action=${actions[8]}
+
+    # if any delta is 0 or negative, make it 60
     test "$t2" -le "$t1"        && t2=$((t1 + 60))
-    test "$t2" -le $((t1 + 5))  && t2=$((t1 + 5))
-
     test "$t3" -le "$t2"        && t3=$((t2 + 60))
-    test "$t3" -le $((t2 + 5))  && t3=$((t2 + 5))
+
+    useridle1_delta=$((t2 - t1))
+    useridle2_delta=$((t3 - t2))
+    useridle1_next=$useridle2_action
+    useridle2_next=$useridle3_action
 
     # give olpc-kbdshim the timeouts
     reset_idlecounters $t1 $t2 $t3
@@ -924,18 +992,11 @@ set_idletimes()
     test "$t4" -eq "$t4" || t4=0
     test "$t4" -le "5" && t4=300
 
-    if [ "$dark_before_sleep" ]
-    then
-        screenofftimer=;
-        shutdowntimer=$t4
-        log dim in $t1 seconds, blank in $t2, sleep in $t3, \
+    log $aname1 in $t1 seconds, $aname2 in $t2, $aname3 in $t3, \
                 then shutdown after $t4
-    else
-        screenofftimer=$((t3 - t2))
-        shutdowntimer=$t4
-        log dim in $t1 seconds, sleep in $t2, blank in $t3, \
-                then shutdown after $t4
-    fi
+    dimtimer=;
+    blanktimer=;
+    shutdowntimer=$t4
 
     return 0
 }
@@ -980,6 +1041,33 @@ gotactivity()
 {
     invalidate_powertimer
     unsplash
+}
+
+dim_action()
+{
+    backlight is_off || backlight dim
+}
+
+blank_action()
+{
+    backlight off
+}
+
+sleep_action()
+{
+    nextaction=$1
+    delta1=$2
+    delta2=$3
+    # sleep until it's time to shut down
+    if [ $nextaction = dim_action ] && ! backlight is_off
+    then
+        snooze until_dim "$shutdowntimer" "$delta1" "$delta2"
+    elif [ $nextaction = blank_action ]
+    then
+        snooze until_blank "$shutdowntimer" "$delta1"
+    else
+        snooze until_shutdown "$shutdowntimer"
+    fi
 }
 
 event_loop()
@@ -1090,7 +1178,8 @@ event_loop()
                 reset_idlecounters  # restart the timers
                 continue
             fi
-            backlight dim
+            $useridle1_action \
+		$useridle1_next $useridle1_delta $useridle2_delta
             ;;
 
         useridle2)
@@ -1099,13 +1188,7 @@ event_loop()
                 reset_idlecounters  # restart the timers
                 continue
             fi
-            if [ "$dark_before_sleep" ]
-            then
-                backlight off
-            else
-                # sleep until it's time to darken the screen
-                snooze until_screenoff "$screenofftimer" "$shutdowntimer"
-            fi
+            $useridle2_action $useridle2_next $useridle2_delta ""
             ;;
 
         useridle3)
@@ -1114,13 +1197,7 @@ event_loop()
                 reset_idlecounters  # restart the timers
                 continue
             fi
-            if [ "$dark_before_sleep" ]
-            then
-                # sleep until it's time to shut down
-                snooze until_shutdown "$shutdowntimer"
-            #else
-            #    ; # shouldn't happen
-            fi
+            $useridle3_action none "" ""
             ;;
 
         ac)
