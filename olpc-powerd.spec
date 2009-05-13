@@ -51,6 +51,11 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 %doc COPYING
+%config(noreplace) %{_sysconfdir}/powerd/powerd.conf
+%config(noreplace) %{_sysconfdir}/event.d/powerd
+%config(noreplace) %{_sysconfdir}/event.d/olpc-switchd
+%config(noreplace) %{_sysconfdir}/powerd/pleaseconfirm.pgm
+%config(noreplace) %{_sysconfdir}/powerd/shuttingdown.pgm
 
 %{_sbindir}/olpc-switchd
 %{_sbindir}/powerd
