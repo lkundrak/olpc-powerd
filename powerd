@@ -828,7 +828,7 @@ set_config_defaults()
 
     config_WAKE_ON_WLAN=yes
     config_MAX_SLEEP_BEFORE_SHUTDOWN=3600
-    config_ALLOW_SHUTDOWN_WHEN_PLUGGED=no
+    config_ALLOW_SHUTDOWN_WHEN_PLUGGED=yes
     config_SLEEP_WHEN_LID_CLOSED=yes
 
     config_CONFIRM_SECONDS=7
@@ -1179,7 +1179,7 @@ event_loop()
                 continue
             fi
             $useridle1_action \
-		$useridle1_next $useridle1_delta $useridle2_delta
+                $useridle1_next $useridle1_delta $useridle2_delta
             ;;
 
         useridle2)
