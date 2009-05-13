@@ -6,12 +6,12 @@
 # config_PLUGGED_TIME_{DIM,SLEEP,BLANK}
 # These are the time in seconds (measured from last user
 # activity) until a) the laptop screen dims, b) the laptop
-# sleeps, and c) the laptop screen blanks.  b) and c) can happen
-# in either order.
+# sleeps, and c) the laptop screen blanks.  All three can be
+# scheduled in any order.
 #
 # config_MAX_SLEEP_BEFORE_SHUTDOWN
-#  If the laptop sleeps, it will shut down after this amount
-#  of time.
+#  Once the laptop sleeps and the screen is blank, it will shut
+#  down after this amount of time.
 #
 # config_ALLOW_SHUTDOWN_WHEN_PLUGGED
 #  If this is disabled, the laptop will never automatically shut
@@ -19,7 +19,8 @@
 #
 # config_IDLE_DIM_LEVEL
 #  Brightness level when the screen is automatically dimmed.  Set
-#  to 15 to prevent dimming.
+#  to 15 to prevent dimming.  Set to 0 to allow the backlight to
+#  go off completely.
 #
 # config_CONFIRM_SECONDS
 #  How long the shutdown/suspend confirmation splash screen stays
@@ -29,7 +30,7 @@
 #  Allows wireless to continue operating when the laptop is
 #  sleeping.  Note that the wireless configuration may allow
 #  shutting down the wireless entirely (e.g., with
-#   "echo0>/sys/power/wlan-enabled"), which may override this
+#  "echo 0 >/sys/power/wlan-enabled"), which may override this
 #  setting.
 #
 # config_CPU_IDLE_LIMIT
@@ -53,7 +54,7 @@ config_CHARGING_TIME_BLANK="240"
 config_IDLE_DIM_LEVEL="5"
 config_WAKE_ON_WLAN="yes"
 config_MAX_SLEEP_BEFORE_SHUTDOWN="3600"
-config_ALLOW_SHUTDOWN_WHEN_PLUGGED="no"
+config_ALLOW_SHUTDOWN_WHEN_PLUGGED="yes"
 config_CONFIRM_SECONDS="7"
 config_CPU_IDLE_LIMIT="10"
 config_SLEEP_WHEN_LID_CLOSED="yes"

@@ -92,9 +92,9 @@ edit_config()
 
     source $cfg
 
-    bat_dim=$config_BATTERY_TIME_DIM
-    bat_sleep=$config_BATTERY_TIME_SLEEP
-    bat_blank=$config_BATTERY_TIME_BLANK
+    bat_dim=${config_BATTERY_TIME_DIM:-120}
+    bat_sleep=${config_BATTERY_TIME_SLEEP:-240}
+    bat_blank=${config_BATTERY_TIME_BLANK:-480}
 
     # force numeric, and reasonable defaults
     test "$bat_dim" -eq "$bat_dim" || bat_dim=120
@@ -126,7 +126,7 @@ edit_config()
     wlanwake=${config_WAKE_ON_WLAN:-yes}
     maxsleep=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-3600}
     test "$maxsleep" -eq "$maxsleep" || maxsleep=5
-    noshut=${config_NO_SHUTDOWN_WHEN_PLUGGED:-no}
+    allowshut=${config_ALLOW_SHUTDOWN_WHEN_PLUGGED:-yes}
     lidsleep=${config_SLEEP_WHEN_LID_CLOSED:-yes}
 
     splashdelay=${config_CONFIRM_SECONDS:-8}
@@ -154,7 +154,7 @@ edit_config()
       "Wake on wireless activity?"    7 1      "$wlanwake"   7  41 5 5 "$ro" \
       \
       "Max sleep before laptop shuts down:"    9 1      "$maxsleep"   9  37 9 9 "$ro" \
-      "Prevent shutdown when plugged in?"    10 1      "$noshut"   10  41 5 5 "$ro" \
+      "Allow shutdown when plugged in?"    10 1      "$allowshut"   10  41 5 5 "$ro" \
       "Always sleep when lid closed?"    11 1      "$lidsleep"   11  41 5 5 "$ro" \
       \
       "Power button splash screen timeout:"   13 1 "$splashdelay"  13  43 3 3 "$ro" \
@@ -178,7 +178,7 @@ edit_config()
         idledim=${10}
         wlanwake=${11}
         maxsleep=${12}
-        noshut=${13}
+        allowshut=${13}
         lidsleep=${14}
         splashdelay=${15}
 
@@ -195,7 +195,7 @@ edit_config()
         setvar config_IDLE_DIM_LEVEL $idledim
         setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
         setvar config_MAX_SLEEP_BEFORE_SHUTDOWN $maxsleep
-        setvar config_NO_SHUTDOWN_WHEN_PLUGGED $(yes_no $noshut)
+        setvar config_ALLOW_SHUTDOWN_WHEN_PLUGGED $(yes_no $allowshut)
         setvar config_SLEEP_WHEN_LID_CLOSED $(yes_no $lidsleep)
         setvar config_CONFIRM_SECONDS $splashdelay
     fi
