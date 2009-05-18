@@ -240,12 +240,15 @@ indicate_activity(void)
 }
 
 void
-send_event(char *evt, int seconds)
+send_event(char *evt, int seconds, char *extra)
 {
     char evtbuf[128];
+    char *space;
     int n;
     
-    n = snprintf(evtbuf, 128, "%s %d\n", evt, seconds);
+    space = extra ? " " : "";
+    if (!extra) extra = "";
+    n = snprintf(evtbuf, 128, "%s %d%s%s\n", evt, seconds, space, extra);
 
     if (fifo_fd < 0)
         fifo_fd = open(output_fifo, O_WRONLY|O_NONBLOCK);
@@ -278,7 +281,7 @@ power_button_event()
         ev->type, ev->code, ev->value);
 
     if (ev->type == EV_KEY && ev->code == KEY_POWER && ev->value == 1)
-        send_event("powerbutton", ev->time.tv_sec);
+        send_event("powerbutton", ev->time.tv_sec, 0);
 
 
 }
@@ -297,9 +300,9 @@ lid_event()
 
     if (ev->type == EV_SW && ev->code == 0) {
         if (ev->value)
-            send_event("lidclose", ev->time.tv_sec);
+            send_event("lidclose", ev->time.tv_sec, 0);
         else
-            send_event("lidopen", ev->time.tv_sec);
+            send_event("lidopen", ev->time.tv_sec, 0);
     }
 
 }
@@ -318,9 +321,9 @@ ebook_event()
 
     if (ev->type == EV_SW && ev->code == 1) {
         if (ev->value)
-            send_event("ebookclose", ev->time.tv_sec);
+            send_event("ebookclose", ev->time.tv_sec, 0);
         else
-            send_event("ebookopen", ev->time.tv_sec);
+            send_event("ebookopen", ev->time.tv_sec, 0);
     }
 }
 
@@ -346,7 +349,7 @@ poll_power_sources(void)
     online = buf[0] - '0';
 
     if (was_online != online) {
-        send_event(online ? "ac online" : "ac offline", time(0));
+        send_event(online ? "ac-online" : "ac-offline", time(0), 0);
         was_online = online;
     }
 
@@ -365,8 +368,8 @@ poll_power_sources(void)
     capacity = atoi(buf);
     if (was_capacity != capacity) {
         char evbuf[32];
-        snprintf(evbuf, 32, "battery %d", capacity);
-        send_event(evbuf, time(0));
+        snprintf(evbuf, 32, "%d", capacity);
+        send_event("battery", time(0), evbuf);
         was_capacity = capacity;
     }
     close(fd);
