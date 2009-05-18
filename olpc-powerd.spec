@@ -1,6 +1,6 @@
 Summary: OLPC XO power management
 Name: olpc-powerd
-Version: 5
+Version: 6
 Release: 1%{?dist}
 License: GPLv2+
 Group: System Environment/Base
