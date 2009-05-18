@@ -617,8 +617,8 @@ snooze()
         # which is buggy in the kernel, and b) trying to sleep for
         # 0 seconds, which might happen if we wake up due to an AC
         # event at just the same time that rtcwake should have expired.
-        now=$(seconds)
-        rtctime=$(( rtctime - ( now - sleep_started ) ))
+        lastwakeup=$(seconds)
+        rtctime=$(( rtctime - ( lastwakeup - sleep_started ) ))
         rtctime=$(( (rtctime <= 1) ? 2 : rtctime ))
 
         read_wakeupsource wakeupsource
@@ -630,10 +630,10 @@ snooze()
                 # this takes care of the "screen blanked but not sleeping"
                 # case.  we only want the button to give the splash menu
                 # when the screen was lit when it was pushed.
-                selfinject fake_useractive
+                selfinject fake_useractive $lastwakeup "$wakeupsource"
             else
                 # waiting until_dim or until_blank, so screen is still on
-                selfinject fake_powerbutton
+                selfinject fake_useractive $lastwakeup "$wakeupsource"
             fi
             break
             ;;
@@ -641,7 +641,7 @@ snooze()
         "wlan packet")
             if yes_or_true "$config_WAKE_ON_WLAN"
             then
-                selfinject fake_useractive
+                selfinject fake_useractive $lastwakeup "$wakeupsource"
                 break
             fi
             ;;
@@ -704,12 +704,12 @@ snooze()
 
         "lid"|"empty sci")  # assume "empty sci" comes from lid (kernel bug)
             am_ebook=;
-            selfinject fake_useractive
+            selfinject fake_useractive $lastwakeup "$wakeupsource"
             break
             ;;
 
         *)  # "key press"|"ebook")
-            selfinject fake_useractive
+            selfinject fake_useractive $lastwakeup "$wakeupsource"
             break
         esac
     done
@@ -1022,7 +1022,7 @@ sched_powertimer()
 {
     # we can't cancel timers, so give them sequence numbers
     : $((timerseqno += 1))
-    (sleep $1; shift 1; selfinject powertimerdone $timerseqno $*) &
+    (sleep $1; shift 1; selfinject powertimerdone $(seconds) $timerseqno $*) &
 }
 
 sched_unfreezetimer()
@@ -1072,7 +1072,7 @@ sleep_action()
 
 event_loop()
 {
-    local event arg1 arg2 more
+    local event tstamp arg2 arg3 more
 
     : starting eventloop
 
@@ -1091,11 +1091,20 @@ event_loop()
 
         reevaluate
 
-        arg1=; arg2=; more=;
-        read event arg1 arg2 more
+        tstamp=; arg2=; arg3=; more=;
+        read event tstamp arg2 arg3 more
 
         : -------------------------
-        : got "<$event>", arg1: ${arg1:-n/a} arg2: ${arg2:-n/a}
+        : got "<$event>", "<${tstamp:-}>" "<${arg2:-}>" "<${arg3:-}>"
+
+        if [ "$tstamp" ] && [ "$tstamp" -lt "$lastwakeup" ]
+        then
+            # it's possible for olpc-switchd to generate multiple
+            # hardware-related events (e.g. # lidopen/lidclose/lidopen)
+            # before we go to sleep due the first one.  toss any
+            # that are stale.
+            continue
+        fi
 
         case $event in
 
@@ -1125,9 +1134,9 @@ event_loop()
 
         powertimerdone)
             # are we still waiting for this timer?
-            if [ "$timerseqno" = "$arg1" ]
+            if [ "$timerseqno" = "$arg2" ]
             then
-                echo $arg2 >$EVENTFIFO
+                echo $arg3 $(seconds) >$EVENTFIFO
                 : $((timerseqno += 1))
             fi
             ;;
@@ -1200,16 +1209,18 @@ event_loop()
             $useridle3_action none "" ""
             ;;
 
-        ac)
-            case $arg1 in
-            online)  ac_online=true ;;
-            *)       ac_online=; ;;
-            esac
+        ac-online)
+            ac_online=true
+            reevaluate
+            ;;
+
+        ac-offline)
+            ac_online=;
             reevaluate
             ;;
 
         battery)
-            battery_capacity=$arg1
+            battery_capacity=$arg2
             maybe_battery_shutdown
             ;;
 
@@ -1276,6 +1287,7 @@ savebright=;
 last_t_values=;
 timerseqno=1;
 powerseqno=0;
+lastwakeup=0;
 
 sched_unfreezetimer 10
 
