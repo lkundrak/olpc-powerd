@@ -174,8 +174,8 @@
 #       lid (or sometimes "empty sci")
 #   When the system wakes from sleep, /sys/power/wakeup-source reports
 #   the cause.  Lid reporting is not reliable -- sometimes "empty sci"
-#   is reported instead.  (I've not yet seen a case where "empty sci" is
-#   reported for lid close I'm not ruling it out.)
+#   is reported instead.  (This can happen either for lid open or close
+#   events.)
 #
 #
 # - User activity/idleness:
@@ -633,7 +633,7 @@ snooze()
                 selfinject fake_useractive $lastwakeup "$wakeupsource"
             else
                 # waiting until_dim or until_blank, so screen is still on
-                selfinject fake_useractive $lastwakeup "$wakeupsource"
+                selfinject fake_powerbutton $lastwakeup "$wakeupsource"
             fi
             break
             ;;
