@@ -120,7 +120,7 @@ edit_config()
     test "$plug_sleep" -eq "$plug_sleep" || plug_sleep=$(( plug_dim + 120 ))
     test "$plug_blank" -eq "$plug_blank" || plug_blank=$(( plug_dim + 240 ))
 
-    idledim=$config_IDLE_DIM_LEVEL
+    idledim=${config_IDLE_DIM_LEVEL:-5}
     test "$idledim" -eq "$idledim" || idledim=5
 
     #wlanwake=${config_WAKE_ON_WLAN:-yes}
@@ -318,27 +318,20 @@ main()
         exit 1
     fi
 
-    if [ -f $CONFIGFILE ]
+    if [ -L $CONFIGFILE ]
     then
-        if [ "$am_root" ]
-        then
-            editing="Editing "
-            readonly=;
-            cp $CONFIGFILE $TMPCONFIG
-        else
-            editing="Showing read-only contents of "
-            readonly=yes
-        fi
-        linked_name=$(readlink $CONFIGFILE 2>/dev/null)
+        cfg_file=$(readlink $CONFIGFILE 2>/dev/null)
+        test -r "$cfg_file"
         r=$?
-        if [ "$linked_name" ]
-        then
-            editing="${editing}profile '$linked_name'.\n"
-        else
-            editing="$editing'${CONFIGFILE}'.\n"
-        fi
-    else
-        > $TMPCONFIG
+        descr=" linked profile"
+    elif [ -s $CONFIGFILE ]
+    then
+        cfg_file=$CONFIGFILE
+        r=0
+    else # no config file -- (try to) create one
+        > $CONFIGFILE
+        cfg_file=$CONFIGFILE
+        descr=" new"
         r=$?
     fi
 
@@ -348,11 +341,20 @@ main()
         exit 1
     fi
 
+    readonly=;
+    if [ ! "$am_root" ]
+    then
+        test -w "$cfg_file" || readonly=yes
+        test -w $(dirname "$cfg_file") || readonly=yes
+    fi
 
     if [ $readonly ]
     then
+        editing="Showing read-only contents of$descr '$cfg_file'.\n"
         edit_config $CONFIGFILE
     else
+        editing="Editing$descr '$cfg_file'.\n"
+        cp "$cfg_file" $TMPCONFIG
         if edit_config $TMPCONFIG
         then
             cp $CONFIGFILE $CONFIGFILE.bak
