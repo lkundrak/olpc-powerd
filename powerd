@@ -316,6 +316,10 @@ WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
 DCON_FREEZE=/sys/devices/platform/dcon/freeze
 DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
 
+# experimental driver feature -- not present in currently
+# distributed kernels.
+TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
+
 # command fifo for olpc-kbdshim
 USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
 
@@ -476,6 +480,18 @@ laptop_busy()
             cpu_busy || \
                 network_busy && return 0
     return 1
+}
+
+touchpad_recalibrate()
+{
+    # take advantage of lid open events, which indicate that a)
+    # someone is quite unlikely to be using the touchpad, and b)
+    # the physical environment may have changed since last use,
+    # to force a recalibration:
+    if [ -e $TPAD_RECAL ]
+    then
+        echo 1 > $TPAD_RECAL
+    fi
 }
 
 set_wlan_power()
@@ -714,6 +730,7 @@ snooze()
         "lid"|"empty sci")  # assume "empty sci" comes from lid (kernel bug)
             am_ebook=;
             selfinject fake_useractive $lastwakeup "$wakeupsource"
+            touchpad_recalibrate
             break
             ;;
 
@@ -1169,6 +1186,7 @@ event_loop()
             ;;
 
         lidopen)
+            touchpad_recalibrate
             gotactivity
             am_ebook=;
             backlight restore
