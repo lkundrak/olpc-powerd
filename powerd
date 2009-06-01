@@ -211,8 +211,10 @@
 #       #6      sleep   {dim}    {blank}  {shutdown}      
 #
 #      {xxx} -- any transition that follows "sleep" is handled in
-#          the snooze() function, and not by the useridleN events.
-#      [dim] -- this state is a no-op, since it follows "blank".
+#           the snooze() function, and not by the useridleN events.
+#           That's what the {braces} mean:  "handled by snooze".
+#      [dim] -- this state is a no-op, since dimming after blanking
+#           doesn't make sense.
 #     
 #   Transitions up through and including "sleep" are driven by the
 #   useridle1,2,3 events, and handled by the action routines 
@@ -221,7 +223,7 @@
 #   rtcwake), the transitions are handled within the snooze()
 #   function.
 #
-#   As a result of the no-op "[dim]" transition, the snooze()
+#   As a result of the no-op "[dim]" transition, the 
 #   implementation of snooze() for sequences #1 and #5 is
 #   identical, as is the implementation for #2, #3 and #4.  So
 #   snooze() only really has three separate cases to deal with,
@@ -691,6 +693,13 @@ snooze()
                 else
                     rtctime=$orig_rtctime
                 fi
+                ;;
+
+            until_*-ac*)
+                # we were waiting for dim or blank, and we got plugged in.
+                # we'll wake up fully, so we can re-decide whether we
+                # should really be sleeping aggressively.
+                break;
                 ;;
 
             *-battery*)  # all we do is check level, above.
