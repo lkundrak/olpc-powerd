@@ -503,9 +503,10 @@ set_wlan_power()
     read_wlan_power w
     if [ "$w" != "$1" ]
     then
-        test "$w" = 1 && echo WARNING:  blipping wlan-reset
+        test "$w" = 1 && log WARNING:  blipping wlan-reset
         echo $1 > $WLAN_ENABLED
     fi
+    echo $w
 }
 
 read_wlan_power()
@@ -570,16 +571,10 @@ read_wakeupsource()
 
 snooze()
 {
+
+    prev_wlan_power=;
+
     runparts suspend
-    read_wlan_power wlp
-    # ohmd uses this:
-    #    nm-tool | grep msh0 -A4 | grep Active | awk '{print $2}'\"
-    # to determine whether mesh is active before turning off wireless.
-    # i guess we should do the same.
-    if ! yes_or_true "$config_WAKE_ON_WLAN"
-    then
-        set_wlan_power 0
-    fi
 
     # we only use rtc alarms to either a) turn of the screen when
     # we've been sleeping for a while, or b) shutdown after we've been
@@ -619,6 +614,14 @@ snooze()
                 then
                     set_wakeupevents battery
                 fi
+            fi
+            # ohmd uses this:
+            #    nm-tool | grep msh0 -A4 | grep Active | awk '{print $2}'\"
+            # to determine whether mesh is active before turning off wireless.
+            # i guess we could do the same.
+            if ! yes_or_true "$config_MESH_DURING_SUSPEND"
+            then
+                prev_wlan_power=$(set_wlan_power 0)
             fi
             test "$tracing" && sleep 1
             rtcwake -m mem -a -s $rtctime
@@ -739,7 +742,9 @@ snooze()
             break
         esac
     done
-    set_wlan_power $wlp
+
+    test "$prev_wlan_power" && set_wlan_power $prev_wlan_power
+
     reset_idlecounters
     runparts resume &
 }
@@ -853,6 +858,7 @@ set_config_defaults()
     config_IDLE_DIM_LEVEL=5
 
     config_WAKE_ON_WLAN=yes
+    config_MESH_DURING_SUSPEND=no
     config_MAX_SLEEP_BEFORE_SHUTDOWN=3600
     config_ALLOW_SHUTDOWN_WHEN_PLUGGED=yes
     config_SLEEP_WHEN_LID_CLOSED=yes

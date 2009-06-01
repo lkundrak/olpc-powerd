@@ -123,7 +123,8 @@ edit_config()
     idledim=$config_IDLE_DIM_LEVEL
     test "$idledim" -eq "$idledim" || idledim=5
 
-    wlanwake=${config_WAKE_ON_WLAN:-yes}
+    #wlanwake=${config_WAKE_ON_WLAN:-yes}
+    wlanpower=${config_MESH_DURING_SUSPEND:-no}
     maxsleep=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-3600}
     test "$maxsleep" -eq "$maxsleep" || maxsleep=5
     allowshut=${config_ALLOW_SHUTDOWN_WHEN_PLUGGED:-yes}
@@ -151,7 +152,7 @@ edit_config()
       \
       "Screen brightness (0-15) when dimmed:"    5 1      "$idledim"   5  43 3 3 "$ro" \
       \
-      "Wake on wireless activity?"    7 1      "$wlanwake"   7  41 5 5 "$ro" \
+      "Keep wlan powered in suspend?"    7 1      "$wlanpower"   7  41 5 5 "$ro" \
       \
       "Max sleep before laptop shuts down:"    9 1      "$maxsleep"   9  37 9 9 "$ro" \
       "Allow shutdown when plugged in?"    10 1      "$allowshut"   10  41 5 5 "$ro" \
@@ -159,6 +160,7 @@ edit_config()
       \
       "Power button splash screen timeout:"   13 1 "$splashdelay"  13  43 3 3 "$ro" \
         2>$TMP
+# was: "Wake on wireless activity?"    7 1      "$wlanwake"   7  41 5 5 "$ro" \
     then
         return 1
     fi
@@ -176,7 +178,8 @@ edit_config()
         plug_sleep=$8
         plug_blank=$9
         idledim=${10}
-        wlanwake=${11}
+        #wlanwake=${11}
+        wlanpower=${11}
         maxsleep=${12}
         allowshut=${13}
         lidsleep=${14}
@@ -193,7 +196,8 @@ edit_config()
         setvar config_PLUGGED_TIME_BLANK $plug_blank
 
         setvar config_IDLE_DIM_LEVEL $idledim
-        setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
+        #setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
+        setvar config_MESH_DURING_SUSPEND $(yes_no $wlanpower)
         setvar config_MAX_SLEEP_BEFORE_SHUTDOWN $maxsleep
         setvar config_ALLOW_SHUTDOWN_WHEN_PLUGGED $(yes_no $allowshut)
         setvar config_SLEEP_WHEN_LID_CLOSED $(yes_no $lidsleep)
