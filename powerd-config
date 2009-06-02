@@ -321,7 +321,7 @@ main()
     descr=;
     if [ -L $CONFIGFILE ]
     then
-        cfg_file=$(readlink $CONFIGFILE 2>/dev/null)
+        cfg_file=$(readlink -e $CONFIGFILE 2>/dev/null)
         test -r "$cfg_file"
         r=$?
         descr=" linked profile"
