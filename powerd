@@ -503,7 +503,6 @@ set_wlan_power()
     read_wlan_power w
     if [ "$w" != "$1" ]
     then
-        test "$w" = 1 && log WARNING:  blipping wlan-reset
         echo $1 > $WLAN_ENABLED
     fi
     echo $w
@@ -619,7 +618,8 @@ snooze()
             #    nm-tool | grep msh0 -A4 | grep Active | awk '{print $2}'\"
             # to determine whether mesh is active before turning off wireless.
             # i guess we could do the same.
-            if ! yes_or_true "$config_MESH_DURING_SUSPEND"
+            if [ ! "$prev_wlan_power" ] && \
+                 ! yes_or_true "$config_MESH_DURING_SUSPEND"
             then
                 prev_wlan_power=$(set_wlan_power 0)
             fi
@@ -957,40 +957,42 @@ set_idletimes()
 
     if [ "$ac_online" ]
     then
-        t1=$config_PLUGGED_TIME_DIM
-        t2=$config_PLUGGED_TIME_SLEEP
-        t3=$config_PLUGGED_TIME_BLANK
+        dt=$config_PLUGGED_TIME_DIM
+        st=$config_PLUGGED_TIME_SLEEP
+        bt=$config_PLUGGED_TIME_BLANK
     else
         if [ "$am_ebook" ]
         then
-            t1=$config_EBOOK_TIME_DIM
-            t2=$config_EBOOK_TIME_SLEEP
-            t3=$config_EBOOK_TIME_BLANK
+            dt=$config_EBOOK_TIME_DIM
+            st=$config_EBOOK_TIME_SLEEP
+            bt=$config_EBOOK_TIME_BLANK
         else
-            t1=$config_BATTERY_TIME_DIM
-            t2=$config_BATTERY_TIME_SLEEP
-            t3=$config_BATTERY_TIME_BLANK
+            dt=$config_BATTERY_TIME_DIM
+            st=$config_BATTERY_TIME_SLEEP
+            bt=$config_BATTERY_TIME_BLANK
         fi
     fi
 
     # have the values changed?
-    t_values="$t1 $t2 $t3"
-    test "$t1 $t2 $t3" = "$last_t_values" && return 1
-    last_t_values="$t_values"
+    if [ "$dt $st $bt" = "$last_t_values" ]
+    then
+        return 1
+    fi
+    last_t_values="$dt $st $bt"
 
     # now validate the configured times...
 
     # force all to be numeric:
-    test "$t1" -eq "$t1" || t1=120
-    test "$t2" -eq "$t2" || t2=0
-    test "$t3" -eq "$t3" || t3=0
+    test "$dt" -eq "$dt" || dt=120
+    test "$st" -eq "$st" || st=0
+    test "$bt" -eq "$bt" || bt=0
 
     # we want the timers in time order, so we sort them, along
     # with their associated action routines and names (for logging).
     actions=( $( (
-        echo $t1  "dim"   dim_action
-        echo $t2  "sleep" sleep_action
-        echo $t3  "blank" blank_action
+        echo $dt  "dim"   dim_action
+        echo $st  "sleep" sleep_action
+        echo $bt  "blank" blank_action
                     ) | sort -n) )
 
     # three timers
@@ -1209,12 +1211,14 @@ event_loop()
             ;;
 
         useractive|fake_useractive)
+            test "$tracing" && : $(seconds)
             gotactivity
             backlight restore
             test "$event" = fake_useractive && reset_idlecounters
             ;;
 
         useridle1)
+            test "$tracing" && : $(seconds)
             if laptop_busy $t1
             then
                 reset_idlecounters  # restart the timers
@@ -1225,6 +1229,7 @@ event_loop()
             ;;
 
         useridle2)
+            test "$tracing" && : $(seconds)
             if laptop_busy $t2
             then
                 reset_idlecounters  # restart the timers
@@ -1234,6 +1239,7 @@ event_loop()
             ;;
 
         useridle3)
+            test "$tracing" && : $(seconds)
             if laptop_busy $t3
             then
                 reset_idlecounters  # restart the timers
