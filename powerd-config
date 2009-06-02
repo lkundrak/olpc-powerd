@@ -318,6 +318,7 @@ main()
         exit 1
     fi
 
+    descr=;
     if [ -L $CONFIGFILE ]
     then
         cfg_file=$(readlink $CONFIGFILE 2>/dev/null)
