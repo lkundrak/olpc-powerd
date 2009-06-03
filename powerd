@@ -689,15 +689,22 @@ snooze()
                 ;;
 
             until_shutdown-rtc*)
-                if [ ! "$ac_online" ] || \
-                        yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
+                if [ $rtctime -le 2 ]  # time really expired
                 then
-                    do_shutdown "idle timeout"
+                    if [ ! "$ac_online" ] || \
+                            yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
+                    then
+                        do_shutdown "idle timeout"
+                    fi
+                    # if we didn't shut down, we'll sleep again for
+                    # the same time as before, before we check again.
+                    rtctime=$orig_rtctime
+                    log "found external power, sleeping instead of shutdown"
+                else
+                    # not sure why this happens, but i've seen a
+                    # sleep of 999999999 turn into 69506 seconds
+                    log "awoke for shutdown too early, sleeping again"
                 fi
-                # if we didn't shut down, we'll sleep again for
-                # the same time as before, before we check again.
-                rtctime=$orig_rtctime
-                log "found external power, sleeping instead of shutdown"
                 ;;
 
             until_shutdown-ac*)
