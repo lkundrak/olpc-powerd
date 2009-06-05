@@ -33,16 +33,15 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/event.d
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd/postresume.d
 
-%{__install} -m 755 olpc-switchd $RPM_BUILD_ROOT/%{_sbindir}/olpc-switchd
-%{__install} -m 755 powerd $RPM_BUILD_ROOT/%{_sbindir}/powerd
-%{__install} -m 755 pnmto565fb $RPM_BUILD_ROOT/%{_bindir}/pnmto565fb
-%{__install} -m 755 powerd-config $RPM_BUILD_ROOT/%{_bindir}/powerd-config
-%{__install} -m 755 olpc-brightness $RPM_BUILD_ROOT/%{_bindir}/olpc-brightness
-%{__install} -m 644 olpc-switchd.upstart $RPM_BUILD_ROOT%{_sysconfdir}/event.d/olpc-switchd
-%{__install} -m 644 powerd.upstart $RPM_BUILD_ROOT%{_sysconfdir}/event.d/powerd
-%{__install} -m 644 pleaseconfirm.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/pleaseconfirm.pgm
-%{__install} -m 644 shuttingdown.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/shuttingdown.pgm
-%{__install} -m 644 powerd.conf.dist $RPM_BUILD_ROOT%{_sysconfdir}/powerd/powerd.conf
+%{__install} -p -m 755 olpc-switchd $RPM_BUILD_ROOT/%{_sbindir}/olpc-switchd
+%{__install} -p -m 755 powerd $RPM_BUILD_ROOT/%{_sbindir}/powerd
+%{__install} -p -m 755 pnmto565fb $RPM_BUILD_ROOT/%{_bindir}/pnmto565fb
+%{__install} -p -m 755 powerd-config $RPM_BUILD_ROOT/%{_bindir}/powerd-config
+%{__install} -p -m 644 olpc-switchd.upstart $RPM_BUILD_ROOT%{_sysconfdir}/event.d/olpc-switchd
+%{__install} -p -m 644 powerd.upstart $RPM_BUILD_ROOT%{_sysconfdir}/event.d/powerd
+%{__install} -p -m 644 pleaseconfirm.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/pleaseconfirm.pgm
+%{__install} -p -m 644 shuttingdown.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/shuttingdown.pgm
+%{__install} -p -m 644 powerd.conf.dist $RPM_BUILD_ROOT%{_sysconfdir}/powerd/powerd.conf
 
 
 %clean
@@ -61,7 +60,6 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/powerd
 %{_bindir}/pnmto565fb
 %{_bindir}/powerd-config
-%{_bindir}/olpc-brightness
 %{_sysconfdir}/event.d/olpc-switchd
 %{_sysconfdir}/event.d/powerd
 %{_sysconfdir}/powerd/pleaseconfirm.pgm
