@@ -1,29 +1,29 @@
 Summary: OLPC XO power management
 Name: olpc-powerd
 Version: 6
-Release: 1%{?dist}
+Release: 2.20090611git987025b%{?dist}
 License: GPLv2+
 Group: System Environment/Base
 URL:  http://dev.laptop.org/git/users/pgf/powerd/tree/powerd
 # Source0: the source tarball is created by "make tarball" from within
 # a clone of this git tree: git://dev.laptop.org/users/pgf/powerd
 Source0: %{name}-%{version}.tar.gz
-BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 BuildRequires: kernel-headers
 Requires: olpc-kbdshim >= 2-2
-BuildArch: i386
+ExclusiveArch: i386
 
 %description
-The powerd daemon can function as an easily customizable
-replacement for ohmd, which is independent of X, dbus, and hald. 
-This package provides the powerd and olpc-switchd daemons, and
-related utilities.
+The powerd daemon can function as an easily customizable replacement for ohmd,
+which is independent of X, dbus, and hald.  This package provides the powerd
+and olpc-switchd daemons, and related utilities.
 
 %prep
 %setup -q
 
 %build
-make RPM_OPT_FLAGS="$RPM_OPT_FLAGS"
+export OPT_FLAGS="$RPM_OPT_FLAGS"
+make
 
 %install
 rm -rf $RPM_BUILD_ROOT
@@ -87,6 +87,15 @@ then
 fi
 
 %changelog
+* Thu Jun 11 2009 Paul Fox <pg@laptop.org>
+- 6-2
+- utility targets in makefile
+
+* Sat Jun 6 2009 Paul Fox <pg@laptop.org>
+- 6-1
+- various fixes
+- incorporate lessons from kbdshim review
+
 * Tue May 5 2009 Paul Fox <pgf@laptop.org>
 - 5-1
 - fixed ability to shut down with backlight off.  oops.
