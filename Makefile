@@ -32,15 +32,14 @@ CFLAGS = -Wall $(OPT_FLAGS) -DVERSION=$(VERSION)
 PROG1 = olpc-switchd
 PROG2 = pnmto565fb
 
-all: progs tarball mock
+PROGS = $(PROG1) $(PROG2)
 
-progs: $(PROG1) $(PROG2)
+all: $(PROGS)
+
+# testing targets
 tarball:  update-version $(TARBALL)
 srpm: update-version $(SRPM)
-mock: update-version $(SRPM)
 
-clean:
-	rm -f *.o $(PROG1) $(PROG2)
 
 distribute: $(TARBALL) $(SRPM) rpms/$(PKGVER)-$(SRELEASE).fc9.i386.rpm
 	scp $(TARBALL) $(SRPM)  \
@@ -57,11 +56,12 @@ privdist:
 		$(PKGVER)-$(SRELEASE).fc9.i386.rpm \
 		public_html/private_rpms/$(PKGVER)-$(RELEASE).latest.rpm
 
-# make sure the spec refers to a) our tarball, and b) our prerelease string.
+# edit the spec (carefully!) so it refers to a) our tarball, and
+# b) our prerelease string.
 update-version:
 	sed -i \
-	-e 's/^Release:[^%]*/Release: $(SRELEASE)/' \
-	-e 's/@@GITHEAD@@/$(GITHEAD)/' \
+	-e 's/^Release:[^%]*%{?dist}/Release: $(SRELEASE)%{?dist}/' \
+	-e 's/\(.*\)git[0-9a-f]\+\(.*\)/\1$(GITHEAD)\2/' \
 	$(SPEC)
 
 
@@ -86,13 +86,14 @@ $(SRPM): $(TARBALL)
 		 --nodeps -bs $(SPEC)
 
 # build rpm from the srpm
-domock:
+mock: update-version $(SRPM)
 	@mkdir -p $(MOCKDIR)
 	$(MOCK) -q --init
 	$(MOCK) --installdeps $(SRPM)
 	$(MOCK) -v --no-clean --rebuild $(SRPM)
 
-rpmclean:
+clean:
+	rm -f *.o $(PROGS)
 	-$(RM) $(SRPM) $(TARBALL)
 	-$(RM) -rf $(MOCKDIR)
 
