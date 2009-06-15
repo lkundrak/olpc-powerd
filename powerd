@@ -990,9 +990,12 @@ set_idletimes()
     # now validate the configured times...
 
     # force all to be numeric:
-    test "$dt" -eq "$dt" || dt=120
-    test "$st" -eq "$st" || st=0
-    test "$bt" -eq "$bt" || bt=0
+    test "$dt" -eq "$dt" || { logger non-numeric dim time found; dt=120; }
+    test "$st" -eq "$st" || { logger non-numeric sleep time found; st=120; }
+    test "$bt" -eq "$bt" || { logger non-numeric blank time found; bt=120; }
+    test "$dt" -eq 0 && { logger zero dim time found; dt=120; }
+    test "$st" -eq 0 && { logger zero sleep time found; st=120; }
+    test "$bt" -eq 0 && { logger zero blank time found; bt=120; }
 
     # we want the timers in time order, so we sort them, along
     # with their associated action routines and names (for logging).
