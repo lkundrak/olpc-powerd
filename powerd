@@ -283,7 +283,7 @@ CONFIGDIR=/etc/powerd
 CONFIGFILE=$CONFIGDIR/powerd.conf
 RUNPARTSDIR=$CONFIGDIR//postresume.d
 
-LOGFILE=$CONFIGDIR/powerd.log   # only used for debug, currently
+LOGFILE=/var/log/powerd.trace   # only used for debug, currently
 
 INHIBITDIR=/var/run/powerd-inhibit-suspend
 INHIBIT_BY_TOUCH=$INHIBITDIR/.fake_activity
