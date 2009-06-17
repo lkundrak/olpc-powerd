@@ -25,7 +25,6 @@
 # USA.
 #
 
-set -u
 
 INHIBITDIR=/var/run/powerd-inhibit-suspend
 INHIBIT_BY_TOUCH=$INHIBITDIR/.fake_activity
@@ -264,6 +263,8 @@ check_root()
 
 main()
 {
+
+    set -u
 
     case ${1:-} in
     -a) # force pseudo-activity by touching the magic file
