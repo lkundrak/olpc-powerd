@@ -1,5 +1,5 @@
 /*
- * pnmto565fb.c -- write a PNM (actually just PGM or PPM) file,
+ * pnmto565fb.c -- read a PNM (actually just PGM or PPM) file,
  *  and write it to a 16 bit "565" frame buffer.  multiple
  *  images can be specified, and they will be cycled either
  *  when a specified delay expires, or a SIGUSR1 is received.
@@ -47,9 +47,9 @@
 #include <linux/kd.h>
 #include <linux/vt.h>
 
-#define FB_SIZE_B 1200*900*2
 #define FB_WIDTH 1200
 #define FB_HEIGHT 900
+#define FB_SIZE_B (FB_WIDTH * FB_HEIGHT * 2)
 
 char *prog;
 extern char *optarg;
@@ -82,7 +82,7 @@ die(const char *fmt, ...)
 }
 
 static void
-Warn(const char *fmt, ...)
+warn(const char *fmt, ...)
 {
     va_list ap;
 
@@ -94,16 +94,16 @@ Warn(const char *fmt, ...)
 
 
 static void
-SigHandler(int signo)
+sighandler(int signo)
 {
     signal(signo, SIG_IGN);
     die("Caught signal %d. Exiting\n", signo);
 }
 
 static void
-SigNextImage(int signo)
+signextimage(int signo)
 {
-    // signal(signo, SigNextImage);
+    // signal(signo, signextimage);
     longjmp(nxt_jmpbuf, 1);
 }
 
@@ -142,13 +142,13 @@ void dcon_thaw(void)
 static void
 vt_deinit(void)
 {
-    struct vt_mode VT;
+    struct vt_mode vterm;
 
     if (consolefd) {
         ioctl(consolefd, KDSETMODE, KD_TEXT);
-        if (ioctl(consolefd, VT_GETMODE, &VT) != -1) {
-            VT.mode = VT_AUTO;
-            ioctl(consolefd, VT_SETMODE, &VT);
+        if (ioctl(consolefd, VT_GETMODE, &vterm) != -1) {
+            vterm.mode = VT_AUTO;
+            ioctl(consolefd, VT_SETMODE, &vterm);
         }
         if (activevt >= 0) {
             ioctl(consolefd, VT_ACTIVATE, activevt);
@@ -166,7 +166,7 @@ vt_setup(void)
     int i, fd, vtno;
     char vtname[11];
     struct vt_stat vts;
-    struct vt_mode VT;
+    struct vt_mode vterm;
 
     if ((fd = open("/dev/tty0", O_WRONLY, 0)) < 0)
         die("Cannot open /dev/tty0: %s\n", strerror(errno));
@@ -200,17 +200,17 @@ vt_setup(void)
      */
 
     if (ioctl(consolefd, VT_ACTIVATE, vtno) != 0)
-        Warn("ioctl VT_ACTIVATE: %s\n", strerror(errno));
+        warn("ioctl VT_ACTIVATE: %s\n", strerror(errno));
     if (ioctl(consolefd, VT_WAITACTIVE, vtno) != 0)
-        Warn("ioctl VT_WAITACTIVE: %s\n", strerror(errno));
+        warn("ioctl VT_WAITACTIVE: %s\n", strerror(errno));
 
-    if (ioctl(consolefd, VT_GETMODE, &VT) < 0)
+    if (ioctl(consolefd, VT_GETMODE, &vterm) < 0)
         die("ioctl VT_GETMODE: %s\n", strerror(errno));
 
-    VT.mode = VT_PROCESS;
-    VT.relsig = 0;
-    VT.acqsig = 0;
-    if (ioctl(consolefd, VT_SETMODE, &VT) < 0)
+    vterm.mode = VT_PROCESS;
+    vterm.relsig = 0;
+    vterm.acqsig = 0;
+    if (ioctl(consolefd, VT_SETMODE, &vterm) < 0)
         die("ioctl VT_SETMODE: %s\n", strerror(errno));
 
     /*
@@ -224,9 +224,9 @@ void
 usage(void)
 {
     fprintf(stderr,
-        "usage: %s [-s SECS] [-d ] [ -f <devfb-name> ]pnmfile ...\n"
+        "usage: %s [-s SECS] [-d ] [ -f <devfb-name> ] pnmfile ...\n"
         " writes 565 data from successive images to /dev/fb)\n"
-        "    -d to freeze the dcon while an image is being painted\n"
+        "    -d to freeze the XO DCON while an image is being painted\n"
         "    -s SECS  to sleep between images\n"
         "    -f /dev/fb0 to open /dev/fb0 (defaults to /dev/fb)\n"
 	,
@@ -238,15 +238,9 @@ static inline unsigned short
 reduce_24_to_rgb565(unsigned char *sp)
 {
     unsigned short p;
-#if 1
     p = ((sp[0] | ((sp[0] & 0x07) + 0x03)) & 0xF8) << 8;
     p |= ((sp[1] | ((sp[1] & 0x03) + 0x01)) & 0xFC) << 3;
     p |= ((sp[2] | ((sp[2] & 0x07) + 0x03))) >> 3;
-#else
-    p = (sp[0] & 0xF8) << 8;
-    p |= (sp[1] & 0xFC) << 3;
-    p |= (sp[2]) >> 3;
-#endif
     return p;
 }
 
@@ -254,15 +248,9 @@ static inline unsigned short
 reduce_8grey_to_rgb565(unsigned char *sp)
 {
     unsigned short p;
-#if 1
     p = ((sp[0] | ((sp[0] & 0x07) + 0x03)) & 0xF8) << 8;
     p |= ((sp[0] | ((sp[0] & 0x03) + 0x01)) & 0xFC) << 3;
     p |= ((sp[0] | ((sp[0] & 0x07) + 0x03))) >> 3;
-#else
-    p = (sp[0] & 0xF8) << 8;
-    p |= (sp[0] & 0xFC) << 3;
-    p |= (sp[0]) >> 3;
-#endif
     return p;
 }
 
@@ -384,16 +372,16 @@ main(int argc, char *argv[])
     // ignore sigterm so we stay up longer during shutdown
     // signal(SIGTERM, SIG_IGN);
 
-    signal(SIGINT, SigHandler);
-    signal(SIGSEGV, SigHandler);
-    signal(SIGILL, SigHandler);
-    signal(SIGFPE, SigHandler);
-    signal(SIGBUS, SigHandler);
-    signal(SIGXCPU, SigHandler);
-    signal(SIGXFSZ, SigHandler);
-    signal(SIGUSR2, SigHandler);
+    signal(SIGINT, sighandler);
+    signal(SIGSEGV, sighandler);
+    signal(SIGILL, sighandler);
+    signal(SIGFPE, sighandler);
+    signal(SIGBUS, sighandler);
+    signal(SIGXCPU, sighandler);
+    signal(SIGXFSZ, sighandler);
+    signal(SIGUSR2, sighandler);
 
-    signal(SIGUSR1, SigNextImage);
+    signal(SIGUSR1, signextimage);
 
     fb = open(devfb, O_RDWR);
     if (fb < 0) {
