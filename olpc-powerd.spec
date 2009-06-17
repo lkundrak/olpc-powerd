@@ -1,13 +1,13 @@
 Summary: OLPC XO power management
 Name: olpc-powerd
 Version: 6
-Release: 2.20090611gitb48a011%{?dist}
+Release: 2%{?dist}
 License: GPLv2+
 Group: System Environment/Base
 URL:  http://dev.laptop.org/git/users/pgf/powerd/tree/powerd
 # Source0: the source tarball is created by "make tarball" from within
 # a clone of this git tree: git://dev.laptop.org/users/pgf/powerd
-Source0: %{name}-%{version}-gitb48a011.tar.gz
+Source0: %{name}-%{version}-git6742ae5.tar.gz
 BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 BuildRequires: kernel-headers
 Requires: olpc-kbdshim >= 2-2
