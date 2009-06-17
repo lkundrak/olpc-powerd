@@ -1110,6 +1110,14 @@ sleep_action()
     delta1=$2
     delta2=$3
 
+    # if we're still booting, the dcon may still be frozen.
+    # don't sleep until we're sort of all the way up.
+    if dcon is_frozen
+    then
+        reset_idlecounters
+        return
+    fi
+
     # sleep until it's time to shut down
     if [ $nextaction = dim_action ] && ! backlight is_off
     then
