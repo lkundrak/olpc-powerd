@@ -161,6 +161,8 @@
 #   It's unfortunate that these have no corresponding events.  Because
 #   they don't, olpc-switchd also monitors these two status nodes (under
 #   /sys) and synthesizes events to represent their transitions.
+#   (olpc-switchd will use the AC power jack input device (input3) if
+#   it's available, and will only poll the battery in that case.)
 #
 #
 # - Wakeups:
@@ -554,10 +556,18 @@ set_wakeupevents()
     # i.e.,  ac_power battery_error battery_soc battery_state 
     #       ebook_mode_change ps2event wlan"
     case $1 in
-    all)        echo 1 >$WAKEUP_EVENTS/all ;;
-    none)       echo 0 >$WAKEUP_EVENTS/all ;;
-    ac)         echo 1 >$WAKEUP_EVENTS/ac_power ;;
-    battery)    echo 1 >$WAKEUP_EVENTS/battery_soc ;;
+    all)        echo 1 >$WAKEUP_EVENTS/all
+                ;;
+    none)       echo 0 >$WAKEUP_EVENTS/all
+                ;;
+    ac)         echo 1 >$WAKEUP_EVENTS/ac_power
+                ;;
+    battery)    echo 1 >$WAKEUP_EVENTS/battery_soc
+                echo 1 >$WAKEUP_EVENTS/battery_state
+                echo 1 >$WAKEUP_EVENTS/battery_error
+		# next one not always present
+                echo 1 >$WAKEUP_EVENTS/battery_critical 2>&1
+                ;;
     esac
 }
 
@@ -641,6 +651,12 @@ snooze()
         lastwakeup=$(seconds)
         rtctime=$(( rtctime - ( lastwakeup - sleep_started ) ))
         rtctime=$(( (rtctime <= 1) ? 2 : rtctime ))
+
+        # we want to toss extra events that happened long ago, as
+        # we were sleeping, but not those that happened as we
+        # were waking up.  choose the middle of our nap as the
+        # cutoff:
+        eventcutoff=$(( ( lastwakeup + sleep_started ) / 2 ))
 
         read_wakeupsource wakeupsource
         : wakeupsource is $wakeupsource
@@ -843,6 +859,12 @@ dcon()
     case $1 in
     freeze) echo 1 > $DCON_FREEZE ;;
     thaw)   echo 0 > $DCON_FREEZE ;;
+    is_frozen)
+        local d
+        read d < $DCON_FREEZE
+        test $d = 1
+        return
+        ;;
     sleep)  echo 1 > $DCON_SLEEP ;;
     wake)   echo 0 > $DCON_SLEEP ;;
     esac
@@ -888,21 +910,6 @@ read_config()
     yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED" ||
         log configured to never shutdown while plugged in
 
-}
-
-o_maybe_battery_shutdown()  # old version, uses capacity only
-{
-
-    if [ ! "$ac_online" ]
-    then
-        case $battery_capacity in
-        [54321])   # 5% or less
-            splash critical
-            sleep 1
-            do_shutdown "low battery"
-            ;;
-        esac
-    fi
 }
 
 maybe_battery_shutdown()
@@ -1102,6 +1109,7 @@ sleep_action()
     nextaction=$1
     delta1=$2
     delta2=$3
+
     # sleep until it's time to shut down
     if [ $nextaction = dim_action ] && ! backlight is_off
     then
@@ -1141,7 +1149,7 @@ event_loop()
         : -------------------------
         : got "<$event>", "<${tstamp:-}>" "<${arg2:-}>" "<${arg3:-}>"
 
-        if [ "$tstamp" ] && [ "$tstamp" -lt "$lastwakeup" ]
+        if [ "$tstamp" ] && [ "$tstamp" -lt "$eventcutoff" ]
         then
             # it's possible for olpc-switchd to generate multiple
             # hardware-related events (e.g. # lidopen/lidclose/lidopen)
@@ -1337,6 +1345,7 @@ last_t_values=;
 timerseqno=1;
 powerseqno=0;
 lastwakeup=0;
+eventcutoff=0;
 
 sched_unfreezetimer 10
 
