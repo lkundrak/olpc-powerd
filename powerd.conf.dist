@@ -46,6 +46,8 @@
 #  when closed.  If disabled, it will stay awake when the lid is
 #  closed, and will only sleep because of other timeouts.
 #
+config_WAKE_ON_WLAN="yes"
+config_CPU_IDLE_LIMIT="10"
 config_BATTERY_TIME_DIM="120"
 config_BATTERY_TIME_SLEEP="130"
 config_BATTERY_TIME_BLANK="240"
@@ -57,9 +59,7 @@ config_PLUGGED_TIME_SLEEP="130"
 config_PLUGGED_TIME_BLANK="240"
 config_IDLE_DIM_LEVEL="5"
 config_MESH_DURING_SUSPEND="no"
-config_WAKE_ON_WLAN="yes"
 config_MAX_SLEEP_BEFORE_SHUTDOWN="3600"
-config_ALLOW_SHUTDOWN_WHEN_PLUGGED="yes"
-config_CONFIRM_SECONDS="7"
-config_CPU_IDLE_LIMIT="10"
+config_ALLOW_SHUTDOWN_WHEN_PLUGGED="no"
 config_SLEEP_WHEN_LID_CLOSED="yes"
+config_CONFIRM_SECONDS="7"
