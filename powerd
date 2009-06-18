@@ -21,8 +21,6 @@
 #
 # Unimplemented:
 # -- inhibiting idle suspend based on network load.
-# -- any special support for the mesh, whatsoever.
-# -- there's some support for wake-on-lan, but it's not well tested.
 # -- probably more.
 #
 #####
@@ -324,9 +322,11 @@ WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
 DCON_FREEZE=/sys/devices/platform/dcon/freeze
 DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
 
-# experimental driver feature -- not present in currently
+
+# experimental driver features -- not present in currently
 # distributed kernels.
 TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
+LID_OPEN=/sys/power/lid-open
 
 # command fifo for olpc-kbdshim
 USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
@@ -571,7 +571,7 @@ set_wakeupevents()
     battery)    echo 1 >$WAKEUP_EVENTS/battery_soc
                 echo 1 >$WAKEUP_EVENTS/battery_state
                 echo 1 >$WAKEUP_EVENTS/battery_error
-		# next one not always present
+                # next one not always present
                 echo 1 >$WAKEUP_EVENTS/battery_critical 2>&1
                 ;;
     esac
@@ -611,6 +611,13 @@ snooze()
     esac
 
     rtctime=$orig_rtctime
+
+    # we want to try very hard to wake up when the lid is opened. 
+    # since the EC wakeup "protocol" can lose wakeup events if
+    # they arrive close together, we can't just rely on the lid
+    # causing the wakeup.  (e.g., plug in AC and then open lid
+    # almost at the same time, wakeup cause will be AC)
+    read_lid_open prev_lid_open
 
     while :
     do
@@ -770,6 +777,17 @@ snooze()
             selfinject fake_useractive $lastwakeup "$wakeupsource"
             break
         esac
+
+        read_lid_open lid_open
+        if [ "$lid_open" = 1 -a "$lid_open" != "$prev_lid_open" ]
+        then
+            am_ebook=;
+            selfinject fake_useractive $lastwakeup "polled lid"
+            touchpad_recalibrate
+            break
+        fi
+        prev_lid_open=$lid_open
+
     done
 
     test "$prev_wlan_power" && set_wlan_power $prev_wlan_power
@@ -777,6 +795,19 @@ snooze()
     reset_idlecounters
     runparts resume &
 }
+
+read_lid_open()
+{
+    if [ -e $LID_OPEN ]
+    then
+        local x
+        read x < $LID_OPEN
+        eval $1=\"$x\"
+    else
+        eval $1='?'
+    fi
+}
+
 
 set_brightness()
 {
@@ -1166,7 +1197,7 @@ event_loop()
         if [ "$tstamp" ] && [ "$tstamp" -lt "$eventcutoff" ]
         then
             # it's possible for olpc-switchd to generate multiple
-            # hardware-related events (e.g. # lidopen/lidclose/lidopen)
+            # hardware-related events (e.g. lidopen/lidclose/lidopen)
             # before we go to sleep due the first one.  toss any
             # that are stale.
             continue
