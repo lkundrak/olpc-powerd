@@ -19,19 +19,23 @@
 #
 # config_IDLE_DIM_LEVEL
 #  Brightness level when the screen is automatically dimmed.  Set
-#  to 15 to prevent dimming.  Set to 0 to allow the backlight to
-#  go off completely.
+#  this to 15 to prevent dimming.  Set this to 0 to allow the
+#  backlight to go off completely.
 #
 # config_CONFIRM_SECONDS
 #  How long the shutdown/suspend confirmation splash screen stays
 #  visible before the laptop automatically suspends.
 #
+# config_MESH_DURING_SUSPEND 
+#  This controls whether the wireless remains powered while the
+#  laptop is fully suspended (i.e., sleeping with a dark screen). 
+#  The only reason to set this to "yes" is if you want the laptop
+#  to forward packets for other mesh users while you're not using it.
+#
 # config_WAKE_ON_WLAN
-#  Allows wireless to continue operating when the laptop is
-#  sleeping.  Note that the wireless configuration may allow
-#  shutting down the wireless entirely (e.g., with
-#  "echo 0 >/sys/power/wlan-enabled"), which may override this
-#  setting.
+#  Controls whether a packet destined for your laptop will wake it
+#  up from idle suspend, in much the same way that a keystroke or
+#  mouse movement will wake it up.
 #
 # config_CPU_IDLE_LIMIT
 #  If the cpu is idle less than this percentage, then the laptop
@@ -53,6 +57,7 @@ config_PLUGGED_TIME_SLEEP="130"
 config_PLUGGED_TIME_BLANK="240"
 config_IDLE_DIM_LEVEL="5"
 config_MESH_DURING_SUSPEND="no"
+config_WAKE_ON_WLAN="yes"
 config_MAX_SLEEP_BEFORE_SHUTDOWN="3600"
 config_ALLOW_SHUTDOWN_WHEN_PLUGGED="yes"
 config_CONFIRM_SECONDS="7"
