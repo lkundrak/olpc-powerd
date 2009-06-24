@@ -162,12 +162,13 @@
 # - Conditions:
 #       AC input (boolean)
 #       battery capacity (numeric)
-#   It's unfortunate that these have no corresponding events.  Because
-#   they don't, olpc-switchd also monitors these two status nodes (under
-#   /sys) and synthesizes events to represent their transitions.
-#   (olpc-switchd will use the AC power jack input device (input3) if
-#   it's available, and will only poll the battery in that case.)
-#
+#   It's unfortunate that these have no easily accessible
+#   corresponding events (they're available via uevents, sigh). 
+#   Because they don't, olpc-switchd also monitors these two status
+#   nodes (under /sys) and synthesizes events to represent their
+#   transitions.  (olpc-switchd will use the AC power jack input
+#   device (input3) if it's available, and will only poll the
+#   battery in that case.)
 #
 # - Wakeups:
 #       ac_power
@@ -326,7 +327,7 @@ DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
 # experimental driver features -- not present in currently
 # distributed kernels.
 TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
-LID_OPEN=/sys/power/lid-open
+# LID_OPEN=/sys/power/lid-open
 
 # command fifo for olpc-kbdshim
 USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
@@ -574,6 +575,9 @@ set_wakeupevents()
                 # next one not always present
                 echo 1 >$WAKEUP_EVENTS/battery_critical 2>&1
                 ;;
+    battery_critical)
+                echo 1 >$WAKEUP_EVENTS/battery_critical 2>&1
+                ;;
     esac
 }
 
@@ -612,12 +616,12 @@ snooze()
 
     rtctime=$orig_rtctime
 
-    # we want to try very hard to wake up when the lid is opened. 
-    # since the EC wakeup "protocol" can lose wakeup events if
-    # they arrive close together, we can't just rely on the lid
-    # causing the wakeup.  (e.g., plug in AC and then open lid
-    # almost at the same time, wakeup cause will be AC)
-    read_lid_open prev_lid_open
+#   # we want to try very hard to wake up when the lid is opened. 
+#   # since the EC wakeup "protocol" can lose wakeup events if
+#   # they arrive close together, we can't just rely on the lid
+#   # causing the wakeup.  (e.g., plug in AC and then open lid
+#   # almost at the same time, wakeup cause will be AC)
+#   read_lid_open prev_lid_open
 
     while :
     do
@@ -625,10 +629,25 @@ snooze()
         if [ $rtctype = until_shutdown ]
         then
             # if we're waiting for a shutdown, then this is a
-            # pretty sound sleep.  only let AC wake us up, and
-            # battery events if we're close to shutdown levels.
+            # pretty sound sleep.  only let the lid wake us up
+            # (we can't actually prevent that), as well as battery
+            # events if we're close to shutdown levels.
             set_wakeupevents none
-            set_wakeupevents ac
+            # it's tempting to allow AC wakeups here, but in practice
+            # a) there's no advantage -- we won't do anything differently
+            # if we wake and go back to sleep, and b) it's tricky, when
+            # awoken for one reason for which we might simply
+            # sleep again (i.e.  AC) to know that we shouldn't
+            # also have awoken for another reason (i.e., LID)
+            # without draining the event queue.  far simpler to
+            # not take AC and LID wakeups at the same time.
+
+            # regardless, take battery_critical events
+            set_wakeupevents battery_critical
+
+            # obviously if we ignore AC wakeups, we won't do the following
+            # if we're subsequently unplugged.  hopefully the critical
+            # wakeup above will save the day.
             if [ ! "$ac_online" ]
             then
                 read_battery
@@ -778,15 +797,15 @@ snooze()
             break
         esac
 
-        read_lid_open lid_open
-        if [ "$lid_open" = 1 -a "$lid_open" != "$prev_lid_open" ]
-        then
-            am_ebook=;
-            selfinject fake_useractive $lastwakeup "polled lid"
-            touchpad_recalibrate
-            break
-        fi
-        prev_lid_open=$lid_open
+#       read_lid_open lid_open
+#       if [ "$lid_open" = 1 -a "$lid_open" != "$prev_lid_open" ]
+#       then
+#           am_ebook=;
+#           selfinject fake_useractive $lastwakeup "polled lid"
+#           touchpad_recalibrate
+#           break
+#       fi
+#       prev_lid_open=$lid_open
 
     done
 
@@ -796,17 +815,17 @@ snooze()
     runparts resume &
 }
 
-read_lid_open()
-{
-    if [ -e $LID_OPEN ]
-    then
-        local x
-        read x < $LID_OPEN
-        eval $1=\"$x\"
-    else
-        eval $1='?'
-    fi
-}
+#read_lid_open()
+#{
+#    if false && [ -e $LID_OPEN ]
+#    then
+#        local x
+#        read x < $LID_OPEN
+#        eval $1=\"$x\"
+#    else
+#        eval $1='?'
+#    fi
+#}
 
 
 set_brightness()
