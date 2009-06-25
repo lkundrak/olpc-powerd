@@ -690,6 +690,8 @@ snooze()
         # cutoff:
         eventcutoff=$(( ( lastwakeup + sleep_started ) / 2 ))
 
+        power_check
+
         read_wakeupsource wakeupsource
         : wakeupsource is $wakeupsource
         case $wakeupsource in
@@ -718,8 +720,6 @@ snooze()
         "rtc alarm"|"ac power"|battery*)
 
             : rtctype-wakeupsource is $rtctype-$wakeupsource
-
-            power_check
 
             case $rtctype-$wakeupsource in
             until_dim-rtc*)
@@ -1284,12 +1284,10 @@ event_loop()
 
         ebookclose)  # i.e., fully flat in ebook mode
             am_ebook=true
-            reevaluate
             ;;
 
         ebookopen)
             am_ebook=;
-            reevaluate
             ;;
 
         useractive|fake_useractive)
@@ -1332,12 +1330,10 @@ event_loop()
 
         ac-online)
             ac_online=true
-            reevaluate
             ;;
 
         ac-offline)
             ac_online=;
-            reevaluate
             ;;
 
         battery)
