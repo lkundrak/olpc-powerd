@@ -97,4 +97,4 @@ clean:
 	-$(RM) $(SRPM) $(TARBALL)
 	-$(RM) -rf $(MOCKDIR)
 
-.PHONY: tarball srpm mock rpmclena
+.PHONY: tarball srpm mock
