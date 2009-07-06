@@ -2,18 +2,19 @@
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
 PACKAGE=olpc-powerd
+
+# don't edit .spec -- edit .spec.tmpl
 SPEC=$(PACKAGE).spec
 
 DATETAG=$(shell date +%Y%m%d)
-GITHEAD=git$(shell test -d .git && \
-    git-show --pretty=format:%h HEAD 2>/dev/null | sed 1q )
+GITHEAD=git$(shell test -d .git && git rev-parse --short HEAD )
 
 ifeq ($(do_rel),)
     SNAP=.$(DATETAG)$(GITHEAD)
 endif
 
-VERSION=$(shell sed -n 's/^Version: \([[:digit:]]\+\).*/\1/p' $(SPEC))
-RELEASE=$(shell sed -n 's/^Release: \([[:digit:]]\+\).*/\1/p' $(SPEC))
+VERSION=7
+RELEASE=$(shell cat .spec_release 2>/dev/null || echo error)
 SRELEASE=$(RELEASE)$(SNAP)
 
 TARBALL=$(PKGVER)-$(GITHEAD).tar.gz
@@ -28,17 +29,19 @@ PKGVER=$(PACKAGE)-$(VERSION)
 # may be set externally to RPM_OPT_FLAGS
 OPT_FLAGS ?= -O2 -g
 
-CFLAGS = -Wall $(OPT_FLAGS) -DVERSION=$(VERSION)
-PROG1 = olpc-switchd
-PROG2 = pnmto565fb
+#####
 
-PROGS = $(PROG1) $(PROG2)
+PROGS = olpc-switchd pnmto565fb
+
+CFLAGS = -Wall $(OPT_FLAGS) -DVERSION=$(VERSION)
+
+#####
 
 all: $(PROGS)
 
 # testing targets
-tarball:  update-version $(TARBALL)
-srpm: update-version $(SRPM)
+tarball:  $(TARBALL)
+srpm: $(SRPM)
 
 
 distribute: $(TARBALL) $(SRPM) rpms/$(PKGVER)-$(SRELEASE).fc9.i386.rpm
@@ -56,17 +59,18 @@ privdist:
 		$(PKGVER)-$(SRELEASE).fc9.i386.rpm \
 		public_html/private_rpms/$(PKGVER)-$(RELEASE).latest.rpm
 
-# edit the spec (carefully!) so it refers to a) our tarball, and
+# create the real spec (carefully!) so it refers to a) our tarball, and
 # b) our prerelease string.
-update-version:
-	sed -i \
-	-e 's/^Release:[^%]*%{?dist}/Release: $(SRELEASE)%{?dist}/' \
-	-e 's/\(.*\)git[0-9a-f]\+\(.*\)/\1$(GITHEAD)\2/' \
-	$(SPEC)
+$(SPEC): $(SPEC).tmpl $(TARBALL)
+	sed \
+	-e 's/__VERSION__/$(VERSION)/' \
+	-e 's/__RELEASE__/$(SRELEASE)/' \
+	-e 's/__TARBALL__/$(TARBALL)/' \
+	$(SPEC).tmpl > $(SPEC)
 
 
 # build the tarball directly from git.
-# THIS MEANS UNCOMMITED CHANGES TO THE MAKEFILE WILL NOT BE INCLUDED!!!
+# THIS MEANS NO UNCOMMITED CHANGES WILL BE INCLUDED!!!
 
 $(TARBALL):
 	-git diff --exit-code # working copy is clean?
@@ -76,7 +80,7 @@ $(TARBALL):
 
 # build the SRPM from the spec and the tarball
 
-$(SRPM): $(TARBALL)
+$(SRPM): $(SPEC) $(TARBALL)
 	rpmbuild --define "_specdir $(CWD)" \
 		 --define "_sourcedir $(CWD)" \
 		 --define "_builddir $(CWD)"  \
@@ -86,7 +90,7 @@ $(SRPM): $(TARBALL)
 		 --nodeps -bs $(SPEC)
 
 # build rpm from the srpm
-mock: update-version $(SRPM)
+mock: $(SRPM)
 	@mkdir -p $(MOCKDIR)
 	$(MOCK) -q --init
 	$(MOCK) --installdeps $(SRPM)
