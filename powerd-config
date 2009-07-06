@@ -153,7 +153,7 @@ edit_config()
       \
       "Keep wlan powered in suspend?"    7 1      "$wlanpower"   7  41 5 5 "$ro" \
       \
-      "Max sleep before laptop shuts down:"    9 1      "$maxsleep"   9  37 9 9 "$ro" \
+      "Max blanked sleep before shutdown:"    9 1      "$maxsleep"   9  37 9 9 "$ro" \
       "Allow shutdown when plugged in?"    10 1      "$allowshut"   10  41 5 5 "$ro" \
       "Always sleep when lid closed?"    11 1      "$lidsleep"   11  41 5 5 "$ro" \
       \
