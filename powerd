@@ -53,17 +53,20 @@
 # after "dim" or "blank", the screen will go dim and/or dark
 # while the laptop remains otherwise fully active.  Obviously,
 # scheduling dimming after blanking only serves to skip the
-# dimming state, since a blanked screen can't be dimmed.  In any
-# case, when the screen is dark and the laptop is sleeping, it's
-# in a "deep" sleep -- keystrokes will not wake it up, just as if
-# the power button had been used.
+# dimming state, since a blanked screen can't be dimmed.
 #
-# The maximum time that any sleep will last before the laptop
-# shuts down is given by "config_MAX_SLEEP_BEFORE_SHUTDOWN".
+# In any case, when the screen is dark _and_ the laptop is
+# sleeping, it's in a "deep" sleep -- keystrokes will not wake it
+# up, just as if the power button had been used.  The maximum
+# time that this state (screen off, cpu sleeping) will last
+# before the laptop shuts down is given by
+# "config_MAX_SLEEP_BEFORE_SHUTDOWN".  (This is arguably
+# mis-named, since it's not really "max sleep time before
+# shutdown", but "max asleep-and-blank time before shutdown".)
 #
-# If it's never desirable for the laptop to completely shut down
-# when plugged in, then "config_ALLOW_SHUTDOWN_WHEN_PLUGGED" should
-# be turned off.
+# Turning off "config_ALLOW_SHUTDOWN_WHEN_PLUGGED" will keep the
+# laptop from ever completely shutting down when it has external
+# power.  It may still shut down when using battery power.
 #
 # "config_IDLE_DIM_LEVEL" specifies how far the screen will dim
 # when the ("config_..._TIME_DIM") timer fires.  The range is
@@ -618,13 +621,6 @@ snooze()
 
     rtctime=$orig_rtctime
 
-#   # we want to try very hard to wake up when the lid is opened. 
-#   # since the EC wakeup "protocol" can lose wakeup events if
-#   # they arrive close together, we can't just rely on the lid
-#   # causing the wakeup.  (e.g., plug in AC and then open lid
-#   # almost at the same time, wakeup cause will be AC)
-#   read_lid_open prev_lid_open
-
     while :
     do
         sleep_started=$(seconds)
@@ -811,16 +807,6 @@ snooze()
             break
         esac
 
-#       read_lid_open lid_open
-#       if [ "$lid_open" = 1 -a "$lid_open" != "$prev_lid_open" ]
-#       then
-#           am_ebook=;
-#           selfinject fake_useractive $lastwakeup "polled lid"
-#           touchpad_recalibrate
-#           break
-#       fi
-#       prev_lid_open=$lid_open
-
     done
 
     test "$prev_wlan_power" && set_wlan_power $prev_wlan_power
@@ -828,18 +814,6 @@ snooze()
     reset_idlecounters
     runparts resume &
 }
-
-#read_lid_open()
-#{
-#    if false && [ -e $LID_OPEN ]
-#    then
-#        local x
-#        read x < $LID_OPEN
-#        eval $1=\"$x\"
-#    else
-#        eval $1='?'
-#    fi
-#}
 
 lid_is_open()
 {
