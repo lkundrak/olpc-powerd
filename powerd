@@ -991,7 +991,7 @@ maybe_battery_shutdown()
 
 read_battery()
 {
-    read battery_capacity < $CAPACITY
+    read battery_capacity < $CAPACITY 2>/dev/null || battery_capacity=0
 }
 
 plugged_in()
