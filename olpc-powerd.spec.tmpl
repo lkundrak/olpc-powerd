@@ -70,6 +70,8 @@ fi
 initctl start powerd
 initctl start olpc-switchd
 
+exit 0
+
 %preun
 
 initctl stop olpc-switchd
@@ -80,6 +82,8 @@ then
     /etc/init.d/ohmd start
     chkconfig ohmd on
 fi
+
+exit 0
 
 %changelog
 * Fri Jul 17 2009 Paul Fox <pgf@laptop.org>
