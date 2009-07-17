@@ -50,21 +50,16 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 %doc COPYING
-%config(noreplace) %{_sysconfdir}/powerd/powerd.conf
-%config(noreplace) %{_sysconfdir}/event.d/powerd
-%config(noreplace) %{_sysconfdir}/event.d/olpc-switchd
-%config(noreplace) %{_sysconfdir}/powerd/pleaseconfirm.pgm
-%config(noreplace) %{_sysconfdir}/powerd/shuttingdown.pgm
 
 %{_sbindir}/olpc-switchd
 %{_sbindir}/powerd
 %{_bindir}/pnmto565fb
 %{_bindir}/powerd-config
-%{_sysconfdir}/event.d/olpc-switchd
-%{_sysconfdir}/event.d/powerd
-%{_sysconfdir}/powerd/pleaseconfirm.pgm
-%{_sysconfdir}/powerd/shuttingdown.pgm
-%{_sysconfdir}/powerd/powerd.conf
+%config(noreplace) %{_sysconfdir}/event.d/olpc-switchd
+%config(noreplace) %{_sysconfdir}/event.d/powerd
+%config(noreplace) %{_sysconfdir}/powerd/pleaseconfirm.pgm
+%config(noreplace) %{_sysconfdir}/powerd/shuttingdown.pgm
+%config(noreplace) %{_sysconfdir}/powerd/powerd.conf
 
 %post
 if test -e /etc/init.d/ohmd
@@ -87,11 +82,22 @@ then
 fi
 
 %changelog
-* Thu Jun 11 2009 Paul Fox <pg@laptop.org>
+* Fri Jul 17 2009 Paul Fox <pgf@laptop.org>
+- 8-1
+- incorporate package review fixups
+- commentary and powerd-config UI clarification
+- fix fatal bug when battery is missing
+
+* Fri Jul 6 2009 Paul Fox <pgf@laptop.org>
+- 7-1
+- no longer wake on AC events -- unnecessary
+- doc fixups
+
+* Thu Jun 11 2009 Paul Fox <pgf@laptop.org>
 - 6-2
 - utility targets in makefile
 
-* Sat Jun 6 2009 Paul Fox <pg@laptop.org>
+* Sat Jun 6 2009 Paul Fox <pgf@laptop.org>
 - 6-1
 - various fixes
 - incorporate lessons from kbdshim review
