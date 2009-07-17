@@ -11,6 +11,14 @@ Source0: __TARBALL__
 BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 BuildRequires: kernel-headers
 Requires: olpc-kbdshim
+
+# these are all for the manipulation of ohmd -- powerd doesn't need them.
+Requires(post): chkconfig
+Requires(preun): chkconfig
+Requires(post): initscripts
+Requires(preun): initscripts
+
+
 ExclusiveArch: %{ix86}
 
 %description
@@ -62,27 +70,38 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) %{_sysconfdir}/powerd/powerd.conf
 
 %post
-if test -e /etc/init.d/ohmd
-then
-    /etc/init.d/ohmd stop
-    chkconfig ohmd off
+# Only on install
+if [ $1 = 1 ] ; then
+    if test -e /etc/init.d/ohmd ; then
+        service ohmd stop >/dev/null 2>&1
+        chkconfig ohmd off 
+    fi
+    initctl -q start powerd
+    initctl -q start olpc-switchd
 fi
-initctl start powerd
-initctl start olpc-switchd
-
 exit 0
 
 %preun
-
-initctl stop olpc-switchd
-initctl stop powerd
-rm -f /var/run/powerevents
-if test -e /etc/init.d/ohmd
-then
-    /etc/init.d/ohmd start
-    chkconfig ohmd on
+# Only on uninstall
+if [ $1 = 0 ] ; then
+    initctl stop -q olpc-switchd
+    initctl stop -q powerd
+    if test -e /etc/init.d/ohmd
+    then
+        /sbin/service ohmd start >/dev/null 2>&1
+        /sbin/chkconfig ohmd on
+    fi
 fi
+exit 0
 
+%postun
+# Restart after upgrade
+if [ "$1" -ge "1" ] ; then
+    initctl stop -q olpc-switchd
+    initctl stop -q powerd
+    initctl start -q powerd
+    initctl start -q olpc-switchd
+fi
 exit 0
 
 %changelog
