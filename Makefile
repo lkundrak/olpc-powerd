@@ -47,8 +47,8 @@ srpm: $(SRPM)
 distribute: $(TARBALL) $(SRPM) rpms/$(PKGVER)-$(SRELEASE).fc9.i386.rpm
 	scp $(TARBALL) $(SRPM)  \
 		crank:public_html/rpms/srpms
-	scp $(SPEC) \
-		crank:public_html/rpms/srpms/$(SPEC)-$(VERSION)-$(SRELEASE)
+#	scp $(SPEC) \
+#		crank:public_html/rpms/srpms/$(SPEC)-$(VERSION)-$(SRELEASE)
 	scp rpms/$(PKGVER)-$(SRELEASE).fc9.i386.rpm \
 		crank:public_html/rpms
 
