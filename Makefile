@@ -61,7 +61,7 @@ privdist:
 
 # create the real spec (carefully!) so it refers to a) our tarball, and
 # b) our prerelease string.
-$(SPEC): $(SPEC).tmpl $(TARBALL)
+$(SPEC): ALWAYS
 	sed \
 	-e 's/__VERSION__/$(VERSION)/' \
 	-e 's/__RELEASE__/$(SRELEASE)/' \
@@ -101,4 +101,4 @@ clean:
 	-$(RM) $(SRPM) $(TARBALL)
 	-$(RM) -rf $(MOCKDIR)
 
-.PHONY: tarball srpm mock
+.PHONY: tarball srpm mock ALWAYS
