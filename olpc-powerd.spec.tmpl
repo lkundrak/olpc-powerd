@@ -19,7 +19,8 @@ Requires(post): initscripts
 Requires(preun): initscripts
 
 
-ExclusiveArch: %{ix86}
+# for F-9 rpms from teach, use ExclusiveArch: %{ix86}
+ExclusiveArch: i586
 
 %description
 The powerd daemon can function as an easily customizable replacement for ohmd,
