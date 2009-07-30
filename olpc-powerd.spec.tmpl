@@ -18,9 +18,7 @@ Requires(preun): chkconfig
 Requires(post): initscripts
 Requires(preun): initscripts
 
-
-# for F-9 rpms from teach, use ExclusiveArch: %{ix86}
-ExclusiveArch: i586
+ExclusiveArch: %{ix86}
 
 %description
 The powerd daemon can function as an easily customizable replacement for ohmd,
@@ -106,6 +104,12 @@ fi
 exit 0
 
 %changelog
+* Thu Jul 30 2009 Paul Fox <pgf@laptop.org>
+- 9-1
+- disable tracing, by default.  use "powerd-control =tracing-on" to enable at runtime.
+- create the inhibit file so that root owns it and can make it writeable.
+- don't brighten the screen on wlan wakeups.
+
 * Fri Jul 17 2009 Paul Fox <pgf@laptop.org>
 - 8-1
 - incorporate package review fixups
