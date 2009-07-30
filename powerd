@@ -1412,7 +1412,7 @@ tracing=;
 
 # uncomment for full tracing.
 # (use powerd-control =tracing-on to enable at runtime.)
-tracing on
+# tracing on
 
 am_ebook=;
 o_ebook=xxx;
