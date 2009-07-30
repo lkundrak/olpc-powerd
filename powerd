@@ -487,6 +487,8 @@ create_inhibit_dir()
 {
     mkdir -p $INHIBITDIR
     chmod a+rwt $INHIBITDIR
+    touch $INHIBIT_BY_TOUCH
+    chmod a+w $INHIBIT_BY_TOUCH
 }
 
 laptop_busy()
@@ -549,17 +551,17 @@ runparts()
         esac
 
         if [ -x $s ]; then
-                echo "Running $s $rc_action" >&2
-                ./$s $rc_action || echo "*** $s failed"
+            echo "Running $s $rc_action" >&2
+            ./$s $rc_action || echo "*** $s failed"
         elif [ -f $s ]; then
-                echo "Skipping $s (disabled, not executable)" >&2
+            echo "Skipping $s (disabled, not executable)" >&2
         else
-                if [ -L $s ]; then
-                        echo "Removing dangling symlink $s" >&2
-                        rm $s
-                else
-                        echo "Skipping $s (not an executable file)" >&2
-                fi
+            if [ -L $s ]; then
+                echo "Removing dangling symlink $s" >&2
+                rm $s
+            else
+                echo "Skipping $s (not an executable file)" >&2
+            fi
         fi
     done
 
@@ -1293,11 +1295,23 @@ event_loop()
             am_ebook=;
             ;;
 
-        useractive|fake_useractive)
+        useractive)
             test "$tracing" && : $(seconds)
             gotactivity
             backlight restore
-            test "$event" = fake_useractive && reset_idlecounters
+            ;;
+
+        fake_useractive)
+            test "$tracing" && : $(seconds)
+            gotactivity
+            case "$arg2-$arg3" in
+            wlan-packet)
+		;;  # don't brighten for wlan packets
+            *)
+		backlight restore
+		;;
+            esac
+            reset_idlecounters
             ;;
 
         useridle1)
