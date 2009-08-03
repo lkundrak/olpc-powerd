@@ -21,12 +21,12 @@
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of
  * the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be
  * useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
  * PURPOSE.  See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public
  * License along with this program; if not, write to the Free
  * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139,
@@ -301,7 +301,7 @@ showimage(char *name, unsigned short *fb_map)
     bottomfillrows = (h - ydim) - topfillrows;
     leftfillcols = (w - xdim) / 2;
     rightfillcols = (w - xdim) - leftfillcols;
-    //  fprintf(stderr, "%d %d %d %d\n", 
+    //  fprintf(stderr, "%d %d %d %d\n",
     //     topfillrows, bottomfillrows, leftfillcols, rightfillcols);
 
     if (magic == 6)
@@ -356,9 +356,9 @@ main(int argc, char *argv[])
         case 'd':
             dcon = 1;
             break;
-	case 'f':
-	    devfb = optarg;
-	    break;
+        case 'f':
+            devfb = optarg;
+            break;
         default:
             usage();
             break;

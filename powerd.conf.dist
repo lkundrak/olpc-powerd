@@ -26,9 +26,9 @@
 #  How long the shutdown/suspend confirmation splash screen stays
 #  visible before the laptop automatically suspends.
 #
-# config_MESH_DURING_SUSPEND 
+# config_MESH_DURING_SUSPEND
 #  This controls whether the wireless remains powered while the
-#  laptop is fully suspended (i.e., sleeping with a dark screen). 
+#  laptop is fully suspended (i.e., sleeping with a dark screen).
 #  The only reason to set this to "yes" is if you want the laptop
 #  to forward packets for other mesh users while you're not using it.
 #

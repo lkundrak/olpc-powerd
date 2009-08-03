@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # powerd -- experimental power management for the XO
-# 
+#
 # This daemon is a more transparent and flexible (if somewhat
 # incompatible) replacement for ohmd on the XO.  powerd is
 # independent of X, dbus, and hald, and so might be attractive to
@@ -136,7 +136,7 @@
 #     export PROMPT_COMMAND='powerd-config -a'
 #   to your .bash_profile.  This will cause the file to be touched
 #   at ever shell prompt.
-# 
+#
 # Post-resume scripts can be put in /etc/powerd/postresume.d -- the
 # scripts will be run in lexicographic order.  The scripts are run
 # detached from powerd, so they won't impede its operation -- however,
@@ -166,7 +166,7 @@
 #       AC input (boolean)
 #       battery capacity (numeric)
 #   It's unfortunate that these have no easily accessible
-#   corresponding events (they're available via uevents, sigh). 
+#   corresponding events (they're available via uevents, sigh).
 #   Because they don't, olpc-switchd also monitors these two status
 #   nodes (under /sys) and synthesizes events to represent their
 #   transitions.  (olpc-switchd will use the AC power jack input
@@ -215,28 +215,28 @@
 #
 #   The system can be configured to go through the following 6
 #   transition sequences:
-#          
-#       #1      dim     sleep    {blank}  {shutdown}      
-#       #2      dim     blank    sleep    {shutdown}      
-#       #3      blank   [dim]    sleep    {shutdown}      
-#       #4      blank   sleep    {[dim]}  {shutdown}      
-#       #5      sleep   {blank}  {[dim]}  {shutdown}      
-#       #6      sleep   {dim}    {blank}  {shutdown}      
+#
+#       #1      dim     sleep    {blank}  {shutdown}
+#       #2      dim     blank    sleep    {shutdown}
+#       #3      blank   [dim]    sleep    {shutdown}
+#       #4      blank   sleep    {[dim]}  {shutdown}
+#       #5      sleep   {blank}  {[dim]}  {shutdown}
+#       #6      sleep   {dim}    {blank}  {shutdown}
 #
 #      {xxx} -- any transition that follows "sleep" is handled in
 #           the snooze() function, and not by the useridleN events.
 #           That's what the {braces} mean:  "handled by snooze".
 #      [dim] -- this state is a no-op, since dimming after blanking
 #           doesn't make sense.
-#     
+#
 #   Transitions up through and including "sleep" are driven by the
-#   useridle1,2,3 events, and handled by the action routines 
+#   useridle1,2,3 events, and handled by the action routines
 #   (dim_action(), blank_action(), and sleep_action()).  These are
 #   relatively straightforward.  Once the system is sleeping (using
 #   rtcwake), the transitions are handled within the snooze()
 #   function.
 #
-#   As a result of the no-op "[dim]" transition, the 
+#   As a result of the no-op "[dim]" transition, the
 #   implementation of snooze() for sequences #1 and #5 is
 #   identical, as is the implementation for #2, #3 and #4.  So
 #   snooze() only really has three separate cases to deal with,
@@ -249,7 +249,7 @@
 # - X11
 #
 #   Note that X11 DPMS is neither consulted nor modified, and it
-#   may still blank the display after some period of inactivity. 
+#   may still blank the display after some period of inactivity.
 #   (This won't happen, of course, unless the DPMS "standby" time
 #   is shorter than powerd's "sleep" time.)  The effect of DPMS
 #   doing this will result in confusion, since when DPMS blanks the
@@ -277,12 +277,12 @@
 # modify it under the terms of the GNU General Public License as
 # published by the Free Software Foundation; either version 2 of
 # the License, or (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be
 # useful, but WITHOUT ANY WARRANTY; without even the implied
 # warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
 # PURPOSE.  See the GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public
 # License along with this program; if not, write to the Free
 # Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139,
@@ -516,7 +516,7 @@ touchpad_recalibrate()
 set_wlan_power()
 {
     # very important not to do extra writes to wlan-enabled -- the
-    # node is sort of misnamed.  writing a 0 puts the wlan into reset. 
+    # node is sort of misnamed.  writing a 0 puts the wlan into reset.
     # writing a 1 puts it into reset, but immediately releases the
     # reset.  so a reset is always involved, even if brief.
     read_wlan_power w
@@ -570,7 +570,7 @@ runparts()
 set_wakeupevents()
 {
     # setting "all" to 1/0 sets/clears everything else at once,
-    # i.e.,  ac_power battery_error battery_soc battery_state 
+    # i.e.,  ac_power battery_error battery_soc battery_state
     #       ebook_mode_change ps2event wlan"
     case $1 in
     all)        echo 1 >$WAKEUP_EVENTS/all
@@ -956,7 +956,7 @@ set_config_defaults()
 
     config_CPU_IDLE_LIMIT=10
 
-} 
+}
 
 read_config()
 {
@@ -1199,7 +1199,7 @@ event_loop()
     set_idletimes
 
     trap "unsplash; rm -f $EVENTFIFO; rm -rf $INHIBITDIR; exit" 0 # 1 2 3 15
-    
+
     unsplash
 
     # recreate to flush, and to make sure it's a fifo
@@ -1448,4 +1448,3 @@ chmod a+w $BRIGHTNESS $MONO_MODE
 set_wakeupevents all
 
 event_loop
-

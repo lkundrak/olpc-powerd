@@ -11,12 +11,12 @@
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of
  * the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be
  * useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
  * PURPOSE.  See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public
  * License along with this program; if not, write to the Free
  * Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139,
@@ -199,7 +199,7 @@ setup_input()
              * all kernels.  if it's not here, we poll the /sys
              * entry instead */
             if(ioctl(dfd, EVIOCGNAME(sizeof(name)), name) < 0) {
-                report("failed ioctl EVIOCGBIT on %d", i);
+                report("failed ioctl EVIOCGNAME on %d", i);
                 close(dfd);
                 continue;
             }
@@ -230,7 +230,6 @@ setup_input()
 void
 indicate_activity(void)
 {
-
     static time_t lastactivity;
     time_t now;
 
@@ -247,7 +246,7 @@ indicate_activity(void)
             if (fd >= 0)
                 close(fd);
         } else {
-            static int reported;
+            static int reported = 0;
             if (!reported) {
                 report("touch of %s failed: %s",
                     sysactive_path, strerror(errno));
@@ -264,7 +263,7 @@ send_event(char *evt, int seconds, char *extra)
     char evtbuf[128];
     char *space;
     int n;
-    
+
     space = extra ? " " : "";
     if (!extra) extra = "";
     n = snprintf(evtbuf, 128, "%s %d%s%s\n", evt, seconds, space, extra);
@@ -284,7 +283,6 @@ send_event(char *evt, int seconds, char *extra)
 
     close(fifo_fd);
     fifo_fd = -1;
-
 }
 
 long
@@ -307,8 +305,6 @@ power_button_event()
 
     if (ev->type == EV_KEY && ev->code == KEY_POWER && ev->value == 1)
         send_event("powerbutton", round_secs(ev), 0);
-
-
 }
 
 void
@@ -329,7 +325,6 @@ lid_event()
         else
             send_event("lidopen", round_secs(ev), 0);
     }
-
 }
 
 void
@@ -414,6 +409,7 @@ poll_power_sources(void)
         close(fd);
         return;
     }
+
     buf[3] = '\0';
     capacity = atoi(buf);
     if (was_capacity != capacity) {
@@ -423,7 +419,6 @@ poll_power_sources(void)
         was_capacity = capacity;
     }
     close(fd);
-
 }
 
 void
@@ -434,10 +429,7 @@ data_loop(void)
     struct timeval *tvp;
     int r;
 
-
     while (1) {
-
-
         FD_ZERO(&inputs);
         FD_SET(pwr_fd, &inputs);
         FD_SET(lid_fd, &inputs);
@@ -467,7 +459,6 @@ data_loop(void)
         poll_power_sources();
 
         if (r > 0) {
-
             if (FD_ISSET(pwr_fd, &errors))
                 die("select reports error on power button");
             if (FD_ISSET(lid_fd, &errors))
@@ -485,15 +476,12 @@ data_loop(void)
                 ebook_event();
             if (acpwr_fd >= 0 && FD_ISSET(acpwr_fd, &inputs))
                 acpwr_event();
-        
+
             if (sysactive_path)
                 indicate_activity();
         }
-
     }
-
 }
-
 
 void
 sighandler(int sig)
@@ -573,7 +561,7 @@ main(int argc, char *argv[])
         report("not polling power sources", pollinterval);
 
     if (setup_input() < 0)
-        die("%s: unable to find all input devices\n", me);
+        die("unable to find all input devices");
 
     signal(SIGTERM, sighandler);
     signal(SIGHUP, sighandler);
@@ -595,4 +583,3 @@ main(int argc, char *argv[])
 
     return 0;
 }
-
