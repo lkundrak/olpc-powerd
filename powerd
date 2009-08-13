@@ -669,12 +669,12 @@ snooze()
                 prev_wlan_power=$(set_wlan_power 0)
             fi
             test "$tracing" && sleep 1
-            rtcwake -m mem -a -s $rtctime
+            rtcwake --utc -m mem -a -s $rtctime
             set_wakeupevents all
         else
             # otherwise we want most anything to wake us.
             test "$tracing" && sleep 1
-            rtcwake -m mem -a -s $rtctime
+            rtcwake --utc -m mem -a -s $rtctime
         fi
 
         # prepare for the default case of simply re-sleeping for
