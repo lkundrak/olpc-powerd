@@ -1306,10 +1306,10 @@ event_loop()
             gotactivity
             case "$arg2-$arg3" in
             wlan-packet)
-		;;  # don't brighten for wlan packets
+                ;;  # don't brighten for wlan packets
             *)
-		backlight restore
-		;;
+                backlight restore
+                ;;
             esac
             reset_idlecounters
             ;;
@@ -1414,6 +1414,16 @@ set_tracing()
     esac
 }
 
+read_hwinfo()
+{
+    read hwvendor < /sys/class/dmi/id/sys_vendor ||
+        hwvendor="n/a"
+    read hwname < /sys/class/dmi/id/product_name ||
+        hwname="n/a"
+    read hwversion < /sys/class/dmi/id/product_version ||
+        hwversion="n/a"
+}
+
 
 init_tracing
 # uncomment for full tracing.
@@ -1429,6 +1439,20 @@ timerseqno=1;
 powerseqno=0;
 lastwakeup=0;
 eventcutoff=0;
+
+
+read_hwinfo
+# deliberately omit 1.5, for now
+if [ "$hwvendor" != OLPC -o "$hwname" != XO -o "$hwversion" != "1" ]
+then
+    # pre-F11 releases didn't have the /sys/class/dmi tree, so we
+    # also check for an olpc-only node in /sys
+    if [ ! -e /sys/power/wakeup_events/ebook_mode_change ]
+    then
+        log Unsupported hardware: vendor "$hwvendor", version "$hwversion"
+        exit 1
+    fi
+fi
 
 sched_unfreezetimer 10
 
