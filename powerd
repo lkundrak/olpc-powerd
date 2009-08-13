@@ -1376,22 +1376,29 @@ event_loop()
             ;;
 
         trace-on)
-            tracing on
+            set_tracing on
             ;;
         trace-off)
-            tracing off
+            set_tracing off
             ;;
         esac
 
     done <> $EVENTFIFO
 }
 
-tracing()
+init_tracing()
+{
+    tracing=;
+    # exec 3>&2  # save stderr, in case we want it back someday
+    # the trace file will collect stderr, regardless of whether
+    # tracing is really on
+    exec 2>>$LOGFILE
+}
+
+set_tracing()
 {
     case $1 in
     on)
-        exec 3>&2
-        exec 2>>$LOGFILE
         set -x
         : tracing begun
         tracing=1
@@ -1401,18 +1408,17 @@ tracing()
         then
             : tracing stopped
             set +x
-            exec 2>&3
             tracing=;
         fi
         ;;
     esac
 }
 
-tracing=;
 
+init_tracing
 # uncomment for full tracing.
 # (use powerd-control =tracing-on to enable at runtime.)
-# tracing on
+# set_tracing on
 
 am_ebook=;
 o_ebook=xxx;
