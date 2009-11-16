@@ -46,16 +46,17 @@
 #include <sys/ioctl.h>
 #include <linux/kd.h>
 #include <linux/vt.h>
+#include <linux/fb.h>
 
 #define FB_WIDTH 1200
 #define FB_HEIGHT 900
-#define FB_SIZE_B (FB_WIDTH * FB_HEIGHT * 2)
+#define FB_SIZE_B (FB_WIDTH * FB_HEIGHT)
 
 char *prog;
 extern char *optarg;
 extern int optind, opterr, optopt;
 
-int fill_it;
+int filler;
 int dcon;
 
 char *devfb = "/dev/fb";
@@ -228,8 +229,7 @@ usage(void)
         " writes 565 data from successive images to /dev/fb)\n"
         "    -d to freeze the XO DCON while an image is being painted\n"
         "    -s SECS  to sleep between images\n"
-        "    -f /dev/fb0 to open /dev/fb0 (defaults to /dev/fb)\n"
-	,
+        "    -f /dev/fb0 to open /dev/fb0 (defaults to /dev/fb)\n",
         prog);
     exit(1);
 }
@@ -254,12 +254,35 @@ reduce_8grey_to_rgb565(unsigned char *sp)
     return p;
 }
 
+static inline unsigned long
+expand_24_to_argb32(unsigned char *sp)
+{
+    unsigned long p;
+    p  = 0xff000000;
+    p |= sp[0] << 16;
+    p |= sp[1] << 8;
+    p |= sp[2] << 0;
+    return p;
+    return p;
+}
+
+static inline unsigned long
+expand_8grey_to_argb32(unsigned char *sp)
+{
+    unsigned long p;
+    p  = 0xff000000;
+    p |= *sp << 16;
+    p |= *sp << 8;
+    p |= *sp << 0;
+    return p;
+}
+
 void
-showimage(char *name, unsigned short *fb_map)
+showimage(char *name, void *v_fb_map, int fb_bpp)
 {
     FILE *fp = 0;
     int a, n, xdim, ydim, maxval, magic, bpp;
-    int c, i, j;
+    int c, i, j, m;
     int top = 1;
     int pixel;
     unsigned char buf[256];
@@ -267,7 +290,9 @@ showimage(char *name, unsigned short *fb_map)
     int w = FB_WIDTH;
     int topfillrows, leftfillcols;
     int bottomfillrows, rightfillcols;
-    // unsigned short *ofb_map = fb_map;
+    unsigned short *sfb_map = v_fb_map;
+    unsigned long *lfb_map = v_fb_map;
+    // unsigned short *ofb_map = v_fb_map;
 
     if (!strcmp("-", name))
         fp = stdin;
@@ -281,6 +306,11 @@ showimage(char *name, unsigned short *fb_map)
 
     a = fscanf(fp, "P%d\n", &magic);
     /* skip comments */
+    if (magic == 4) {
+        fprintf(stderr, "PBM files unsupported\n");
+        /* but they could be -- we just haven't needed to */
+        exit(1);
+    }
     if (magic == 5 || magic == 6) {
         while (c = fgetc(fp), c == '#') {
             fgets((char *) buf, 256, fp);
@@ -291,6 +321,7 @@ showimage(char *name, unsigned short *fb_map)
     a += fscanf(fp, "%d\n", &maxval);
     if (a != 4 || (magic != 6 && magic != 5)) {
         fprintf(stderr, "Cannot read PNM header");
+        exit(1);
     }
 #if 0
     fprintf(stderr, "PNM %s image: size %dx%d, maxval %d\n",
@@ -314,27 +345,45 @@ showimage(char *name, unsigned short *fb_map)
             n = fread(buf, bpp, 1, fp);
             if (n != 1)
                 break;
-            if (bpp == 3)
-                pixel = reduce_24_to_rgb565(buf);
-            else
-                pixel = reduce_8grey_to_rgb565(buf);
+            if (fb_bpp == 2) {
+                if (bpp == 3)
+                    pixel = reduce_24_to_rgb565(buf);
+                else
+                    pixel = reduce_8grey_to_rgb565(buf);
+            } else {
+                if (bpp == 3)
+                    pixel = expand_24_to_argb32(buf);
+                else
+                    pixel = expand_8grey_to_argb32(buf);
+            }
 
             if (top) {
                 // delayed fill of top margin, now we know the value
-                fill_it = pixel;
-                memset(fb_map, fill_it,
-                        ((topfillrows * w) + leftfillcols) * 2);
-                fb_map += ((topfillrows * w) + leftfillcols);
+                filler = pixel;
+                m = ((topfillrows * w) + leftfillcols);
+                if (fb_bpp == 2)
+                    while (m--) *sfb_map++ = filler;
+                else
+                    while (m--) *lfb_map++ = filler;
                 top = 0;
             }
-            *fb_map++ = pixel;
+            if (fb_bpp == 2)
+                *sfb_map++ = pixel;
+            else
+                *lfb_map++ = pixel;
         }
-        memset(fb_map, fill_it, (w - xdim) * 2);
-        fb_map += w - xdim;
+        m = (w - xdim);
+        if (fb_bpp == 2)
+            while (m--) *sfb_map++ = filler;
+        else
+            while (m--) *lfb_map++ = filler;
     }
-    memset(fb_map, fill_it,
-            ((bottomfillrows * w) - leftfillcols) * 2);
-    fb_map += ((bottomfillrows * w) - leftfillcols);
+    m = ((bottomfillrows * w) - leftfillcols);
+    if (fb_bpp == 2)
+        while (m--) *sfb_map++ = filler;
+    else
+        while (m--) *lfb_map++ = filler;
+
     // fprintf(stderr, "%d\n", fb_map - ofb_map);
     fclose(fp);
 }
@@ -344,7 +393,10 @@ main(int argc, char *argv[])
 {
     int sleeptime = 10;
     int c, fb = 0;
-    unsigned short *fb_map = NULL;
+    int fb_bpp;
+    void *fb_map = NULL;
+    struct fb_var_screeninfo vinfo;
+
 
     prog = argv[0];
 
@@ -389,16 +441,35 @@ main(int argc, char *argv[])
         exit(1);
     }
 
+    /* check for 24 bits */
+    if (ioctl (fb, FBIOGET_VSCREENINFO, &vinfo)) {
+        fprintf (stderr, "Couldn't get vinfo.\n");
+        exit(1);
+    }
+    fb_bpp = vinfo.bits_per_pixel / 8;
+
+    if (fb_bpp != 2 && fb_bpp != 4) {
+        fprintf (stderr, "Unsupported bpp: %d\n", fb_bpp * 8);
+        exit(1);
+    }
+
+    if (vinfo.xres != FB_WIDTH || vinfo.yres != FB_HEIGHT) {
+        fprintf(stderr, "Unsupported res: %dx%d\n", vinfo.xres, vinfo.yres);
+        exit(1);
+    }
+
+    // printf("bpp %d res %dx%d\n", fb_bpp, vinfo.xres, vinfo.yres);
+
     dcon_freeze();
     atexit(dcon_thaw);
 
-    fb_map = (unsigned short *) mmap(NULL, FB_SIZE_B,
+    fb_map = mmap(NULL, FB_SIZE_B * fb_bpp,
                          PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
     vt_setup();
 
     while (optind < argc) {
         dcon_freeze();
-        showimage(argv[optind++], fb_map);
+        showimage(argv[optind++], fb_map, fb_bpp);
         dcon_thaw();
 
         if (!sigsetjmp(nxt_jmpbuf, 1) && sleeptime) {
