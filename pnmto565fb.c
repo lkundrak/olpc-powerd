@@ -44,6 +44,7 @@
 #include <setjmp.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <linux/kd.h>
 #include <linux/vt.h>
 #include <linux/fb.h>
@@ -263,7 +264,6 @@ expand_24_to_argb32(unsigned char *sp)
     p |= sp[1] << 8;
     p |= sp[2] << 0;
     return p;
-    return p;
 }
 
 static inline unsigned long
@@ -281,7 +281,8 @@ void
 showimage(char *name, void *v_fb_map, int fb_bpp)
 {
     FILE *fp = 0;
-    int a, n, xdim, ydim, maxval, magic, bpp;
+    int fd;
+    int a, xdim, ydim, maxval, magic, bpp;
     int c, i, j, m;
     int top = 1;
     int pixel;
@@ -293,6 +294,10 @@ showimage(char *name, void *v_fb_map, int fb_bpp)
     unsigned short *sfb_map = v_fb_map;
     unsigned long *lfb_map = v_fb_map;
     // unsigned short *ofb_map = v_fb_map;
+    unsigned char *filemap;
+    unsigned char *filemem;
+    struct stat sb;
+    
 
     if (!strcmp("-", name))
         fp = stdin;
@@ -339,26 +344,39 @@ showimage(char *name, void *v_fb_map, int fb_bpp)
         bpp = 3;
     else
         bpp = 1;
+   
+    fd = fileno(fp);
+
+    fstat(fd, &sb);
+
+    readahead(fd, 0, sb.st_size);
+
+    filemap = mmap(NULL, sb.st_size, PROT_READ,
+                              MAP_PRIVATE | MAP_POPULATE, fd, 0);
+    filemem = filemap + ftell(fp);
+
+    if (filemap == MAP_FAILED) {
+        fprintf(stderr, "Could not map image\n");
+        exit(1);
+    }
 
     for (j = 0; j < ydim; j++) {
         for (i = 0; i < xdim; i++) {
-            n = fread(buf, bpp, 1, fp);
-            if (n != 1)
-                break;
             if (fb_bpp == 2) {
                 if (bpp == 3)
-                    pixel = reduce_24_to_rgb565(buf);
+                    pixel = reduce_24_to_rgb565(filemem);
                 else
-                    pixel = reduce_8grey_to_rgb565(buf);
+                    pixel = reduce_8grey_to_rgb565(filemem);
             } else {
                 if (bpp == 3)
-                    pixel = expand_24_to_argb32(buf);
+                    pixel = expand_24_to_argb32(filemem);
                 else
-                    pixel = expand_8grey_to_argb32(buf);
+                    pixel = expand_8grey_to_argb32(filemem);
             }
+	    filemem += bpp;
 
             if (top) {
-                // delayed fill of top margin, now we know the value
+                // delayed fill of top margin, now we know its value
                 filler = pixel;
                 m = ((topfillrows * w) + leftfillcols);
                 if (fb_bpp == 2)
@@ -385,6 +403,7 @@ showimage(char *name, void *v_fb_map, int fb_bpp)
         while (m--) *lfb_map++ = filler;
 
     // fprintf(stderr, "%d\n", fb_map - ofb_map);
+    munmap(filemap, sb.st_size);
     fclose(fp);
 }
 
@@ -457,8 +476,6 @@ main(int argc, char *argv[])
         fprintf(stderr, "Unsupported res: %dx%d\n", vinfo.xres, vinfo.yres);
         exit(1);
     }
-
-    // printf("bpp %d res %dx%d\n", fb_bpp, vinfo.xres, vinfo.yres);
 
     dcon_freeze();
     atexit(dcon_thaw);
