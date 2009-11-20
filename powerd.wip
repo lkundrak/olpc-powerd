@@ -1,0 +1,1544 @@
+#!/bin/sh
+#
+# powerd -- experimental power management for the XO
+#
+# This daemon is a more transparent and flexible (if somewhat
+# incompatible) replacement for ohmd on the XO.  powerd is
+# independent of X, dbus, and hald, and so might be attractive to
+# very lightweight software distributions.
+#
+# In addition to "standard" XO/ohmd functionality, powerd adds:
+# -- a power button splash screen (allowing cancel, suspend, or shutdown).
+# -- the ability to run arbitrary scripts after a resume.
+# -- configurable timeouts until screen dim and sleep, and configurable
+#    dim level.
+# -- screen dimming and blanking after laptop has slept
+# -- shutdown after laptop has slept
+# -- low battery shutdown (only when not sleeping)
+# -- different power management behavior when on wall power vs. battery.
+# -- different behavior when in ebook mode
+# -- ease of customization, given that its written in shell.
+#
+# Unimplemented:
+# -- inhibiting idle suspend based on network load.
+# -- probably more.
+#
+#####
+#
+# Configuration:
+#
+# Major config variables are documented below.  powerd reads
+# its configuration from /etc/powerd/powerd.conf once at startup,
+# and again only when it receives a "reconfig" event on its
+# event fifo (/var/run/powerevents).
+#
+# All times are expressed in seconds (though a UI could do
+# whatever it wants, of course).  Booleans can be enabled with
+# "yes", "Yes", "true", "True", or "1".  Anything else will turn
+# them off.
+#
+# There are "dim", "sleep", and "blank" timers for each of
+# "plugged in", "battery", and "ebook" modes.  (If the laptop is
+# plugged in while in ebook mode, the plugged in timers are
+# used.) The nine idle timers are:
+#
+#   config_BATTERY_TIME_{DIM,SLEEP,BLANK}
+#   config_EBOOK_TIME_{DIM,SLEEP,BLANK}
+#   config_PLUGGED_TIME_{DIM,SLEEP,BLANK}
+#
+# Dimming, blanking, and sleep can be scheduled in any order.  If
+# "sleep" happens first, the screen will stay on (potentially
+# dimmed) while the rest of the system sleeps, but any keystroke
+# or touchpad activity will awaken it.  If "sleep" is scheduled
+# after "dim" or "blank", the screen will go dim and/or dark
+# while the laptop remains otherwise fully active.  Obviously,
+# scheduling dimming after blanking only serves to skip the
+# dimming state, since a blanked screen can't be dimmed.
+#
+# In any case, when the screen is dark _and_ the laptop is
+# sleeping, it's in a "deep" sleep -- keystrokes will not wake it
+# up, just as if the power button had been used.  The maximum
+# time that this state (screen off, cpu sleeping) will last
+# before the laptop shuts down is given by
+# "config_MAX_SLEEP_BEFORE_SHUTDOWN".  (This is arguably
+# mis-named, since it's not really "max sleep time before
+# shutdown", but "max asleep-and-blank time before shutdown".)
+#
+# Turning off "config_ALLOW_SHUTDOWN_WHEN_PLUGGED" will keep the
+# laptop from ever completely shutting down when it has external
+# power.  It may still shut down when using battery power.
+#
+# "config_IDLE_DIM_LEVEL" specifies how far the screen will dim
+# when the ("config_..._TIME_DIM") timer fires.  The range is
+# 0-15.  If set to 15, the screen will never dim.
+#
+# "config_CONFIRM_SECONDS" determines how long the shutdown/suspend
+# confirmation splash screen stays visible before the laptop
+# automatically suspends.
+#
+# "config_MESH_DURING_SUSPEND" (boolean) controls whether the
+# wireless remains powered while the laptop is fully suspended
+# (i.e.  sleeping with a dark screen).  The only reason to set
+# this to "yes" is if you want the laptop to forward packets for
+# other mesh users while you're not using it.
+#
+# "config_WAKE_ON_WLAN" -- controls whether a packet destined for
+# your laptop will wake it up from idle suspend, in much the same
+# way that a keystroke or mouse movement will wake it up.
+#
+# "config_CPU_IDLE_LIMIT" (integer)  If the cpu is idle less than
+# this percentage, then the laptop won't suspend, on the
+# assumption that the system is doing something "important" for the
+# user.  Set this to 0 to to allow the system to sleep no matter
+# how busy the CPU.
+#
+# "config_SLEEP_WHEN_LID_CLOSED" causes the laptop to go to sleep
+# when closed, and is usually desirable.  Cases where one might
+# want to turn this off might be a laptop being used as a server
+# on a shelf, or perhaps when running an application which needs
+# to remain active while the laptop is transported.  The screen
+# will be turned off in any case, of course.
+#
+#
+# If /etc/powerd.conf is a symlink to another file, then powerd-config
+# can be used to easily manage a set of configuration "profiles".
+# So different configurations can be used at different times of day,
+# or during different tasks, etc.
+#
+######
+#
+# Inhibiting sleep
+#
+# Idle dim/blank/sleep can be inhibited externally by two separate
+# means:
+#
+# 1) A file may be created in
+#     /var/run/powerd-inhibit-suspend/
+#   The file must be named after the PID of the process doing the
+#   inhibiting (and may be empty).  Stale inhibit files (i.e.,
+#   their owner pid doesn't exist) will be removed when the next
+#   dim is attempted.  To manually inhibit dim/blank/sleep one can
+#   simply create a file named after a long-running process:  e.g.,
+#   "touch /var/run/powerd-inhibit-suspend/1".  Such a file will
+#   need to be manually removed, of course.
+#
+# 2) The modification time of the file
+#     /var/run/powerd-inhibit-suspend/.fake_activity
+#   will be checked before any dim/blank/sleep occurs, and will be
+#   compared to the time of the last "real" user activity.  If it
+#   is newer, the dim/blank/sleep will be skipped.  So a program
+#   wishing to indicate that it is "active" can simply touch this
+#   file periodically to keep it up-to-date.  As a convenience, the
+#   command:
+#     powerd-config -a
+#   will do this touch.  For example, to keep the laptop alive while
+#   an ssh session is in use, add:
+#     export PROMPT_COMMAND='powerd-config -a'
+#   to your .bash_profile.  This will cause the file to be touched
+#   at ever shell prompt.
+#
+# Post-resume scripts can be put in /etc/powerd/postresume.d -- the
+# scripts will be run in lexicographic order.  The scripts are run
+# detached from powerd, so they won't impede its operation -- however,
+# they should be kept as short as possible.
+#
+#
+######
+#
+# Background discussion:
+#
+# The inputs that contribute to power management are:
+#
+# - Switches:
+#       power button
+#       ebook
+#       lid
+#   Actions on these switches appear as input events on
+#   /dev/input/event[012].  Powerd relies on the companion program
+#   "olpc-switchd" to report these events via the /var/run/powerevents
+#   fifo it creates for the purpose.  It's unfortunate that these
+#   events have no corresponding /sys state indicators, since
+#   knowing the state of the lid (or of ebook mode) would be useful
+#   in the absence of events (at startup, for instance).
+#
+#
+# - Conditions:
+#       AC input (boolean)
+#       battery capacity (numeric)
+#   It's unfortunate that these have no easily accessible
+#   corresponding events (they're available via uevents, sigh).
+#   Because they don't, olpc-switchd also monitors these two status
+#   nodes (under /sys) and synthesizes events to represent their
+#   transitions.  (olpc-switchd will use the AC power jack input
+#   device (input3) if it's available, and will only poll the
+#   battery in that case.)
+#
+# - Wakeups:
+#       rtc wakeup
+#       ac_power
+#       battery_error
+#       battery_soc (i.e. "state of charge" --> capacity)
+#       battery_state
+#       ebook_mode_change
+#       ps2event
+#       wlan
+#       lid (or sometimes "empty sci")
+#   When the system wakes from sleep, /sys/power/wakeup-source reports
+#   the cause.  Lid reporting is not reliable -- sometimes "empty sci"
+#   is reported instead.  (This can happen either for lid open or close
+#   events.)  Note that in older kernels (including the kernel that
+#   shipped with build 767) an rtc wakeup will report "empty sci"
+#   instead of "rtc alarm".  powerd doesn't support those kernels
+#   very well, since "empty sci" can mean either "lid" or "rtc".
+#
+# - User activity/idleness:
+#   powerd expects user activity and user idle events to be delivered via
+#   the olpc-kbdshim daemon, when invoked with "-A /var/run/powerevents".
+#   The possible events are:
+#       useractivity
+#       useridle1
+#       useridle2
+#       useridle3
+#
+#   These events may be used to dim the screen, blank the screen, and/or
+#   put the CPU to sleep, in any order.
+#
+# - Other system activity: cpu load (implemented), network load
+#       (unimplemented), etc.
+#
+#
+######
+#
+# Implementation notes:
+#
+# - System transitions
+#
+#   The system can be configured to go through the following 6
+#   transition sequences:
+#
+#       #1      dim     sleep    {blank}  {shutdown}
+#       #2      dim     blank    sleep    {shutdown}
+#       #3      blank   [dim]    sleep    {shutdown}
+#       #4      blank   sleep    {[dim]}  {shutdown}
+#       #5      sleep   {blank}  {[dim]}  {shutdown}
+#       #6      sleep   {dim}    {blank}  {shutdown}
+#
+#      {xxx} -- any transition that follows "sleep" is handled in
+#           the snooze() function, and not by the useridleN events.
+#           That's what the {braces} mean:  "handled by snooze".
+#      [dim] -- this state is a no-op, since dimming after blanking
+#           doesn't make sense.
+#
+#   Transitions up through and including "sleep" are driven by the
+#   useridle1,2,3 events, and handled by the action routines
+#   (dim_action(), blank_action(), and sleep_action()).  These are
+#   relatively straightforward.  Once the system is sleeping (using
+#   rtcwake), the transitions are handled within the snooze()
+#   function.
+#
+#   As a result of the no-op "[dim]" transition, the
+#   implementation of snooze() for sequences #1 and #5 is
+#   identical, as is the implementation for #2, #3 and #4.  So
+#   snooze() only really has three separate cases to deal with,
+#   represented by sequences #2, #1, and #6.  These cases are:
+#      - dim then blank then shutdown
+#      - blank then shutdown
+#      - shutdown
+#
+#
+# - X11
+#
+#   Note that X11 DPMS is neither consulted nor modified, and it
+#   may still blank the display after some period of inactivity.
+#   (This won't happen, of course, unless the DPMS "standby" time
+#   is shorter than powerd's "sleep" time.)  The effect of DPMS
+#   doing this will result in confusion, since when DPMS blanks the
+#   screen, powerd can't tell that it's been done.  I.e., a laptop
+#   with a screen blanked by DPMS may behave differently than one
+#   blanked by powerd.  So "xset -dpms" is recommended, preferably
+#   in olpc-session.
+#
+#
+# - Posix shell
+#
+#   The intention is that powerd be runnable with most any modern
+#   shell.  No bash-specific features were used, unless by accident.
+#
+#
+######
+#
+# Please send commends/suggestions/patches to pgf@laptop.org.
+#
+# -----------------------------------------------
+#
+# Copyright (C) 2009, Paul G Fox
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 2 of
+# the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+# PURPOSE.  See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public
+# License along with this program; if not, write to the Free
+# Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139,
+# USA.
+#
+
+XO=;
+CONFIGDIR=/etc/powerd
+
+CONFIGFILE=$CONFIGDIR/powerd.conf
+RUNPARTSDIR=$CONFIGDIR//postresume.d
+
+# logging only used for debug, currently
+LOGFILE=/var/log/powerd.trace
+# LOGFILE=/home/olpc/log/powerd.trace
+
+INHIBITDIR=/var/run/powerd-inhibit-suspend
+INHIBIT_BY_TOUCH=$INHIBITDIR/.fake_activity
+
+CONFIRMSPLASH=$CONFIGDIR/pleaseconfirm.pgm
+SHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
+BATTSHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
+
+EVENTFIFO=/var/run/powerevents
+
+# note re: battery capacity:
+# i'd use /sys/.../capacity_level here, but we won't get
+# "critical" -- the EC and kernel can only currently indicate
+# "low", "normal", or "full", and "low" lasts for another half
+# hour -- way too early for shutdown.  using /sys/.../capacity
+# (which gives a percentage), and cutting off at 5% means we're
+# shutting down with (on my machine and battery under 2 minutes
+# of runtime left.  the right answer is to use battery voltage --
+# however, we can't get woken for that.  so we fudge, and use
+# a combination.
+CAPACITY=/sys/class/power_supply/olpc-battery/capacity  # percentage
+MICROVOLTS=/sys/class/power_supply/olpc-battery/voltage_avg  # microvolts
+
+if [ -d /sys/class/power_supply/olpc-ac ]
+then
+    AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1/0
+elif [ -d /sys/class/power_supply/AC ]
+then
+    AC_ONLINE=/sys/class/power_supply/AC/online  # 1/0
+else
+    AC_ONLINE=;
+fi
+BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness  # 0-15
+MONO_MODE=/sys/devices/platform/dcon/output
+WLAN_ENABLED=/sys/power/wlan-enabled # 1/0 (see comment at set_wlan_power())
+
+WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
+WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
+
+DCON_FREEZE=/sys/devices/platform/dcon/freeze
+DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
+
+
+# experimental driver features -- not present in currently
+# distributed kernels.
+TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
+LID_OPEN=/sys/power/lid-open
+
+# command fifo for olpc-kbdshim
+USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
+
+
+set -u
+
+log()
+{
+    logger -t powerd -p daemon.info -- "$@"
+    test "$tracing" && echo "$(date +'%F %T') $@" >>$LOGFILE
+}
+
+yes_or_true()
+{
+    case $1 in
+    1|[yYtT]*)  return 0 ;;
+    *)          return 1 ;;
+    esac
+}
+
+# use $SECONDS for timing when possible
+if [ "$SECONDS" ]
+then
+    SECONDS=$(date +%s)
+    seconds()
+    {
+        echo $SECONDS
+    }
+else
+    seconds()
+    {
+        date +%s
+    }
+fi
+
+if [ -e /dev/fb ]
+then
+    framebuffer=/dev/fb
+elif [ -e /dev/fb0 ]
+then
+    framebuffer=/dev/fb0
+else
+    log "no framebuffer?"
+fi
+
+
+splash()
+{
+    case $1 in
+    confirm)
+        args="$CONFIRMSPLASH $SHUTSPLASH"
+        ;;
+    critical)
+        args="$BATTSHUTSPLASH"
+        ;;
+    esac
+
+    pnmto565fb -d -f $framebuffer -s 9999999 $args &
+    splashpid=$!
+}
+
+nextsplash()
+{
+    # kill -USR1 will cause pnmto565fb to display next image (stays alive)
+    test "${splashpid:-}" && kill -USR1 $splashpid
+}
+
+unsplash()
+{
+    # kill -INT will cause pnmto565fb to restore original VT
+    test "${splashpid:-}" && kill -INT $splashpid
+    splashpid=;
+}
+
+leavesplash()
+{
+    # kill -TERM will cause pnmto565fb to just die
+    test "${splashpid:-}" && kill -TERM $splashpid
+    splashpid=;
+}
+
+do_shutdown()
+{
+    log shutting down due to $*
+    leavesplash # kill the splasher (leaving splash visible)
+    sleep .05s
+    /sbin/shutdown -h now &
+    sleep 9999999
+}
+
+cpu_busy()
+{
+    # pull the cpu idle percentage (over one second) out of the
+    # 15th field of vmstat output.  (this metric borrowed from ohmd.)
+    field='\([[:space:]]\+[[:digit:]]\+\)'
+    idle=$(vmstat 1 2  | sed -n "\$s/$field\{15\}.*/\1/p")
+
+    # ensure numeric.  if failure, assume we're not busy.
+    test "$idle" && test $idle -eq $idle >/dev/null || return 1
+
+    test $idle -lt $config_CPU_IDLE_LIMIT && return 0
+
+    return 1
+}
+
+network_busy()
+{
+    # TBD
+    return 1
+}
+
+touchfile_is_recent()
+{
+    if [ -e $INHIBIT_BY_TOUCH ]
+    then
+        # see if there's been touchfile "activity" more
+        # during the recent idle period
+        timer=$1
+        touched=$(stat --format=%Y $INHIBIT_BY_TOUCH)
+        now=$(seconds)
+        # NB: comparison inverted -- expression returns boolean, but
+        # we want a shell success value.
+        return $(( now - touched > timer ))
+    fi
+    return 1
+}
+
+inhibit_files_present()
+{
+
+    inhibit_ret=1
+
+    # check for pid files.  remove any non-pid files
+    for f in $(ls $INHIBITDIR )
+    do
+        if kill -0 $f 2>/dev/null
+        then
+            inhibit_ret=0
+            break
+        fi
+        rm -f $INHIBITDIR/$f
+    done
+
+    return $inhibit_ret
+}
+
+create_inhibit_dir()
+{
+    mkdir -p $INHIBITDIR
+    chmod a+rwt $INHIBITDIR
+    touch $INHIBIT_BY_TOUCH
+    chmod a+w $INHIBIT_BY_TOUCH
+}
+
+laptop_busy()
+{
+    timer=$1
+    inhibit_files_present || \
+        touchfile_is_recent $timer || \
+            cpu_busy || \
+                network_busy && return 0
+    return 1
+}
+
+touchpad_recalibrate()
+{
+    # take advantage of lid open events, which indicate that a)
+    # someone is quite unlikely to be using the touchpad, and b)
+    # the physical environment may have changed since last use,
+    # to force a recalibration:
+    if [ -e $TPAD_RECAL ]
+    then
+        echo 1 > $TPAD_RECAL
+    fi
+}
+
+if [ "$XO" = 1 ]
+then
+    set_wlan_power()
+    {
+        # very important not to do extra writes to wlan-enabled -- the
+        # node is sort of misnamed.  writing a 0 puts the wlan into reset.
+        # writing a 1 puts it into reset, but immediately releases the
+        # reset.  so a reset is always involved, even if brief.
+        read_wlan_power w
+        if [ "$w" != "$1" ]
+        then
+            echo $1 > $WLAN_ENABLED
+        fi
+        echo $w
+    }
+
+    read_wlan_power()
+    {
+        local x
+        read x < $WLAN_ENABLED
+        eval $1=\"$x\"
+    }
+
+else
+    set_wlan_power()
+    {
+        :
+    }
+fi
+
+runparts()
+{
+    rc_action=$1
+    test $rc_action = "resume" || return
+
+    rc_dir=$RUNPARTSDIR
+    test -d $rc_dir || return
+
+    cd $rc_dir
+
+    for s in *[^~]
+    do
+        case $s in
+        '*[^~]') return;;  # s is the literal pattern
+        esac
+
+        if [ -x $s ]; then
+            echo "Running $s $rc_action" >&2
+            ./$s $rc_action || echo "*** $s failed"
+        elif [ -f $s ]; then
+            echo "Skipping $s (disabled, not executable)" >&2
+        else
+            if [ -L $s ]; then
+                echo "Removing dangling symlink $s" >&2
+                rm $s
+            else
+                echo "Skipping $s (not an executable file)" >&2
+            fi
+        fi
+    done
+
+}
+
+if [ "$XO" = 1 ]
+then
+    set_wakeupevents()
+    {
+        # setting "all" to 1/0 sets/clears everything else at once,
+        # i.e.,  ac_power battery_error battery_soc battery_state
+        #       ebook_mode_change ps2event wlan"
+        case $1 in
+        all)        echo 1 >$WAKEUP_EVENTS/all
+                    ;;
+        none)       echo 0 >$WAKEUP_EVENTS/all
+                    ;;
+        ac)         echo 1 >$WAKEUP_EVENTS/ac_power
+                    ;;
+        battery)    echo 1 >$WAKEUP_EVENTS/battery_soc
+                    echo 1 >$WAKEUP_EVENTS/battery_state
+                    echo 1 >$WAKEUP_EVENTS/battery_error
+                    # next one not always present
+                    echo 1 >$WAKEUP_EVENTS/battery_critical 2>&1
+                    ;;
+        battery_critical)
+                    echo 1 >$WAKEUP_EVENTS/battery_critical 2>&1
+                    ;;
+        esac
+    }
+else
+
+    acpi_wakeups()
+    {
+        case $1 in
+        all)  skip=enabled ;;
+        none) skip=disabled ;;
+        esac
+        sed -n -e '/^Device\>/d' \
+                -e '/^LID\>/d' \
+                -e '/\<'$skip'\>/d' \
+                -e 's/ .*//p' /proc/acpi/wakeup > /proc/acpi/wakeup
+    }
+
+    set_wakeupevents()
+    {
+        case $1 in
+        all|none)
+            acpi_wakeups $1
+            ;;
+        *)
+            echo EC > /proc/acpi/wakeup ;;
+        esac
+    }
+fi
+
+if [ "$XO" = 1 ]
+then
+    read_wakeupsource()
+    {
+        local x
+        read x < $WAKEUP_SOURCE
+        eval $1=\"$x\"
+    }
+else
+    read_wakeupsource()
+    {
+        eval $1="lid"
+    }
+fi
+
+snooze()
+{
+
+    prev_wlan_power=;
+
+    runparts suspend
+
+    # we only use rtc alarms to either a) turn of the screen when
+    # we've been sleeping for a while, or b) shutdown after we've been
+    # sleeping for a while.  if we do a), we'll do b) next.
+    rtctype=$1   # "until_dim", "until_blank", or "until_shutdown"
+    shutdowntime=${2:-}
+    case $rtctype in
+    until_dim)
+        dimtime=${3:-}
+        blanktime=${4:-}
+        orig_rtctime=$dimtime
+        ;;
+    until_blank)
+        blanktime=${3:-}
+        orig_rtctime=$blanktime
+        ;;
+    until_shutdown)
+        orig_rtctime=$shutdowntime
+    esac
+
+    rtctime=$orig_rtctime
+
+    while :
+    do
+        sleep_started=$(seconds)
+        if [ $rtctype = until_shutdown ]
+        then
+            # if we're waiting for a shutdown, then this is a
+            # pretty sound sleep.  only let the lid wake us up
+            # (we can't actually prevent that), as well as battery
+            # events if we're close to shutdown levels.
+            set_wakeupevents none
+            # it's tempting to allow AC wakeups here, but in practice
+            # a) there's no advantage -- we won't do anything differently
+            # if we wake and go back to sleep, and b) it's tricky, when
+            # awoken for one reason for which we might simply
+            # sleep again (i.e.  AC) to know that we shouldn't
+            # also have awoken for another reason (i.e., LID)
+            # without draining the event queue.  far simpler to
+            # not take AC and LID wakeups at the same time.
+
+            # regardless, take battery_critical events
+            set_wakeupevents battery_critical
+
+            # obviously if we ignore AC wakeups, we won't do the following
+            # if we're subsequently unplugged.  hopefully the critical
+            # wakeup above will save the day.
+            if [ ! "$ac_online" ]
+            then
+                read_battery
+                if [ "$battery_capacity" -le 20 ]
+                then
+                    set_wakeupevents battery
+                fi
+            fi
+            # ohmd uses this:
+            #    nm-tool | grep msh0 -A4 | grep Active | awk '{print $2}'\"
+            # to determine whether mesh is active before turning off wireless.
+            # i guess we could do the same.
+            if [ ! "$prev_wlan_power" ] && \
+                 ! yes_or_true "$config_MESH_DURING_SUSPEND"
+            then
+                prev_wlan_power=$(set_wlan_power 0)
+            fi
+            test "$tracing" && sleep 1
+            rtcwake -m mem -a -s $rtctime
+            set_wakeupevents all
+        else
+            # otherwise we want most anything to wake us.
+            test "$tracing" && sleep 1
+            rtcwake -m mem -a -s $rtctime
+        fi
+
+        # prepare for the default case of simply re-sleeping for
+        # the remaining time.  may be overridden.  note that this
+        # also protects against a) sleeping for less than a second,
+        # which is buggy in the kernel, and b) trying to sleep for
+        # 0 seconds, which might happen if we wake up due to an AC
+        # event at just the same time that rtcwake should have expired.
+        lastwakeup=$(seconds)
+        rtctime=$(( rtctime - ( lastwakeup - sleep_started ) ))
+        rtctime=$(( (rtctime <= 1) ? 2 : rtctime ))
+
+        # we want to toss extra events that happened long ago, as
+        # we were sleeping, but not those that happened as we
+        # were waking up.  choose the middle of our nap as the
+        # cutoff:
+        eventcutoff=$(( ( lastwakeup + sleep_started ) / 2 ))
+
+        power_check
+
+        read_wakeupsource wakeupsource
+        : wakeupsource is $wakeupsource
+        case $wakeupsource in
+        "power button")
+            if [ $rtctype = until_shutdown ]
+            then
+                # this takes care of the "screen blanked but not sleeping"
+                # case.  we only want the button to give the splash menu
+                # when the screen was lit when it was pushed.
+                selfinject fake_useractive $lastwakeup "$wakeupsource"
+            else
+                # waiting until_dim or until_blank, so screen is still on
+                selfinject fake_powerbutton $lastwakeup "$wakeupsource"
+            fi
+            break
+            ;;
+
+        "wlan packet")
+            if yes_or_true "$config_WAKE_ON_WLAN"
+            then
+                selfinject fake_useractive $lastwakeup "$wakeupsource"
+                break
+            fi
+            ;;
+
+        "rtc alarm"|"ac power"|battery*)
+
+            : rtctype-wakeupsource is $rtctype-$wakeupsource
+
+            case $rtctype-$wakeupsource in
+            until_dim-rtc*)
+                # we don't get woken on lid close, so check here.
+                # if we can't tell, assume we're still open
+                if [ ! -e $LID_OPEN ] || lid_is_open
+                then
+                    backlight dim
+                    rtctype=until_blank
+                    orig_rtctime=$blanktime
+                    rtctime=$blanktime
+                else
+                    backlight off
+                    rtctype=until_shutdown
+                    orig_rtctime=$shutdowntime
+                    rtctime=$shutdowntime
+                fi
+                ;;
+
+            until_blank-rtc*)
+                backlight off
+                rtctype=until_shutdown
+                orig_rtctime=$shutdowntime
+                rtctime=$shutdowntime
+                ;;
+
+            until_shutdown-rtc*)
+                if [ $rtctime -le 2 ]  # time really expired
+                then
+                    if [ ! "$ac_online" ] || \
+                            yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
+                    then
+                        do_shutdown "idle timeout"
+                    fi
+                    # if we didn't shut down, we'll sleep again for
+                    # the same time as before, before we check again.
+                    rtctime=$orig_rtctime
+                    log "found external power, sleeping instead of shutdown"
+                else
+                    # not sure why this happens, but i've seen a
+                    # sleep of 999999999 turn into 69506 seconds
+                    log "awoke for shutdown too early, sleeping again"
+                fi
+                ;;
+
+            # NB -- we no longer wake on AC, so this doesn't happen
+            until_shutdown-ac*)
+                # restart the shutdown timer.  the choice of sleep time
+                # is kind of a guess, since we're not tracking how much
+                # charging we're getting while plugged in.  so if we're
+                # plugged in, we sleep forever, otherwise, we sleep (again)
+                # for the original time.
+                if [ "$ac_online" ]
+                then
+                    rtctime=999999999
+                else
+                    rtctime=$orig_rtctime
+                fi
+                ;;
+
+            # NB -- we no longer wake on AC, so this doesn't happen
+            until_*-ac*)
+                # we were waiting for dim or blank, and we got plugged in.
+                # we'll wake up fully, so we can re-decide whether we
+                # should really be sleeping aggressively.
+                break;
+                ;;
+
+            *-battery*)  # all we do is check level, above.
+                ;;
+
+            *) # it's a leftover (spurious?) rtc wakeup.  go back to sleep.
+                ;;
+
+            esac
+            ;;
+
+        "lid"|"empty sci")
+            # assume "empty sci" comes from lid (kernel bug).
+            # in older kernels an rtc wakeup will report "empty
+            # sci" as well.  powerd doesn't support those kernels
+            # very well.
+            am_ebook=;
+            selfinject fake_useractive $lastwakeup "$wakeupsource"
+            touchpad_recalibrate
+            break
+            ;;
+
+        *)  # "key press"|"ebook")
+            selfinject fake_useractive $lastwakeup "$wakeupsource"
+            break
+        esac
+
+    done
+
+    test "$prev_wlan_power" && set_wlan_power $prev_wlan_power
+
+    reset_idlecounters
+    runparts resume &
+}
+
+lid_is_open()
+{
+    local x
+    read x < $LID_OPEN
+    test "$x" = 1
+}
+
+
+set_brightness()
+{
+    echo $1 >$BRIGHTNESS
+    echo $(( $1 == 0 )) >$MONO_MODE
+}
+
+read_brightness()
+{
+    local x
+    read x < $BRIGHTNESS
+    eval $1=\"$x\"
+}
+
+brightness_ramp()
+{
+    local i
+    test $1 = $2 && return
+
+    # ramp in either direction
+    incr=1
+    test $1 -gt $2 && incr=-1
+
+    i=$1
+    while :
+    do
+        : $((i += incr))
+        echo $i >$BRIGHTNESS
+        test $i = $2 && break
+        sleep .025s
+    done
+    echo $(( $i == 0 )) >$MONO_MODE
+}
+
+backlight()
+{
+    case $1 in
+    restore)
+        if [ "$dimmed" -a "$savebright" ]
+        then
+            # could ramp here, but it wastes time while
+            # the user is starting to work again
+            # read_brightness curbright
+            # if [ $curbright -lt $savebright ]
+            # then
+            #     brightness_ramp $curbright $savebright
+            # fi
+            set_brightness $savebright
+            dimmed=;
+        fi
+        dcon wake
+        ;;
+    dim)
+        if [ ! "${dimmed}" ]
+        then
+            read_brightness savebright
+            if [ $savebright -gt $config_IDLE_DIM_LEVEL ]
+            then
+                brightness_ramp $savebright $config_IDLE_DIM_LEVEL
+            fi
+            dimmed=true
+        fi
+        ;;
+    off)
+        # this is all unneeded: sleeping the dcon disables BL.
+        #if [ ! "${dimmed}" ]
+        #then
+        #    read_brightness savebright
+        #    dimmed=true
+        #fi
+        # set_brightness 0
+        dcon sleep
+        ;;
+
+    is_off)
+        local d
+        read d < $DCON_SLEEP
+        test $d = 1
+        return
+        ;;
+    esac
+}
+
+dcon()
+{
+    case $1 in
+    freeze) echo 1 > $DCON_FREEZE ;;
+    thaw)   echo 0 > $DCON_FREEZE ;;
+    is_frozen)
+        local d
+        read d < $DCON_FREEZE
+        test $d = 1
+        return
+        ;;
+    sleep)  echo 1 > $DCON_SLEEP ;;
+    wake)   echo 0 > $DCON_SLEEP ;;
+    esac
+}
+
+set_config_defaults()
+{
+    # give all config values defaults, so we'll
+    # never find them unset
+    config_BATTERY_TIME_DIM=120
+    config_BATTERY_TIME_SLEEP=130
+    config_BATTERY_TIME_BLANK=240
+    config_EBOOK_TIME_DIM=120
+    config_EBOOK_TIME_SLEEP=130
+    config_EBOOK_TIME_BLANK=240
+    config_PLUGGED_TIME_DIM=120
+    config_PLUGGED_TIME_SLEEP=130
+    config_PLUGGED_TIME_BLANK=240
+
+    config_IDLE_DIM_LEVEL=5
+
+    config_WAKE_ON_WLAN=yes
+    config_MESH_DURING_SUSPEND=no
+    config_MAX_SLEEP_BEFORE_SHUTDOWN=3600
+    config_ALLOW_SHUTDOWN_WHEN_PLUGGED=yes
+    config_SLEEP_WHEN_LID_CLOSED=yes
+
+    config_CONFIRM_SECONDS=7
+
+    config_CPU_IDLE_LIMIT=10
+
+}
+
+read_config()
+{
+    if [ ! -e $CONFIGFILE ]
+    then
+        log "cannot find $CONFIGFILE, recreating (empty)"
+        touch $CONFIGFILE
+    fi
+    source $CONFIGFILE
+
+    yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED" ||
+        log configured to never shutdown while plugged in
+
+}
+
+maybe_battery_shutdown()
+{
+
+    test "$ac_online" && return
+
+    case $battery_capacity in
+    [987654321])
+        read uvolts < $MICROVOLTS
+        if [ $uvolts -le 5700000 ]  # EC's idea of critical voltage: 5.7V
+        then
+            splash critical
+            sleep 1
+            do_shutdown "low battery"
+        fi
+        ;;
+    esac
+
+}
+
+read_battery()
+{
+    read battery_capacity < $CAPACITY || battery_capacity=0
+}
+
+plugged_in()
+{
+    test "$AC_ONLINE" || return 1
+
+    read on_ac < $AC_ONLINE
+    if [ "$on_ac" = 1 ]
+    then
+        ac_online=true
+        return 0
+    else
+        ac_online=;
+        return 1
+    fi
+}
+
+power_check()
+{
+    if ! plugged_in
+    then
+        read_battery
+        maybe_battery_shutdown
+    fi
+}
+
+reset_idlecounters()
+{
+    # if given arguments, remember then for reuse later on.
+    # (olpc-kbdshim will reset its idle timers when the deadlines are reset)
+    test "${1:-}" && last_idlecounters="$*"
+    echo "I $last_idlecounters" >$USER_ACTIVITY_CMDS
+}
+
+set_idletimes()
+{
+
+    if [ "$ac_online" ]
+    then
+        dt=$config_PLUGGED_TIME_DIM
+        st=$config_PLUGGED_TIME_SLEEP
+        bt=$config_PLUGGED_TIME_BLANK
+    else
+        if [ "$am_ebook" ]
+        then
+            dt=$config_EBOOK_TIME_DIM
+            st=$config_EBOOK_TIME_SLEEP
+            bt=$config_EBOOK_TIME_BLANK
+        else
+            dt=$config_BATTERY_TIME_DIM
+            st=$config_BATTERY_TIME_SLEEP
+            bt=$config_BATTERY_TIME_BLANK
+        fi
+    fi
+
+    # have the values changed?
+    if [ "$dt $st $bt" = "$last_t_values" ]
+    then
+        return 1
+    fi
+    last_t_values="$dt $st $bt"
+
+    # now validate the configured times...
+
+    # force all to be numeric:
+    test "$dt" -eq "$dt" || { logger non-numeric dim time found; dt=120; }
+    test "$st" -eq "$st" || { logger non-numeric sleep time found; st=120; }
+    test "$bt" -eq "$bt" || { logger non-numeric blank time found; bt=120; }
+    test "$dt" -eq 0 && { logger zero dim time found; dt=120; }
+    test "$st" -eq 0 && { logger zero sleep time found; st=120; }
+    test "$bt" -eq 0 && { logger zero blank time found; bt=120; }
+
+    # we want the timers in time order, so we sort them, along
+    # with their associated action routines and names (for logging).
+    actions=( $( (
+        echo $dt  "dim"   dim_action
+        echo $st  "sleep" sleep_action
+        echo $bt  "blank" blank_action
+                    ) | sort -n) )
+
+    # three timers
+    t1=${actions[0]}
+    t2=${actions[3]}
+    t3=${actions[6]}
+
+    # three names
+    aname1=${actions[1]}
+    aname2=${actions[4]}
+    aname3=${actions[7]}
+
+    # three action routines, stored in "function pointers"
+    useridle1_action=${actions[2]}
+    useridle2_action=${actions[5]}
+    useridle3_action=${actions[8]}
+
+    # if any delta is 0 or negative, make it 60
+    test "$t2" -le "$t1"        && t2=$((t1 + 60))
+    test "$t3" -le "$t2"        && t3=$((t2 + 60))
+
+    useridle1_delta=$((t2 - t1))
+    useridle2_delta=$((t3 - t2))
+    useridle1_next=$useridle2_action
+    useridle2_next=$useridle3_action
+
+    # give olpc-kbdshim the timeouts
+    reset_idlecounters $t1 $t2 $t3
+
+    t4=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-0}
+    test "$t4" -eq "$t4" || t4=0
+    test "$t4" -le "5" && t4=300
+
+    log $aname1 in $t1 seconds, $aname2 in $t2, $aname3 in $t3, \
+                then shutdown after $t4
+    dimtimer=;
+    blanktimer=;
+    shutdowntimer=$t4
+
+    return 0
+}
+
+reevaluate()
+{
+    if [ "${1:-}" = all -o \
+         "${o_ac_online:-}" != "$ac_online" -o \
+         "${o_ebook:-}" != "$am_ebook" ]
+    then
+        set_idletimes || reset_idlecounters
+    fi
+    o_ebook=$am_ebook
+    o_ac_online=$ac_online
+}
+
+selfinject()
+{
+    echo $* >$EVENTFIFO
+}
+
+sched_powertimer()
+{
+    # we can't cancel timers, so give them sequence numbers
+    : $((timerseqno += 1))
+    (sleep $1; shift 1; selfinject powertimerdone $(seconds) $timerseqno $*) &
+}
+
+sched_unfreezetimer()
+{
+    (sleep $1; selfinject unfreezetimerdone ) &
+}
+
+invalidate_powertimer()
+{
+    # bump the seq number so we won't match a scheduled timer
+    # when it arrives.
+    : $((timerseqno += 1))
+}
+
+gotactivity()
+{
+    invalidate_powertimer
+    unsplash
+}
+
+dim_action()
+{
+    backlight is_off || backlight dim
+}
+
+blank_action()
+{
+    backlight off
+}
+
+sleep_action()
+{
+    nextaction=$1
+    delta1=$2
+    delta2=$3
+
+    # if we're still booting, the dcon may still be frozen.
+    # don't sleep until we're sort of all the way up.
+    if dcon is_frozen
+    then
+        reset_idlecounters
+        return
+    fi
+
+    # sleep until it's time to shut down
+    if [ $nextaction = dim_action ] && ! backlight is_off
+    then
+        snooze until_dim "$shutdowntimer" "$delta1" "$delta2"
+    elif [ $nextaction = blank_action ]
+    then
+        snooze until_blank "$shutdowntimer" "$delta1"
+    else
+        snooze until_shutdown "$shutdowntimer"
+    fi
+}
+
+event_loop()
+{
+    local event tstamp arg2 arg3 more
+
+    : starting eventloop
+
+    set_idletimes
+
+    trap "unsplash; rm -f $EVENTFIFO; rm -rf $INHIBITDIR; exit" 0 # 1 2 3 15
+
+    unsplash
+
+    # recreate to flush, and to make sure it's a fifo
+    rm -f $EVENTFIFO
+    mkfifo $EVENTFIFO
+    chmod 600 $EVENTFIFO
+
+    while :
+    do
+
+        reevaluate
+
+        tstamp=; arg2=; arg3=; more=;
+        read event tstamp arg2 arg3 more
+
+        : -------------------------
+        : got "<$event>", "<${tstamp:-}>" "<${arg2:-}>" "<${arg3:-}>"
+
+        if [ "$tstamp" ] && [ "$tstamp" -lt "$eventcutoff" ]
+        then
+            # it's possible for olpc-switchd to generate multiple
+            # hardware-related events (e.g. lidopen/lidclose/lidopen)
+            # before we go to sleep due the first one.  toss any
+            # that are stale.
+            continue
+        fi
+
+        case $event in
+
+        powerbutton|fake_powerbutton)
+            if backlight is_off
+            then
+                # if the screen is off, the power button should simply
+                # wake the system up.
+                gotactivity
+                backlight restore
+                reset_idlecounters
+            else
+                if [ "$powerseqno" != "$timerseqno" ]
+                then # first press
+                    splash confirm
+                    reset_idlecounters # reprime for "useractivity"
+                    sched_powertimer $config_CONFIRM_SECONDS gotosleep
+                    powerseqno=$timerseqno
+                    backlight restore
+                else # second press
+                    nextsplash  # advance to next splash screen
+                    sleep 1
+                    do_shutdown  "power press"
+                fi
+            fi
+            ;;
+
+        powertimerdone)
+            # are we still waiting for this timer?
+            if [ "$timerseqno" = "$arg2" ]
+            then
+                echo $arg3 $(seconds) >$EVENTFIFO
+                : $((timerseqno += 1))
+            fi
+            ;;
+
+        gotosleep)
+            invalidate_powertimer
+            backlight off
+            # sleep until it's time to shut down
+            snooze until_shutdown "$shutdowntimer"
+            ;;
+
+        lidclose)
+            am_ebook=;
+            backlight off
+            if yes_or_true "$config_SLEEP_WHEN_LID_CLOSED"
+            then
+                invalidate_powertimer
+                # sleep until it's time to shut down
+                snooze until_shutdown "$shutdowntimer"
+            fi
+            ;;
+
+        lidopen)
+            touchpad_recalibrate
+            gotactivity
+            am_ebook=;
+            backlight restore
+            ;;
+
+        ebookclose)  # i.e., fully flat in ebook mode
+            am_ebook=true
+            ;;
+
+        ebookopen)
+            am_ebook=;
+            ;;
+
+        useractive)
+            test "$tracing" && : $(seconds)
+            gotactivity
+            backlight restore
+            ;;
+
+        fake_useractive)
+            test "$tracing" && : $(seconds)
+            gotactivity
+            case "$arg2-$arg3" in
+            wlan-packet)
+                ;;  # don't brighten for wlan packets
+            *)
+                backlight restore
+                ;;
+            esac
+            reset_idlecounters
+            ;;
+
+        useridle1)
+            test "$tracing" && : $(seconds)
+            if laptop_busy $t1
+            then
+                reset_idlecounters  # restart the timers
+                continue
+            fi
+            $useridle1_action \
+                $useridle1_next $useridle1_delta $useridle2_delta
+            ;;
+
+        useridle2)
+            test "$tracing" && : $(seconds)
+            if laptop_busy $t2
+            then
+                reset_idlecounters  # restart the timers
+                continue
+            fi
+            $useridle2_action $useridle2_next $useridle2_delta ""
+            ;;
+
+        useridle3)
+            test "$tracing" && : $(seconds)
+            if laptop_busy $t3
+            then
+                reset_idlecounters  # restart the timers
+                continue
+            fi
+            $useridle3_action none "" ""
+            ;;
+
+        ac-online)
+            ac_online=true
+            ;;
+
+        ac-offline)
+            ac_online=;
+            ;;
+
+        battery)
+            battery_capacity=$arg2
+            maybe_battery_shutdown
+            ;;
+
+        reconfig)
+            read_config
+            power_check
+            reevaluate all
+            ;;
+
+        unfreezetimerdone)
+            # this is a bit of a hack.  on the XO, the bootanim
+            # script contrives to leave the dcon frozen at the end
+            # of the init sequence.  it remains frozen until sugar
+            # first becomes idle, at which point sugar sends a dbus
+            # message to ohmd, causing ohmd to unfreeze the dcon.
+            # since we don't do dbus, we unfreeze the dcon after 10
+            # seconds.
+            dcon thaw
+            ;;
+
+        trace-on)
+            set_tracing on
+            ;;
+        trace-off)
+            set_tracing off
+            ;;
+        esac
+
+    done <> $EVENTFIFO
+}
+
+init_tracing()
+{
+    tracing=;
+    # exec 3>&2  # save stderr, in case we want it back someday
+    # the trace file will collect stderr, regardless of whether
+    # tracing is really on
+    exec 2>>$LOGFILE
+}
+
+set_tracing()
+{
+    case $1 in
+    on)
+        set -x
+        : tracing begun
+        tracing=1
+        ;;
+    off)
+        if [ "$tracing" ]
+        then
+            : tracing stopped
+            set +x
+            tracing=;
+        fi
+        ;;
+    esac
+}
+
+read_hwinfo()
+{
+    read hwvendor < /sys/class/dmi/id/sys_vendor ||
+        hwvendor="n/a"
+    read hwname < /sys/class/dmi/id/product_name ||
+        hwname="n/a"
+    read hwversion < /sys/class/dmi/id/product_version ||
+        hwversion="n/a"
+}
+
+
+init_tracing
+# uncomment for full tracing.
+# (use powerd-control =tracing-on to enable at runtime.)
+set_tracing on
+
+am_ebook=;
+o_ebook=xxx;
+dimmed=;
+savebright=;
+last_t_values=;
+timerseqno=1;
+powerseqno=0;
+lastwakeup=0;
+eventcutoff=0;
+
+
+read_hwinfo
+
+case $hwvendor-$hwname-$hwversion in
+OLPC-XO-1|OLPC-XO-1.5)
+    XO=$hwversion
+    ;;
+*)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
+    # also check for an olpc-only node in /sys
+    if [ -e /sys/power/wakeup_events/ebook_mode_change ]
+    then
+	XO=1
+    fi
+    ;;
+esac
+
+if [ ! "$XO" ]
+then
+    log Unsupported hardware: vendor "$hwvendor", version "$hwversion"
+    exit 1
+fi
+	
+
+sched_unfreezetimer 10
+
+log starting
+
+set_config_defaults
+if [ -r $CONFIGFILE ]
+then
+    log configuring from $CONFIGFILE
+fi
+
+create_inhibit_dir
+
+read_config
+
+power_check
+
+reevaluate all
+
+# let user programs control brightness
+chmod a+w $BRIGHTNESS $MONO_MODE
+
+set_wakeupevents all
+
+event_loop
