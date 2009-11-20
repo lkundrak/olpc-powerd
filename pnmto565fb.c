@@ -11,9 +11,8 @@
  *
  * Copyright (C) 2009, Paul G Fox
  *
- * The VT initialization and teardown code was borrowed almost
- * entirely from the ppmtofb package, which is also GPLed, and
- * bears the following notices:
+ * Some code was borrowed from the ppmtofb package, which is also
+ * GPLed, and bears the following notices:
  *  (c) Copyright 1996 by Geert Uytterhoeven
  *  (c) Copyright 1996-2000 by Chris Lawrence
  *
@@ -63,8 +62,8 @@ int dcon;
 char *devfb = "/dev/fb";
 
 static void vt_deinit(void);
-int consolefd;
-int activevt;
+int consolefd = -1;
+int orig_vt = -1;
 
 sigjmp_buf nxt_jmpbuf;
 
@@ -105,7 +104,6 @@ sighandler(int signo)
 static void
 signextimage(int signo)
 {
-    // signal(signo, signextimage);
     longjmp(nxt_jmpbuf, 1);
 }
 
@@ -121,7 +119,8 @@ dcon_control(int freeze)
         if (fd < 0) return;
     }
 
-    write(fd, freeze ? "1\n" : "0\n", 2);
+    if (write(fd, freeze ? "1\n" : "0\n", 2) != 2)
+        /* suppress warning */ ;
     usleep(50000);
 }
 
@@ -135,11 +134,37 @@ void dcon_thaw(void)
     dcon_control(0);
 }
 
-/* VT init and teardown borrowed almost completely from ppmtofb, which
- * is GPL'ed, and:
- *  (c) Copyright 1996 by Geert Uytterhoeven
- *  (c) Copyright 1996-2000 by Chris Lawrence
- */
+static void chvt(int num)
+{
+    if (ioctl(consolefd,VT_ACTIVATE,num)) {
+        perror("VT_ACTIVATE");
+        exit(1);
+    }
+}
+
+static int fgconsole(void)
+{
+    struct vt_stat vtstat;
+    if (ioctl(consolefd, VT_GETSTATE, &vtstat)) {
+        perror("VT_GETSTATE");
+        exit(1);
+    }
+    return vtstat.v_active;
+}
+
+void switch_to_vt(int num)
+{
+    int i = 5;
+
+    do {
+        chvt(num);
+        if (fgconsole() == num) return;
+        usleep(100000);
+    } while (--i > 0);
+
+    warn("VT change timed out\n");
+}
+
 
 static void
 vt_deinit(void)
@@ -152,12 +177,12 @@ vt_deinit(void)
             vterm.mode = VT_AUTO;
             ioctl(consolefd, VT_SETMODE, &vterm);
         }
-        if (activevt >= 0) {
-            ioctl(consolefd, VT_ACTIVATE, activevt);
-            activevt = -1;
+        if (orig_vt >= 0) {
+            switch_to_vt(orig_vt);
+            orig_vt = -1;
         }
         close(consolefd);
-        consolefd = 0;
+        consolefd = -1;
     }
     dcon_thaw();
 }
@@ -167,7 +192,6 @@ vt_setup(void)
 {
     int i, fd, vtno;
     char vtname[11];
-    struct vt_stat vts;
     struct vt_mode vterm;
 
     if ((fd = open("/dev/tty0", O_WRONLY, 0)) < 0)
@@ -186,8 +210,7 @@ vt_setup(void)
      * Linux doesn't switch to an active vt after the last close of a vt,
      * so we do this ourselves by remembering which is active now.
      */
-    if (ioctl(consolefd, VT_GETSTATE, &vts) == 0)
-        activevt = vts.v_active;
+    orig_vt = fgconsole();
 
     /*
      * Detach from the controlling tty to avoid char loss
@@ -200,11 +223,7 @@ vt_setup(void)
     /*
      * now get the VT
      */
-
-    if (ioctl(consolefd, VT_ACTIVATE, vtno) != 0)
-        warn("ioctl VT_ACTIVATE: %s\n", strerror(errno));
-    if (ioctl(consolefd, VT_WAITACTIVE, vtno) != 0)
-        warn("ioctl VT_WAITACTIVE: %s\n", strerror(errno));
+    switch_to_vt(vtno);
 
     if (ioctl(consolefd, VT_GETMODE, &vterm) < 0)
         die("ioctl VT_GETMODE: %s\n", strerror(errno));
@@ -318,7 +337,10 @@ showimage(char *name, void *v_fb_map, int fb_bpp)
     }
     if (magic == 5 || magic == 6) {
         while (c = fgetc(fp), c == '#') {
-            fgets((char *) buf, 256, fp);
+            if (!fgets((char *) buf, 256, fp)) {
+                fprintf(stderr, "short PNM header");
+                exit(1);
+            }
         }
         ungetc(c, fp);
     }
@@ -373,7 +395,7 @@ showimage(char *name, void *v_fb_map, int fb_bpp)
                 else
                     pixel = expand_8grey_to_argb32(filemem);
             }
-	    filemem += bpp;
+            filemem += bpp;
 
             if (top) {
                 // delayed fill of top margin, now we know its value
