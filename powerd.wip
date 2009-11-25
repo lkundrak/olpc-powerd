@@ -610,7 +610,7 @@ set_wakeupevents()
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
     none)       set_acpi_wakeupevents EBK disable
-                echo 1 >$WAKEUP_EVENTS/all
+                echo 0 >$WAKEUP_EVENTS/all
                 ;;
     ac)         echo 1 >$WAKEUP_EVENTS/ac_power
                 ;;
@@ -653,9 +653,9 @@ then
         # we only use rtc alarms to either a) turn of the screen when
         # we've been sleeping for a while, or b) shutdown after we've been
         # sleeping for a while.  if we do a), we'll do b) next.
-        rtctype=$1   # "until_dim", "until_blank", or "until_shutdown"
+        until=$1   # "until_dim", "until_blank", or "until_shutdown"
         shutdowntime=${2:-}
-        case $rtctype in
+        case $until in
         until_dim)
             dimtime=${3:-}
             blanktime=${4:-}
@@ -667,6 +667,7 @@ then
             ;;
         until_shutdown)
             orig_rtctime=$shutdowntime
+            ;;  
         esac
 
         rtctime=$orig_rtctime
@@ -674,7 +675,7 @@ then
         while :
         do
             sleep_started=$(seconds)
-            if [ $rtctype = until_shutdown ]
+            if [ $until = until_shutdown ]
             then
                 # if we're waiting for a shutdown, then this is a
                 # pretty sound sleep.  only let the lid wake us up
@@ -744,7 +745,7 @@ then
             : wakeupsource is $wakeupsource
             case $wakeupsource in
             "power button")
-                if [ $rtctype = until_shutdown ]
+                if [ $until = until_shutdown ]
                 then
                     # this takes care of the "screen blanked but not sleeping"
                     # case.  we only want the button to give the splash menu
@@ -767,21 +768,21 @@ then
 
             "rtc alarm"|"ac power"|battery*)
 
-                : rtctype-wakeupsource is $rtctype-$wakeupsource
+                : until-wakeupsource is $until-$wakeupsource
 
-                case $rtctype-$wakeupsource in
+                case $until-$wakeupsource in
                 until_dim-rtc*)
                     # we don't get woken on lid close, so check here.
                     # if we can't tell, assume we're still open
                     if [ ! -e $LID_OPEN ] || lid_is_open
                     then
                         backlight dim
-                        rtctype=until_blank
+                        until=until_blank
                         orig_rtctime=$blanktime
                         rtctime=$blanktime
                     else
                         backlight off
-                        rtctype=until_shutdown
+                        until=until_shutdown
                         orig_rtctime=$shutdowntime
                         rtctime=$shutdowntime
                     fi
@@ -789,7 +790,7 @@ then
 
                 until_blank-rtc*)
                     backlight off
-                    rtctype=until_shutdown
+                    until=until_shutdown
                     orig_rtctime=$shutdowntime
                     rtctime=$shutdowntime
                     ;;
@@ -871,16 +872,24 @@ then
 else # XO == 1.5
     snooze()
     {
+        until=$1   # "until_dim", "until_blank", or "until_shutdown"
+
         prev_wlan_power=;
         runparts suspend
-
-        set_wakeupevents none
-        set_wakeupevents battery_critical
+        case $until in
+        until_shutdown)
+            # we'll actually never wake, since we're not using rtc.
+            set_wakeupevents none
+            set_wakeupevents battery_critical
+            ;;
+        esac
 
         # we wouldn't know what to do when we woke up if
         # we used the rtc alarm, because we have no wakeup
         # source information yet.  so just go to sleep.
         echo mem > /sys/power/state
+
+        set_wakeupevents all
 
         power_check
 
