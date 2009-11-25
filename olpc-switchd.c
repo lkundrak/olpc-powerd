@@ -196,7 +196,7 @@ setup_input()
     char devname[128];
     char name[32];
 
-    for (i = 0; i < SEARCH_SWITCHES && got_switches <= 4; i++) {
+    for (i = 0; i < SEARCH_SWITCHES && got_switches < 4; i++) {
 
         snprintf(devname, sizeof(devname), "/dev/input/event%d", i);
         if ((dfd = open(devname, O_RDONLY)) < 0)
