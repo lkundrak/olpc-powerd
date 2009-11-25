@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
+#include <ctype.h>
 #include <signal.h>
 #include <wait.h>
 #include <syslog.h>
@@ -75,7 +76,8 @@ int pwr_fd = -1;
 int lid_fd = -1;
 int ebk_fd = -1;
 int acpwr_fd = -1;
-#define NUM_SWITCHES 4
+int got_switches = 0;
+#define SEARCH_SWITCHES 10
 
 int maxfd = -1;  /* for select */
 
@@ -162,6 +164,29 @@ die(const char *fmt, ...)
     exit(1);
 }
 
+#ifdef commentary
+/*
+ pertinent output of "grep ^ /sys/class/input/ * /name"
+ on XO-1.5:
+    /sys/class/input/input0/name:OLPC AC power jack
+    /sys/class/input/input1/name:Power Button
+    /sys/class/input/input2/name:Lid Switch
+    /sys/class/input/input4/name:EBook Switch
+ on XO-1:
+    /sys/class/input/input0/name:OLPC PM
+    /sys/class/input/input1/name:OLPC lid switch
+    /sys/class/input/input2/name:OLPC ebook switch
+    /sys/class/input/input3/name:OLPC AC power jack
+*/
+#endif
+
+void strtolower(char *s)
+{
+    while (*s) {
+        *s = tolower(*s);
+        s++;
+    }
+}
 
 int
 setup_input()
@@ -169,58 +194,49 @@ setup_input()
     int i, ret;
     int dfd;
     char devname[128];
-    unsigned char bit[bits2bytes(EV_MAX)];
-    struct input_id id;
+    char name[32];
 
-    for (i = 0; i < NUM_SWITCHES; i++) {
+    for (i = 0; i < SEARCH_SWITCHES && got_switches <= 4; i++) {
 
         snprintf(devname, sizeof(devname), "/dev/input/event%d", i);
         if ((dfd = open(devname, O_RDONLY)) < 0)
             continue;
 
-        if (ioctl(dfd, EVIOCGID, &id) < 0) {
-            report("failed ioctl EVIOCGID on %d", i);
+        if(ioctl(dfd, EVIOCGNAME(sizeof(name)), name) < 0) {
+            report("failed ioctl EVIOCGNAME on %d", i);
             close(dfd);
             continue;
         }
 
-        if (ioctl(dfd, EVIOCGBIT(0, EV_MAX), bit) < 0) {
-            report("failed ioctl EVIOCGBIT on %d", i);
-            close(dfd);
-            continue;
-        }
+        strtolower(name);
 
-        if (i == 0)  pwr_fd = dfd;
-        else if (i == 1)  lid_fd = dfd;
-        else if (i == 2)  ebk_fd = dfd;
-        else if (i == 3) {
-            char name[32];
-            /* the AC power jack input device isn't available in
-             * all kernels.  if it's not here, we poll the /sys
-             * entry instead */
-            if(ioctl(dfd, EVIOCGNAME(sizeof(name)), name) < 0) {
-                report("failed ioctl EVIOCGNAME on %d", i);
-                close(dfd);
-                continue;
-            }
-            if (strncmp(name, "OLPC AC power", 13)) {
-                report("input%d is not OLPC AC power", i);
-                close(dfd);
-                continue;
-            }
+        if (strstr(name, "olpc ac power"))
             acpwr_fd = dfd;
-        }
+        else if (strstr(name, "olpc pm"))  // XO-1
+            pwr_fd = dfd;
+        else if (strstr(name, "power button"))  // XO-1.5
+            pwr_fd = dfd;
+        else if (strstr(name, "lid switch"))
+            lid_fd = dfd;
+        else if (strstr(name, "ebook switch"))
+            ebk_fd = dfd;
+        else
+            continue;
 
+        got_switches++;
         maxfd = MAX(maxfd, dfd);
 
     }
 
+    /* must find at least power button and lid switches */
     ret = -1;
-    if (pwr_fd == -1) report("didn't find power button");
-    else if (lid_fd == -1) report("didn't find lid");
-    else if (ebk_fd == -1) report("didn't find ebook");
+    if (pwr_fd == -1)
+        report("didn't find power button");
+    else if (lid_fd == -1)
+        report("didn't find lid switch");
     else {
-        report("found %d switches", acpwr_fd == -1 ? 3 : 4);
+        report("found %s %d switches",
+                (got_switches == 4) ? "all":"just", got_switches);
         ret = 0;
     }
 
