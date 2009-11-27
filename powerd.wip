@@ -337,6 +337,13 @@ WLAN_ENABLED=/sys/power/wlan-enabled # 1/0 (see comment at set_wlan_power())
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
 
+if [ -e /sys/power/wake-on-close ]
+then
+    WAKE_ON_CLOSE=/sys/power/wake-on-close
+else
+    WAKE_ON_CLOSE=;
+fi
+
 DCON_FREEZE=/sys/devices/platform/dcon/freeze
 DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
 
@@ -344,7 +351,6 @@ DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
 # experimental driver features -- not present in currently
 # distributed kernels.
 TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
-LID_OPEN=/sys/power/lid-open
 
 # command fifo for olpc-kbdshim
 USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
@@ -510,17 +516,22 @@ laptop_busy()
     return 1
 }
 
-touchpad_recalibrate()
-{
-    # take advantage of lid open events, which indicate that a)
-    # someone is quite unlikely to be using the touchpad, and b)
-    # the physical environment may have changed since last use,
-    # to force a recalibration:
-    if [ -e $TPAD_RECAL ]
-    then
+if [ -e $TPAD_RECAL ]
+then
+    touchpad_recalibrate()
+    {
+        # take advantage of lid open events, which indicate that a)
+        # someone is quite unlikely to be using the touchpad, and b)
+        # the physical environment may have changed since last use,
+        # to force a recalibration:
         echo 1 > $TPAD_RECAL
-    fi
-}
+    }
+else
+    touchpad_recalibrate()
+    {
+        :
+    }
+fi
 
 if [ "$XO" = 1 ]
 then
@@ -607,9 +618,11 @@ set_wakeupevents()
 {
     case $1 in
     all)        set_acpi_wakeupevents EBK enable
+                test "$WAKE_ON_CLOSE" && echo 1 > $WAKE_ON_CLOSE
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
     none)       set_acpi_wakeupevents EBK disable
+                test "$WAKE_ON_CLOSE" && echo 0 > $WAKE_ON_CLOSE
                 echo 0 >$WAKEUP_EVENTS/all
                 ;;
     ac)         echo 1 >$WAKEUP_EVENTS/ac_power
@@ -774,18 +787,10 @@ then
                 until_dim-rtc*)
                     # we don't get woken on lid close, so check here.
                     # if we can't tell, assume we're still open
-                    if [ ! -e $LID_OPEN ] || lid_is_open
-                    then
-                        backlight dim
-                        until=until_blank
-                        orig_rtctime=$blanktime
-                        rtctime=$blanktime
-                    else
-                        backlight off
-                        until=until_shutdown
-                        orig_rtctime=$shutdowntime
-                        rtctime=$shutdowntime
-                    fi
+                    backlight dim
+                    until=until_blank
+                    orig_rtctime=$blanktime
+                    rtctime=$blanktime
                     ;;
 
                 until_blank-rtc*)
@@ -901,13 +906,6 @@ else # XO == 1.5
         runparts resume &
     }
 fi
-
-lid_is_open()
-{
-    local x
-    read x < $LID_OPEN
-    test "$x" = 1
-}
 
 
 set_brightness()
