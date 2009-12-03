@@ -892,13 +892,26 @@ else # XO == 1.5
         # we wouldn't know what to do when we woke up if
         # we used the rtc alarm, because we have no wakeup
         # source information yet.  so just go to sleep.
+	sleep_started=$(seconds)
         echo mem > /sys/power/state
+	lastwakeup=$(seconds)
+
+	# we want to toss extra events that happened long ago, as
+	# we were sleeping, but not those that happened as we
+	# were waking up.  choose the middle of our nap as the
+	# cutoff:
+	eventcutoff=$(( ( lastwakeup + sleep_started ) / 2 ))
 
         set_wakeupevents all
 
+	# for some reason our ebook and ec interrupts get disabled
+	# across a suspend/resume cycle
+	echo enable >/sys/firmware/acpi/interrupts/gpe01
+	echo enable >/sys/firmware/acpi/interrupts/gpe0A
+
         power_check
 
-        selfinject fake_useractive 0 unknown
+        selfinject fake_useractive $lastwakeup unknown
 
         test "$prev_wlan_power" && set_wlan_power $prev_wlan_power
 
