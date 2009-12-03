@@ -407,6 +407,9 @@ splash()
     critical)
         args="$BATTSHUTSPLASH"
         ;;
+    shutdown)
+        args="$SHUTSPLASH"
+        ;;
     esac
 
     pnmto565fb -d -f $framebuffer -s 9999999 $args &
@@ -639,7 +642,7 @@ set_wakeupevents()
     esac
 }
 
-if [ "$XO" = 1 ]
+if :  # [ "$XO" = 1 ]
 then
     read_wakeupsource()
     {
@@ -654,7 +657,7 @@ else
     }
 fi
 
-if [ "$XO" = 1 ]
+if :   # [ "$XO" = 1 ]
 then
     snooze()
     {
@@ -752,6 +755,14 @@ then
             # cutoff:
             eventcutoff=$(( ( lastwakeup + sleep_started ) / 2 ))
 
+            if [ "$XO" = 1.5 ]
+            then
+                # for some reason our ebook and ec interrupts get disabled
+                # across a suspend/resume cycle
+                echo enable >/sys/firmware/acpi/interrupts/gpe01
+                echo enable >/sys/firmware/acpi/interrupts/gpe0A
+            fi
+
             power_check
 
             read_wakeupsource wakeupsource
@@ -806,6 +817,7 @@ then
                         if [ ! "$ac_online" ] || \
                                 yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
                         then
+                            splash shutdown
                             do_shutdown "idle timeout"
                         fi
                         # if we didn't shut down, we'll sleep again for
@@ -892,22 +904,22 @@ else # XO == 1.5
         # we wouldn't know what to do when we woke up if
         # we used the rtc alarm, because we have no wakeup
         # source information yet.  so just go to sleep.
-	sleep_started=$(seconds)
+        sleep_started=$(seconds)
         echo mem > /sys/power/state
-	lastwakeup=$(seconds)
+        lastwakeup=$(seconds)
 
-	# we want to toss extra events that happened long ago, as
-	# we were sleeping, but not those that happened as we
-	# were waking up.  choose the middle of our nap as the
-	# cutoff:
-	eventcutoff=$(( ( lastwakeup + sleep_started ) / 2 ))
+        # we want to toss extra events that happened long ago, as
+        # we were sleeping, but not those that happened as we
+        # were waking up.  choose the middle of our nap as the
+        # cutoff:
+        eventcutoff=$(( ( lastwakeup + sleep_started ) / 2 ))
 
         set_wakeupevents all
 
-	# for some reason our ebook and ec interrupts get disabled
-	# across a suspend/resume cycle
-	echo enable >/sys/firmware/acpi/interrupts/gpe01
-	echo enable >/sys/firmware/acpi/interrupts/gpe0A
+        # for some reason our ebook and ec interrupts get disabled
+        # across a suspend/resume cycle
+        echo enable >/sys/firmware/acpi/interrupts/gpe01
+        echo enable >/sys/firmware/acpi/interrupts/gpe0A
 
         power_check
 
