@@ -442,31 +442,45 @@ cpu_busy()
     return 1
 }
 
+# see if there's been activity during the recent idle period.
+# checks vty devices, and our special touchfile, all in one loop
+touchfiles="/dev/tty1 /dev/tty2 $INHIBIT_BY_TOUCH"
+
+filetimes_busy()
+{
+    timer=$1
+    now=$(seconds)
+    for touched in $(stat -c '%Y' $touchfiles 2>/dev/null )
+    do
+        test $(( touched > now - timer )) = 0 && return 0
+    done
+    return 1
+}
+
 network_busy()
 {
     # TBD
     return 1
 }
 
-touchfile_is_recent()
-{
-    if [ -e $INHIBIT_BY_TOUCH ]
-    then
-        # see if there's been touchfile "activity" more
-        # during the recent idle period
-        timer=$1
-        touched=$(stat --format=%Y $INHIBIT_BY_TOUCH)
-        now=$(seconds)
-        # NB: comparison inverted -- expression returns boolean, but
-        # we want a shell success value.
-        return $(( now - touched > timer ))
-    fi
-    return 1
-}
+#touchfile_is_recent()
+#{
+#    if [ -e $INHIBIT_BY_TOUCH ]
+#    then
+#        # see if there's been touchfile "activity" more
+#        # during the recent idle period
+#        timer=$1
+#        touched=$(stat --format=%Y $INHIBIT_BY_TOUCH)
+#        now=$(seconds)
+#        # NB: comparison inverted -- expression returns boolean, but
+#        # we want a shell success value.
+#        return $(( now - touched > timer ))
+#    fi
+#    return 1
+#}
 
 inhibit_files_present()
 {
-
     inhibit_ret=1
 
     # check for pid files.  remove any non-pid files
@@ -495,9 +509,9 @@ laptop_busy()
 {
     timer=$1
     inhibit_files_present || \
-        touchfile_is_recent $timer || \
-            cpu_busy || \
-                network_busy && return 0
+        filetimes_recent $timer || \
+	    cpu_busy || \
+		network_busy && return 0
     return 1
 }
 
