@@ -965,7 +965,7 @@ read_config()
         log "cannot find $CONFIGFILE, recreating (empty)"
         touch $CONFIGFILE
     fi
-    source $CONFIGFILE
+    . $CONFIGFILE
 
     yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED" ||
         log configured to never shutdown while plugged in
@@ -1070,7 +1070,7 @@ set_idletimes()
         echo $dt  "dim"   dim_action
         echo $st  "sleep" sleep_action
         echo $bt  "blank" blank_action
-                    ) | sort -n)
+                    ) | sort -n )
 
     # extract the sorted values
     t1=$1; aname1=$2; useridle1_action=$3
