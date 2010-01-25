@@ -358,7 +358,7 @@ yes_or_true()
 }
 
 # use $SECONDS for timing when possible
-if [ "$SECONDS" ]
+if [ "${SECONDS:-}" ]
 then
     SECONDS=$(date +%s)
     seconds()
