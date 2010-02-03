@@ -358,7 +358,7 @@ yes_or_true()
 }
 
 # use $SECONDS for timing when possible
-if [ "$SECONDS" ]
+if [ "${SECONDS:-}" ]
 then
     SECONDS=$(date +%s)
     seconds()
@@ -979,7 +979,7 @@ read_config()
         log "cannot find $CONFIGFILE, recreating (empty)"
         touch $CONFIGFILE
     fi
-    source $CONFIGFILE
+    . $CONFIGFILE
 
     yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED" ||
         log configured to never shutdown while plugged in
@@ -1079,27 +1079,17 @@ set_idletimes()
     test "$bt" -eq 0 && { logger zero blank time found; bt=120; }
 
     # we want the timers in time order, so we sort them, along
-    # with their associated action routines and names (for logging).
-    actions=( $( (
+    # with their associated names (for logging) and action routines
+    set -- $( (
         echo $dt  "dim"   dim_action
         echo $st  "sleep" sleep_action
         echo $bt  "blank" blank_action
-                    ) | sort -n) )
+                    ) | sort -n )
 
-    # three timers
-    t1=${actions[0]}
-    t2=${actions[3]}
-    t3=${actions[6]}
-
-    # three names
-    aname1=${actions[1]}
-    aname2=${actions[4]}
-    aname3=${actions[7]}
-
-    # three action routines, stored in "function pointers"
-    useridle1_action=${actions[2]}
-    useridle2_action=${actions[5]}
-    useridle3_action=${actions[8]}
+    # extract the sorted values
+    t1=$1; aname1=$2; useridle1_action=$3
+    t2=$4; aname2=$5; useridle2_action=$6
+    t3=$7; aname3=$8; useridle3_action=$9
 
     # if any delta is 0 or negative, make it 60
     test "$t2" -le "$t1"        && t2=$((t1 + 60))

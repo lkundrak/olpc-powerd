@@ -13,7 +13,7 @@ ifeq ($(do_rel),)
     SNAP=.$(DATETAG)$(GITHEAD)
 endif
 
-VERSION=9
+VERSION=10
 RELEASE=$(shell cat .spec_release 2>/dev/null || echo error)
 SRELEASE=$(RELEASE)$(SNAP)
 
@@ -44,11 +44,12 @@ tarball:  $(TARBALL)
 srpm: $(SRPM)
 
 
-distribute: $(TARBALL) $(SRPM) rpms/$(PKGVER)-$(SRELEASE).fc9.i386.rpm
+src_distribute: $(TARBALL) $(SRPM)
 	scp $(TARBALL) $(SRPM)  \
 		crank:public_html/rpms/srpms
 #	scp $(SPEC) \
 #		crank:public_html/rpms/srpms/$(SPEC)-$(VERSION)-$(SRELEASE)
+distribute: src_distribute rpms/$(PKGVER)-$(SRELEASE).fc9.i386.rpm
 	scp rpms/$(PKGVER)-$(SRELEASE).fc9.i386.rpm \
 		crank:public_html/rpms
 
