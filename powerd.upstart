@@ -4,6 +4,10 @@ author          "Paul Fox"
 
 start on stopping rc5
 
+stop on runlevel 0
+stop on runlevel 1
+stop on runlevel 6
+
 console output
 
 exec /usr/sbin/powerd
