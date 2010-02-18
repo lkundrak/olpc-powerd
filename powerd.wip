@@ -121,6 +121,9 @@
 #   simply create a file named after a long-running process:  e.g.,
 #   "touch /var/run/powerd-inhibit-suspend/1".  Such a file will
 #   need to be manually removed, of course.
+#   The above flags aren't persistent.  To inhibit suspend in a
+#   persistent way (i.e., across reboots), create the file:
+#     /etc/powerd/flags/inhibit-suspend
 #
 # 2) The modification time of the file
 #     /var/run/powerd-inhibit-suspend/.fake_activity
@@ -271,7 +274,7 @@
 #
 # -----------------------------------------------
 #
-# Copyright (C) 2009, Paul G Fox
+# Copyright (C) 2009,2010, Paul G Fox
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License as
@@ -293,6 +296,8 @@ XO=;
 CONFIGDIR=/etc/powerd
 
 CONFIGFILE=$CONFIGDIR/powerd.conf
+CONFIGFLAGS=$CONFIGDIR/flags
+
 RUNPARTSDIR=$CONFIGDIR//postresume.d
 
 # logging only used for debug, currently
@@ -499,6 +504,10 @@ network_busy()
 
 inhibit_files_present()
 {
+
+    # check the persistent inhibit flag first
+    test -e $CONFIGFLAGS/inhibit-suspend && return 0
+
     inhibit_ret=1
 
     # check for pid files.  remove any non-pid files
@@ -517,10 +526,17 @@ inhibit_files_present()
 
 create_inhibit_dir()
 {
+    # most inhibit-like flags go in /var/run, and aren't persistent
     mkdir -p $INHIBITDIR
     chmod a+rwt $INHIBITDIR
     touch $INHIBIT_BY_TOUCH
     chmod a+w $INHIBIT_BY_TOUCH
+
+    # some might need to be persistent (mainly for the sake of UI
+    # simplicity, where parsing and writing the config file would
+    # be overkill).
+    mkdir -p $CONFIGFLAGS
+    chmod a+rw $CONFIGFLAGS
 }
 
 laptop_busy()
