@@ -337,7 +337,8 @@ else
 fi
 BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness  # 0-15
 MONO_MODE=/sys/devices/platform/dcon/output
-WLAN_ENABLED=/sys/power/wlan-enabled # 1/0 (see comment at set_wlan_power())
+
+WLAN_ENABLED=/sys/power/wlan-enabled    # XO-1 only
 
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
@@ -475,7 +476,7 @@ filetimes_busy()
     now=$(seconds)
     for touched in $(stat -c '%Y' $touchfiles 2>/dev/null )
     do
-        test $(( touched > now - timer )) = 0 && return 0
+        test $(( touched > now - timer )) = 1 && return 0
     done
     return 1
 }
@@ -543,7 +544,7 @@ laptop_busy()
 {
     timer=$1
     inhibit_files_present || \
-        touchfile_is_recent $timer || \
+        filetimes_busy $timer || \
             cpu_busy || \
                 network_busy && return 0
     return 1
@@ -566,35 +567,43 @@ else
     }
 fi
 
-if [ "$XO" = 1 ]
-then
-    set_wlan_power()
-    {
-        # very important not to do extra writes to wlan-enabled -- the
-        # node is sort of misnamed.  writing a 0 puts the wlan into reset.
-        # writing a 1 puts it into reset, but immediately releases the
-        # reset.  so a reset is always involved, even if brief.
-        read_wlan_power w
-        if [ "$w" != "$1" ]
-        then
-            echo $1 > $WLAN_ENABLED
-        fi
-        echo $w
-    }
+read_wlan_power()
+{
+    local x
+    read x < $WLAN_ENABLED
+    eval $1=\"$x\"
+}
 
-    read_wlan_power()
-    {
-        local x
-        read x < $WLAN_ENABLED
-        eval $1=\"$x\"
-    }
+set_wlan_power()
+{
+    # only on XO-1.  (no echo, but that's okay with the callers)
+    test "$XO" != 1 && return
 
-else
-    set_wlan_power()
-    {
-        :
-    }
-fi
+    # very important not to do extra writes to wlan-enabled -- the
+    # node is sort of misnamed.  writing a 0 puts the wlan into reset.
+    # writing a 1 puts it into reset, but immediately releases the
+    # reset.  so a reset is always involved, even if brief.
+    read_wlan_power w
+    if [ "$w" != "$1" ]
+    then
+        echo $1 > $WLAN_ENABLED
+    fi
+    echo $w
+}
+
+set_wake_on_wlan()
+{
+    # not on XO-1
+    test "$XO" = 1 && return
+
+    if [ "${1:-}" ]
+    then
+        #ethtool -s eth0 wol ua   # we don't support wake-on-arp (yet?)
+        ethtool -s eth0 wol u
+    else
+        ethtool -s eth0 wol d
+    fi
+}
 
 runparts()
 {
@@ -649,12 +658,16 @@ set_acpi_wakeupevents()
 
 set_wakeupevents()
 {
+    # this routine was simpler when only the XO-1 was around -- all
+    # it dealt with was the nodes in /sys/power/wakeup_events.
     case $1 in
     all)        set_acpi_wakeupevents EBK enable
+                set_wake_on_wlan $wake_on_wlan
                 test "$WAKE_ON_CLOSE" && echo 1 > $WAKE_ON_CLOSE
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
     none)       set_acpi_wakeupevents EBK disable
+                set_wake_on_wlan
                 test "$WAKE_ON_CLOSE" && echo 0 > $WAKE_ON_CLOSE
                 echo 0 >$WAKEUP_EVENTS/all
                 ;;
@@ -672,271 +685,103 @@ set_wakeupevents()
     esac
 }
 
-if :  # [ "$XO" = 1 ]
-then
-    read_wakeupsource()
-    {
-        local x
-        read x < $WAKEUP_SOURCE
-        eval $1=\"$x\"
-    }
-else
-    read_wakeupsource()
-    {
-        eval $1="lid"
-    }
-fi
+read_wakeupsource()
+{
+    local x
+    read x < $WAKEUP_SOURCE
+    eval $1=\"$x\"
+}
 
-if :   # [ "$XO" = 1 ]
-then
-    snooze()
-    {
+snooze()
+{
 
-        prev_wlan_power=;
+    prev_wlan_power=;
 
-        runparts suspend
+    runparts suspend
 
-        # we only use rtc alarms to either a) turn of the screen when
-        # we've been sleeping for a while, or b) shutdown after we've been
-        # sleeping for a while.  if we do a), we'll do b) next.
-        until=$1   # "until_dim", "until_blank", or "until_shutdown"
-        shutdowntime=${2:-}
-        case $until in
-        until_dim)
-            dimtime=${3:-}
-            blanktime=${4:-}
-            orig_rtctime=$dimtime
-            ;;
-        until_blank)
-            blanktime=${3:-}
-            orig_rtctime=$blanktime
-            ;;
-        until_shutdown)
-            orig_rtctime=$shutdowntime
-            ;;  
-        esac
+    # we only use rtc alarms to either a) turn of the screen when
+    # we've been sleeping for a while, or b) shutdown after we've been
+    # sleeping for a while.  if we do a), we'll do b) next.
+    until=$1   # "until_dim", "until_blank", or "until_shutdown"
+    shutdowntime=${2:-}
+    case $until in
+    until_dim)
+        dimtime=${3:-}
+        blanktime=${4:-}
+        orig_rtctime=$dimtime
+        ;;
+    until_blank)
+        blanktime=${3:-}
+        orig_rtctime=$blanktime
+        ;;
+    until_shutdown)
+        orig_rtctime=$shutdowntime
+        ;;  
+    esac
 
-        rtctime=$orig_rtctime
+    rtctime=$orig_rtctime
 
-        while :
-        do
-            sleep_started=$(seconds)
-            if [ $until = until_shutdown ]
-            then
-                # if we're waiting for a shutdown, then this is a
-                # pretty sound sleep.  only let the lid wake us up
-                # (we can't actually prevent that), as well as battery
-                # events if we're close to shutdown levels.
-                set_wakeupevents none
-                # it's tempting to allow AC wakeups here, but in practice
-                # a) there's no advantage -- we won't do anything differently
-                # if we wake and go back to sleep, and b) it's tricky, when
-                # awoken for one reason for which we might simply
-                # sleep again (i.e.  AC) to know that we shouldn't
-                # also have awoken for another reason (i.e., LID)
-                # without draining the event queue.  far simpler to
-                # not take AC and LID wakeups at the same time.
-
-                # regardless, take battery_critical events
-                set_wakeupevents battery_critical
-
-                # obviously if we ignore AC wakeups, we won't do the following
-                # if we're subsequently unplugged.  hopefully the critical
-                # wakeup above will save the day.
-                if [ ! "$ac_online" ]
-                then
-                    read_battery
-                    if [ "$battery_capacity" -le 20 ]
-                    then
-                        set_wakeupevents battery
-                    fi
-                fi
-                # ohmd uses this:
-                #    nm-tool | grep msh0 -A4 | grep Active | awk '{print $2}'\"
-                # to determine whether mesh is active before turning off wireless.
-                # i guess we could do the same.
-                if [ ! "$prev_wlan_power" ] && \
-                     ! yes_or_true "$config_MESH_DURING_SUSPEND"
-                then
-                    prev_wlan_power=$(set_wlan_power 0)
-                fi
-                test "$tracing" && sleep 1
-                rtcwake -m mem -a -s $rtctime
-                set_wakeupevents all
-            else
-                # otherwise we want most anything to wake us.
-                test "$tracing" && sleep 1
-                rtcwake -m mem -a -s $rtctime
-            fi
-
-            # prepare for the default case of simply re-sleeping for
-            # the remaining time.  may be overridden.  note that this
-            # also protects against a) sleeping for less than a second,
-            # which is buggy in the kernel, and b) trying to sleep for
-            # 0 seconds, which might happen if we wake up due to an AC
-            # event at just the same time that rtcwake should have expired.
-            lastwakeup=$(seconds)
-            rtctime=$(( rtctime - ( lastwakeup - sleep_started ) ))
-            rtctime=$(( (rtctime <= 1) ? 2 : rtctime ))
-
-            # we want to toss extra events that happened long ago, as
-            # we were sleeping, but not those that happened as we
-            # were waking up.  choose the middle of our nap as the
-            # cutoff:
-            eventcutoff=$(( ( lastwakeup + sleep_started ) / 2 ))
-
-            if [ "$XO" = 1.5 ]
-            then
-                # for some reason our ebook and ec interrupts get disabled
-                # across a suspend/resume cycle
-                echo enable >/sys/firmware/acpi/interrupts/gpe01
-                echo enable >/sys/firmware/acpi/interrupts/gpe0A
-            fi
-
-            power_check
-
-            read_wakeupsource wakeupsource
-            : wakeupsource is $wakeupsource
-            case $wakeupsource in
-            "power button")
-                if [ $until = until_shutdown ]
-                then
-                    # this takes care of the "screen blanked but not sleeping"
-                    # case.  we only want the button to give the splash menu
-                    # when the screen was lit when it was pushed.
-                    selfinject fake_useractive $lastwakeup "$wakeupsource"
-                else
-                    # waiting until_dim or until_blank, so screen is still on
-                    selfinject fake_powerbutton $lastwakeup "$wakeupsource"
-                fi
-                break
-                ;;
-
-            "wlan packet")
-                if yes_or_true "$config_WAKE_ON_WLAN"
-                then
-                    selfinject fake_useractive $lastwakeup "$wakeupsource"
-                    break
-                fi
-                ;;
-
-            "rtc alarm"|"ac power"|battery*)
-
-                : until-wakeupsource is $until-$wakeupsource
-
-                case $until-$wakeupsource in
-                until_dim-rtc*)
-                    # we don't get woken on lid close, so check here.
-                    # if we can't tell, assume we're still open
-                    backlight dim
-                    until=until_blank
-                    orig_rtctime=$blanktime
-                    rtctime=$blanktime
-                    ;;
-
-                until_blank-rtc*)
-                    backlight off
-                    until=until_shutdown
-                    orig_rtctime=$shutdowntime
-                    rtctime=$shutdowntime
-                    ;;
-
-                until_shutdown-rtc*)
-                    if [ $rtctime -le 2 ]  # time really expired
-                    then
-                        if [ ! "$ac_online" ] || \
-                                yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
-                        then
-                            splash shutdown
-                            do_shutdown "idle timeout"
-                        fi
-                        # if we didn't shut down, we'll sleep again for
-                        # the same time as before, before we check again.
-                        rtctime=$orig_rtctime
-                        log "found external power, sleeping instead of shutdown"
-                    else
-                        # not sure why this happens, but i've seen a
-                        # sleep of 999999999 turn into 69506 seconds
-                        log "awoke for shutdown too early, sleeping again"
-                    fi
-                    ;;
-
-                # NB -- we no longer wake on AC, so this doesn't happen
-                until_shutdown-ac*)
-                    # restart the shutdown timer.  the choice of sleep time
-                    # is kind of a guess, since we're not tracking how much
-                    # charging we're getting while plugged in.  so if we're
-                    # plugged in, we sleep forever, otherwise, we sleep (again)
-                    # for the original time.
-                    if [ "$ac_online" ]
-                    then
-                        rtctime=999999999
-                    else
-                        rtctime=$orig_rtctime
-                    fi
-                    ;;
-
-                # NB -- we no longer wake on AC, so this doesn't happen
-                until_*-ac*)
-                    # we were waiting for dim or blank, and we got plugged in.
-                    # we'll wake up fully, so we can re-decide whether we
-                    # should really be sleeping aggressively.
-                    break;
-                    ;;
-
-                *-battery*)  # all we do is check level, above.
-                    ;;
-
-                *) # it's a leftover (spurious?) rtc wakeup.  go back to sleep.
-                    ;;
-
-                esac
-                ;;
-
-            "lid"|"empty sci")
-                # assume "empty sci" comes from lid (kernel bug).
-                # in older kernels an rtc wakeup will report "empty
-                # sci" as well.  powerd doesn't support those kernels
-                # very well.
-                am_ebook=;
-                selfinject fake_useractive $lastwakeup "$wakeupsource"
-                touchpad_recalibrate
-                break
-                ;;
-
-            *)  # "key press"|"ebook")
-                selfinject fake_useractive $lastwakeup "$wakeupsource"
-                break
-            esac
-
-        done
-
-        test "$prev_wlan_power" && set_wlan_power $prev_wlan_power
-
-        reset_idlecounters
-        runparts resume &
-    }
-else # XO == 1.5
-    snooze()
-    {
-        until=$1   # "until_dim", "until_blank", or "until_shutdown"
-
-        prev_wlan_power=;
-        runparts suspend
-        case $until in
-        until_shutdown)
-            # we'll actually never wake, since we're not using rtc.
-            set_wakeupevents none
-            set_wakeupevents battery_critical
-            ;;
-        esac
-
-        # we wouldn't know what to do when we woke up if
-        # we used the rtc alarm, because we have no wakeup
-        # source information yet.  so just go to sleep.
+    while :
+    do
         sleep_started=$(seconds)
-        echo mem > /sys/power/state
+        if [ $until = until_shutdown ]
+        then
+            # if we're waiting for a shutdown, then this is a
+            # pretty sound sleep.  only let the lid wake us up
+            # (we can't actually prevent that), as well as battery
+            # events if we're close to shutdown levels.
+
+            set_wakeupevents none
+            # note:  it's tempting to allow AC wakeups here, but in
+            # practice a) there's no advantage -- we won't do anything
+            # differently if we wake and go back to sleep, and b) it's
+            # tricky, when awoken for one reason, for which we might
+            # simply sleep again (i.e. AC), to know that we shouldn't
+            # also have awoken for another reason (i.e., LID) without
+            # draining the event queue.  far simpler to not take AC
+            # and LID wakeups at the same time.
+
+            # regardless, take battery_critical events
+            set_wakeupevents battery_critical
+
+            # obviously if we ignore AC wakeups, we won't do the following
+            # if we're subsequently unplugged.  hopefully the critical
+            # wakeup above will save the day.
+            if [ ! "$ac_online" ]
+            then
+                read_battery
+                if [ "$battery_capacity" -le 20 ]
+                then
+                    set_wakeupevents battery
+                fi
+            fi
+            # ohmd uses this:
+            #    nm-tool | grep msh0 -A4 | grep Active | awk '{print $2}'\"
+            # to determine whether mesh is active before turning off wireless.
+            # i guess we could do the same.
+            if [ ! "$prev_wlan_power" ] && \
+                 ! yes_or_true "$config_MESH_DURING_SUSPEND"
+            then
+                prev_wlan_power=$(set_wlan_power 0)
+            fi
+            test "$tracing" && sleep 1
+            rtcwake -m mem -a -s $rtctime
+            set_wakeupevents all
+        else
+            # otherwise we want most anything to wake us.
+            test "$tracing" && sleep 1
+            rtcwake -m mem -a -s $rtctime
+        fi
+
+        # prepare for the default case of simply re-sleeping for
+        # the remaining time.  may be overridden.  note that this
+        # also protects against a) sleeping for less than a second,
+        # which is buggy in the kernel, and b) trying to sleep for
+        # 0 seconds, which might happen if we wake up due to an AC
+        # event at just the same time that rtcwake should have expired.
         lastwakeup=$(seconds)
+        rtctime=$(( rtctime - ( lastwakeup - sleep_started ) ))
+        rtctime=$(( (rtctime <= 1) ? 2 : rtctime ))
 
         # we want to toss extra events that happened long ago, as
         # we were sleeping, but not those that happened as we
@@ -944,24 +789,137 @@ else # XO == 1.5
         # cutoff:
         eventcutoff=$(( ( lastwakeup + sleep_started ) / 2 ))
 
-        set_wakeupevents all
-
-        # for some reason our ebook and ec interrupts get disabled
-        # across a suspend/resume cycle
-        echo enable >/sys/firmware/acpi/interrupts/gpe01
-        echo enable >/sys/firmware/acpi/interrupts/gpe0A
+        if [ "$XO" = 1.5 ]
+        then
+            # for some reason our ebook and ec interrupts get disabled
+            # across a suspend/resume cycle
+            echo enable >/sys/firmware/acpi/interrupts/gpe01
+            echo enable >/sys/firmware/acpi/interrupts/gpe0A
+        fi
 
         power_check
 
-        selfinject fake_useractive $lastwakeup unknown
+        read_wakeupsource wakeupsource
+        : wakeupsource is $wakeupsource
+        case $wakeupsource in
+        "power button")
+            if [ $until = until_shutdown ]
+            then
+                # this takes care of the "screen blanked but not sleeping"
+                # case.  we only want the button to give the splash menu
+                # when the screen was lit when it was pushed.
+                selfinject fake_useractive $lastwakeup "$wakeupsource"
+            else
+                # waiting until_dim or until_blank, so screen is still on
+                selfinject fake_powerbutton $lastwakeup "$wakeupsource"
+            fi
+            break
+            ;;
 
-        test "$prev_wlan_power" && set_wlan_power $prev_wlan_power
+        "wlan packet")
+            if yes_or_true "$config_WAKE_ON_WLAN"
+            then
+                selfinject fake_useractive $lastwakeup "$wakeupsource"
+                break
+            fi
+            ;;
 
-        reset_idlecounters
-        runparts resume &
-    }
-fi
+        "rtc alarm"|"ac power"|battery*)
 
+            : until-wakeupsource is $until-$wakeupsource
+
+            case $until-$wakeupsource in
+            until_dim-rtc*)
+                # we don't get woken on lid close, so check here.
+                # if we can't tell, assume we're still open
+                backlight dim
+                until=until_blank
+                orig_rtctime=$blanktime
+                rtctime=$blanktime
+                ;;
+
+            until_blank-rtc*)
+                backlight off
+                until=until_shutdown
+                orig_rtctime=$shutdowntime
+                rtctime=$shutdowntime
+                ;;
+
+            until_shutdown-rtc*)
+                if [ $rtctime -le 2 ]  # time really expired
+                then
+                    if [ ! "$ac_online" ] || \
+                            yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
+                    then
+                        splash shutdown
+                        do_shutdown "idle timeout"
+                    fi
+                    # if we didn't shut down, we'll sleep again for
+                    # the same time as before, before we check again.
+                    rtctime=$orig_rtctime
+                    log "found external power, sleeping instead of shutdown"
+                else
+                    # not sure why this happens, but i've seen a
+                    # sleep of 999999999 turn into 69506 seconds
+                    log "awoke for shutdown too early, sleeping again"
+                fi
+                ;;
+
+            # NB -- we no longer wake on AC, so this doesn't happen
+            until_shutdown-ac*)
+                # restart the shutdown timer.  the choice of sleep time
+                # is kind of a guess, since we're not tracking how much
+                # charging we're getting while plugged in.  so if we're
+                # plugged in, we sleep forever, otherwise, we sleep (again)
+                # for the original time.
+                if [ "$ac_online" ]
+                then
+                    rtctime=999999999
+                else
+                    rtctime=$orig_rtctime
+                fi
+                ;;
+
+            # NB -- we no longer wake on AC, so this doesn't happen
+            until_*-ac*)
+                # we were waiting for dim or blank, and we got plugged in.
+                # we'll wake up fully, so we can re-decide whether we
+                # should really be sleeping aggressively.
+                break;
+                ;;
+
+            *-battery*)  # all we do is check level, above.
+                ;;
+
+            *) # it's a leftover (spurious?) rtc wakeup.  go back to sleep.
+                ;;
+
+            esac
+            ;;
+
+        "lid"|"empty sci")
+            # assume "empty sci" comes from lid (kernel bug).
+            # in older kernels an rtc wakeup will report "empty
+            # sci" as well.  powerd doesn't support those kernels
+            # very well.
+            am_ebook=;
+            selfinject fake_useractive $lastwakeup "$wakeupsource"
+            touchpad_recalibrate
+            break
+            ;;
+
+        *)  # "key press"|"ebook")
+            selfinject fake_useractive $lastwakeup "$wakeupsource"
+            break
+        esac
+
+    done
+
+    test "$prev_wlan_power" && set_wlan_power $prev_wlan_power
+
+    reset_idlecounters
+    runparts resume &
+}
 
 set_brightness()
 {
@@ -1098,8 +1056,17 @@ read_config()
     fi
     . $CONFIGFILE
 
-    yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED" ||
+    if yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
+    then
         log configured to never shutdown while plugged in
+    fi
+
+    wake_on_wlan=;
+    if yes_or_true "$config_WAKE_ON_WLAN"
+    then
+        wake_on_wlan=true
+        log configured to wake on wireless activity
+    fi
 
 }
 
