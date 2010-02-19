@@ -49,15 +49,15 @@ src_distribute: $(TARBALL) $(SRPM)
 		crank:public_html/rpms/srpms
 #	scp $(SPEC) \
 #		crank:public_html/rpms/srpms/$(SPEC)-$(VERSION)-$(SRELEASE)
-distribute: src_distribute rpms/$(PKGVER)-$(SRELEASE).fc9.i386.rpm
-	scp rpms/$(PKGVER)-$(SRELEASE).fc9.i386.rpm \
+distribute: src_distribute rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm
+	scp rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm \
 		crank:public_html/rpms
 
 privdist:
-	scp rpms/$(PKGVER)-$(SRELEASE).fc9.i386.rpm \
+	scp rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm \
 		crank:public_html/private_rpms
 	ssh crank ln -sf \
-		$(PKGVER)-$(SRELEASE).fc9.i386.rpm \
+		$(PKGVER)-$(SRELEASE).fc11.i586.rpm \
 		public_html/private_rpms/$(PKGVER)-$(RELEASE).latest.rpm
 
 # create the real spec (carefully!) so it refers to a) our tarball, and
