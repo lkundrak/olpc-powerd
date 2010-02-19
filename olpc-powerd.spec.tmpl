@@ -39,6 +39,7 @@ mkdir -p $RPM_BUILD_ROOT/%{_bindir}
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/event.d
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd/postresume.d
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd/flags
 
 %{__install} -p -m 755 olpc-switchd $RPM_BUILD_ROOT/%{_sbindir}/olpc-switchd
 %{__install} -p -m 755 powerd $RPM_BUILD_ROOT/%{_sbindir}/powerd
