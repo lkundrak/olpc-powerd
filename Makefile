@@ -20,7 +20,7 @@ SRELEASE=$(RELEASE)$(SNAP)
 TARBALL=$(PKGVER)-$(GITHEAD).tar.gz
 SRPM=$(PKGVER)-$(SRELEASE).src.rpm
 
-MOCK=./mock-wrapper -r olpc-3-i386 --resultdir=$(MOCKDIR)
+MOCK=./mock-wrapper -r fedora-11-i386 --resultdir=$(MOCKDIR)
 MOCKDIR=./rpms
 CWD=$(shell pwd)
 
