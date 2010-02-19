@@ -1228,7 +1228,7 @@ sched_powertimer()
 
 sched_unfreezetimer()
 {
-    (sleep $1; selfinject unfreezetimerdone ) &
+    (sleep 15; selfinject unfreeze_dcon ) &
 }
 
 invalidate_powertimer()
@@ -1463,14 +1463,14 @@ event_loop()
             reevaluate all
             ;;
 
-        unfreezetimerdone)
+        unfreeze_dcon)
             # this is a bit of a hack.  on the XO, the bootanim
             # script contrives to leave the dcon frozen at the end
             # of the init sequence.  it remains frozen until sugar
             # first becomes idle, at which point sugar sends a dbus
             # message to ohmd, causing ohmd to unfreeze the dcon.
             # since we don't do dbus, we unfreeze the dcon after 10
-            # seconds.
+            # seconds.  sugar can also send this command, on startup.
             dcon thaw
             ;;
 
@@ -1562,7 +1562,7 @@ then
 fi
         
 
-sched_unfreezetimer 10
+sched_unfreezetimer
 
 log starting
 
