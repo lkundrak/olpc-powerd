@@ -26,7 +26,13 @@
 #  How long the shutdown/suspend confirmation splash screen stays
 #  visible before the laptop automatically suspends.
 #
-# config_MESH_DURING_SUSPEND
+# config_UNFREEZE_SECONDS
+#  How long after starting will powerd wait before gratuitously
+#  unfreezing the DCON, to activate the display.  This allows most
+#  of the intermediate stages of boot screens to be hidden until
+#  the window manager is ready.
+#
+# config_MESH_DURING_SUSPEND  (only on XO-1)
 #  This controls whether the wireless remains powered while the
 #  laptop is fully suspended (i.e., sleeping with a dark screen).
 #  The only reason to set this to "yes" is if you want the laptop
@@ -63,3 +69,4 @@ config_MAX_SLEEP_BEFORE_SHUTDOWN="3600"
 config_ALLOW_SHUTDOWN_WHEN_PLUGGED="no"
 config_SLEEP_WHEN_LID_CLOSED="yes"
 config_CONFIRM_SECONDS="7"
+config_UNFREEZE_SECONDS="12"
