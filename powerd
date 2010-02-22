@@ -1566,8 +1566,6 @@ then
 fi
         
 
-sched_unfreezetimer
-
 log starting
 
 set_config_defaults
@@ -1579,6 +1577,8 @@ fi
 create_inhibit_dir
 
 read_config
+
+sched_unfreezetimer
 
 power_check
 
