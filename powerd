@@ -1531,7 +1531,7 @@ read_hwinfo()
 init_tracing
 # uncomment for full tracing.
 # (use powerd-control =tracing-on to enable at runtime.)
-set_tracing on
+# set_tracing on
 
 am_ebook=;
 o_ebook=xxx;
