@@ -1527,6 +1527,30 @@ read_hwinfo()
         hwversion="n/a"
 }
 
+choose_xo_model()
+{
+    read_hwinfo
+
+    case $hwvendor-$hwname-$hwversion in
+    OLPC-XO-1|OLPC-XO-1.5)
+	XO=$hwversion
+	;;
+    *)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
+	# also check for an olpc-only node in /sys
+	if [ -e /sys/power/wakeup_events/ebook_mode_change ]
+	then
+	    XO=1
+	fi
+	;;
+    esac
+
+    if [ ! "$XO" ]
+    then
+	log Unsupported hardware: vendor "$hwvendor", version "$hwversion"
+	exit 1
+    fi
+}
+        
 
 init_tracing
 # uncomment for full tracing.
@@ -1543,28 +1567,7 @@ powerseqno=0;
 lastwakeup=0;
 eventcutoff=0;
 
-
-read_hwinfo
-
-case $hwvendor-$hwname-$hwversion in
-OLPC-XO-1|OLPC-XO-1.5)
-    XO=$hwversion
-    ;;
-*)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
-    # also check for an olpc-only node in /sys
-    if [ -e /sys/power/wakeup_events/ebook_mode_change ]
-    then
-        XO=1
-    fi
-    ;;
-esac
-
-if [ ! "$XO" ]
-then
-    log Unsupported hardware: vendor "$hwvendor", version "$hwversion"
-    exit 1
-fi
-        
+choose_xo_model
 
 log starting
 

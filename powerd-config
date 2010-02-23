@@ -63,6 +63,40 @@ trap "rm -f $TMP $TMPCONFIG $NEWCONFIG" 0
 
 backtitle="powerd configuration"
 
+read_hwinfo()
+{
+    read hwvendor < /sys/class/dmi/id/sys_vendor ||
+        hwvendor="n/a"
+    read hwname < /sys/class/dmi/id/product_name ||
+        hwname="n/a"
+    read hwversion < /sys/class/dmi/id/product_version ||
+        hwversion="n/a"
+}
+
+choose_xo_model()
+{
+    read_hwinfo
+
+    case $hwvendor-$hwname-$hwversion in
+    OLPC-XO-1|OLPC-XO-1.5)
+	XO=$hwversion
+	;;
+    *)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
+	# also check for an olpc-only node in /sys
+	if [ -e /sys/power/wakeup_events/ebook_mode_change ]
+	then
+	    XO=1
+	fi
+	;;
+    esac
+
+    if [ ! "$XO" ]
+    then
+	log Unsupported hardware: vendor "$hwvendor", version "$hwversion"
+	exit 1
+    fi
+}
+
 yes_no()
 {
     case $1 in
@@ -266,7 +300,9 @@ main()
 
     set -u
 
-    case ${1:-} in
+    arg1="${1:-}"
+
+    case $arg1 in
     -a) # force pseudo-activity by touching the magic file
         if [ -d $INHIBITDIR ]
         then
@@ -283,13 +319,15 @@ main()
 
     check_root
 
-    if [ "${1:-}" -a ! "$am_root" ]
+    if [ "$arg1" -a ! "$am_root" ]
     then
         echo "You must be root to control powerd" >&2
         exit 1
     fi
 
-    case ${1:-} in
+    # choose_xo_model   not needed (yet?)
+
+    case $arg1 in
     "")
         ;;
     =*) # =foo is just a direct event to the daemon,
@@ -299,7 +337,7 @@ main()
             echo $me: problem with $EVENTFIFO >&2
             exit 1
         fi
-        echo ${1#=} >$EVENTFIFO
+        echo ${arg1#=} >$EVENTFIFO
         exit
         ;;
     *)
