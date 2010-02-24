@@ -63,39 +63,6 @@ trap "rm -f $TMP $TMPCONFIG $NEWCONFIG" 0
 
 backtitle="powerd configuration"
 
-read_hwinfo()
-{
-    read hwvendor < /sys/class/dmi/id/sys_vendor ||
-        hwvendor="n/a"
-    read hwname < /sys/class/dmi/id/product_name ||
-        hwname="n/a"
-    read hwversion < /sys/class/dmi/id/product_version ||
-        hwversion="n/a"
-}
-
-choose_xo_model()
-{
-    read_hwinfo
-
-    case $hwvendor-$hwname-$hwversion in
-    OLPC-XO-1|OLPC-XO-1.5)
-	XO=$hwversion
-	;;
-    *)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
-	# also check for an olpc-only node in /sys
-	if [ -e /sys/power/wakeup_events/ebook_mode_change ]
-	then
-	    XO=1
-	fi
-	;;
-    esac
-
-    if [ ! "$XO" ]
-    then
-	log Unsupported hardware: vendor "$hwvendor", version "$hwversion"
-	exit 1
-    fi
-}
 
 yes_no()
 {
@@ -156,7 +123,7 @@ edit_config()
     idledim=${config_IDLE_DIM_LEVEL:-5}
     test "$idledim" -eq "$idledim" || idledim=5
 
-    #wlanwake=${config_WAKE_ON_WLAN:-yes}
+    wlanwake=${config_WAKE_ON_WLAN:-yes}
     wlanpower=${config_MESH_DURING_SUSPEND:-no}
     maxsleep=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-3600}
     test "$maxsleep" -eq "$maxsleep" || maxsleep=5
@@ -169,7 +136,7 @@ edit_config()
     if ! dialog \
           --backtitle "$backtitle" --mixedform \
             "${editing:-}Dim, Sleep and Blank may be scheduled in any order." \
-            22 67 15 \
+            22 67 16 \
       \
       "Battery:    Dim"         1 1      "$bat_dim"     1  17 9 9 "$ro" \
                   "Sleep"       1 28     "$bat_sleep"   1  34 9 9 "$ro" \
@@ -185,15 +152,15 @@ edit_config()
       \
       "Screen brightness (0-15) when dimmed:"    5 1      "$idledim"   5  43 3 3 "$ro" \
       \
-      "Keep wlan powered in suspend?"    7 1      "$wlanpower"   7  41 5 5 "$ro" \
+      "Keep wlan powered in suspend? (XO-1)"    7 1      "$wlanpower"   7  41 5 5 "$ro" \
+      "Wake on wireless activity?"    8 1      "$wlanwake"   8  41 5 5 "$ro" \
       \
-      "Max blanked sleep before shutdown:"    9 1      "$maxsleep"   9  37 9 9 "$ro" \
-      "Allow shutdown when plugged in?"    10 1      "$allowshut"   10  41 5 5 "$ro" \
-      "Always sleep when lid closed?"    11 1      "$lidsleep"   11  41 5 5 "$ro" \
+      "Max blanked sleep before shutdown:"    10 1      "$maxsleep"   10  37 9 9 "$ro" \
+      "Allow shutdown when plugged in?"    11 1      "$allowshut"   11  41 5 5 "$ro" \
+      "Always sleep when lid closed?"    12 1      "$lidsleep"   12  41 5 5 "$ro" \
       \
-      "Power button splash screen timeout:"   13 1 "$splashdelay"  13  43 3 3 "$ro" \
+      "Power button splash screen timeout:"   14 1 "$splashdelay"  14  43 3 3 "$ro" \
         2>$TMP
-# was: "Wake on wireless activity?"    7 1      "$wlanwake"   7  41 5 5 "$ro" \
     then
         return 1
     fi
@@ -211,7 +178,7 @@ edit_config()
         plug_sleep=$8
         plug_blank=$9
         idledim=${10}
-        #wlanwake=${11}
+        wlanwake=${11}
         wlanpower=${11}
         maxsleep=${12}
         allowshut=${13}
@@ -229,7 +196,7 @@ edit_config()
         setvar config_PLUGGED_TIME_BLANK $plug_blank
 
         setvar config_IDLE_DIM_LEVEL $idledim
-        #setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
+        setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
         setvar config_MESH_DURING_SUSPEND $(yes_no $wlanpower)
         setvar config_MAX_SLEEP_BEFORE_SHUTDOWN $maxsleep
         setvar config_ALLOW_SHUTDOWN_WHEN_PLUGGED $(yes_no $allowshut)
@@ -324,8 +291,6 @@ main()
         echo "You must be root to control powerd" >&2
         exit 1
     fi
-
-    # choose_xo_model   not needed (yet?)
 
     case $arg1 in
     "")
