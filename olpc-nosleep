@@ -1,0 +1,19 @@
+#!/bin/sh
+
+usage()
+{
+    exec 1>&2
+    echo "usage: ${0##*/} program [args ...]"
+    echo "  to prevent the laptop from sleeping while 'program' is running"
+    exit 1
+}
+
+case $1 in
+    -*|"")  usage ;;
+esac
+
+# powerd will clean this up after we're gone
+touch /var/run/powerd-inhibit-suspend/$$ || exit 1
+
+exec "$@"
+

@@ -45,6 +45,7 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd/flags
 %{__install} -p -m 755 powerd $RPM_BUILD_ROOT/%{_sbindir}/powerd
 %{__install} -p -m 755 pnmto565fb $RPM_BUILD_ROOT/%{_bindir}/pnmto565fb
 %{__install} -p -m 755 powerd-config $RPM_BUILD_ROOT/%{_bindir}/powerd-config
+%{__install} -p -m 755 olpc-nosleep $RPM_BUILD_ROOT/%{_bindir}/olpc-nosleep
 %{__install} -p -m 644 olpc-switchd.upstart $RPM_BUILD_ROOT%{_sysconfdir}/event.d/olpc-switchd
 %{__install} -p -m 644 powerd.upstart $RPM_BUILD_ROOT%{_sysconfdir}/event.d/powerd
 %{__install} -p -m 644 pleaseconfirm.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/pleaseconfirm.pgm
@@ -63,6 +64,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/powerd
 %{_bindir}/pnmto565fb
 %{_bindir}/powerd-config
+%{_bindir}/olpc-nosleep
 %config(noreplace) %{_sysconfdir}/event.d/olpc-switchd
 %config(noreplace) %{_sysconfdir}/event.d/powerd
 %config(noreplace) %{_sysconfdir}/powerd/pleaseconfirm.pgm

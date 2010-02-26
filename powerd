@@ -122,10 +122,15 @@
 #   their owner pid doesn't exist) will be removed when the next
 #   dim is attempted.  To manually inhibit dim/blank/sleep one can
 #   simply create a file named after a long-running process:  e.g.,
-#   "touch /var/run/powerd-inhibit-suspend/1".  Such a file will
-#   need to be manually removed, of course.
-#   The above flags aren't persistent.  To inhibit suspend in a
-#   persistent way (i.e., across reboots), create the file:
+#   "touch /var/run/powerd-inhibit-suspend/1".  (Such a file will
+#   need to be manually removed, of course.)  To assist with the
+#   common case of inhibiting suspend while a given program is
+#   running, the "olpc-nosleep" wrapper is provided.  e.g.:
+#	$ olpc-nosleep wget http://veryslow.downloads.com/bigfile
+#
+#   The above pid-based flags aren't persistent.  To inhibit
+#   suspend in a persistent way (i.e., across reboots), create the
+#   file:
 #     /etc/powerd/flags/inhibit-suspend
 #
 # 2) The modification time of the file
