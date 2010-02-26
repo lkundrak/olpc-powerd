@@ -63,6 +63,7 @@ trap "rm -f $TMP $TMPCONFIG $NEWCONFIG" 0
 
 backtitle="powerd configuration"
 
+
 yes_no()
 {
     case $1 in
@@ -122,7 +123,7 @@ edit_config()
     idledim=${config_IDLE_DIM_LEVEL:-5}
     test "$idledim" -eq "$idledim" || idledim=5
 
-    #wlanwake=${config_WAKE_ON_WLAN:-yes}
+    wlanwake=${config_WAKE_ON_WLAN:-yes}
     wlanpower=${config_MESH_DURING_SUSPEND:-no}
     maxsleep=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-3600}
     test "$maxsleep" -eq "$maxsleep" || maxsleep=5
@@ -135,7 +136,7 @@ edit_config()
     if ! dialog \
           --backtitle "$backtitle" --mixedform \
             "${editing:-}Dim, Sleep and Blank may be scheduled in any order." \
-            22 67 15 \
+            22 67 16 \
       \
       "Battery:    Dim"         1 1      "$bat_dim"     1  17 9 9 "$ro" \
                   "Sleep"       1 28     "$bat_sleep"   1  34 9 9 "$ro" \
@@ -151,15 +152,15 @@ edit_config()
       \
       "Screen brightness (0-15) when dimmed:"    5 1      "$idledim"   5  43 3 3 "$ro" \
       \
-      "Keep wlan powered in suspend?"    7 1      "$wlanpower"   7  41 5 5 "$ro" \
+      "Keep wlan powered in suspend? (XO-1)"    7 1      "$wlanpower"   7  41 5 5 "$ro" \
+      "Wake on wireless activity?"    8 1      "$wlanwake"   8  41 5 5 "$ro" \
       \
-      "Max blanked sleep before shutdown:"    9 1      "$maxsleep"   9  37 9 9 "$ro" \
-      "Allow shutdown when plugged in?"    10 1      "$allowshut"   10  41 5 5 "$ro" \
-      "Always sleep when lid closed?"    11 1      "$lidsleep"   11  41 5 5 "$ro" \
+      "Max blanked sleep before shutdown:"    10 1      "$maxsleep"   10  37 9 9 "$ro" \
+      "Allow shutdown when plugged in?"    11 1      "$allowshut"   11  41 5 5 "$ro" \
+      "Always sleep when lid closed?"    12 1      "$lidsleep"   12  41 5 5 "$ro" \
       \
-      "Power button splash screen timeout:"   13 1 "$splashdelay"  13  43 3 3 "$ro" \
+      "Power button splash screen timeout:"   14 1 "$splashdelay"  14  43 3 3 "$ro" \
         2>$TMP
-# was: "Wake on wireless activity?"    7 1      "$wlanwake"   7  41 5 5 "$ro" \
     then
         return 1
     fi
@@ -177,7 +178,7 @@ edit_config()
         plug_sleep=$8
         plug_blank=$9
         idledim=${10}
-        #wlanwake=${11}
+        wlanwake=${11}
         wlanpower=${11}
         maxsleep=${12}
         allowshut=${13}
@@ -195,7 +196,7 @@ edit_config()
         setvar config_PLUGGED_TIME_BLANK $plug_blank
 
         setvar config_IDLE_DIM_LEVEL $idledim
-        #setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
+        setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
         setvar config_MESH_DURING_SUSPEND $(yes_no $wlanpower)
         setvar config_MAX_SLEEP_BEFORE_SHUTDOWN $maxsleep
         setvar config_ALLOW_SHUTDOWN_WHEN_PLUGGED $(yes_no $allowshut)
@@ -266,7 +267,9 @@ main()
 
     set -u
 
-    case ${1:-} in
+    arg1="${1:-}"
+
+    case $arg1 in
     -a) # force pseudo-activity by touching the magic file
         if [ -d $INHIBITDIR ]
         then
@@ -283,13 +286,13 @@ main()
 
     check_root
 
-    if [ "${1:-}" -a ! "$am_root" ]
+    if [ "$arg1" -a ! "$am_root" ]
     then
         echo "You must be root to control powerd" >&2
         exit 1
     fi
 
-    case ${1:-} in
+    case $arg1 in
     "")
         ;;
     =*) # =foo is just a direct event to the daemon,
@@ -299,7 +302,7 @@ main()
             echo $me: problem with $EVENTFIFO >&2
             exit 1
         fi
-        echo ${1#=} >$EVENTFIFO
+        echo ${arg1#=} >$EVENTFIFO
         exit
         ;;
     *)
