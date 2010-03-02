@@ -455,7 +455,7 @@ do_shutdown()
     log shutting down due to $*
     leavesplash # kill the splasher (leaving splash visible)
     sleep .05s
-    /sbin/shutdown -h now &
+    /sbin/poweroff &
     sleep 9999999
 }
 
