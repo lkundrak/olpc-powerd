@@ -1,4 +1,5 @@
 #!/bin/sh
+#   (search for POSIX, below, for notes on shell compatibility)
 #
 # powerd -- experimental power management for the XO
 #
@@ -126,7 +127,7 @@
 #   need to be manually removed, of course.)  To assist with the
 #   common case of inhibiting suspend while a given program is
 #   running, the "olpc-nosleep" wrapper is provided.  e.g.:
-#	$ olpc-nosleep wget http://veryslow.downloads.com/bigfile
+#       $ olpc-nosleep wget http://veryslow.downloads.com/bigfile
 #
 #   The above pid-based flags aren't persistent.  To inhibit
 #   suspend in a persistent way (i.e., across reboots), create the
@@ -270,10 +271,18 @@
 #   in olpc-session.
 #
 #
-# - Posix shell
+# - POSIX shell
 #
 #   The intention is that powerd be runnable with most any modern
 #   shell.  No bash-specific features were used, unless by accident.
+#   One possible exception: in order to implement a non-blocking read of the event
+#   fifo, I had to use "read -t 1" (in event_fifo_lookahead()).
+#   Most newer shells implement this, but it's not POSIX.  (The
+#   Debian "dash" shell does not, the "ash" shell in busybox works
+#   fine.)  If run with a shell that doesn't support "-t", the only
+#   failure will be the possibility of lost wakeups:  hitting a key
+#   just as the system wakes just to dim the screen may not prevent
+#   the subsequent sleep.
 #
 #
 ######
@@ -700,8 +709,42 @@ read_wakeupsource()
     eval $1=\"$x\"
 }
 
+event_fifo_lookahead()
+{
+        # in some cases in snooze() we wake just to perform
+        # a short action or status check, and then we sleep again
+        # immediately.  if we don't check the event fifo, we may
+        # well miss an event that would normally wake us (or
+        # keep us from sleeping).  there's no way to close this
+        # race completely, but this is way better than nothing.
+        #
+        # i would like to do a sub-second timeout here, but
+        # that's only available in a couple of shells, and the
+	# "-t" option is already non-portable.  (not in debian dash)
+        while read -t 1 s_event s_tstamp s_arg2 s_arg3 more
+        do
+            # if the event we read is "interesting enough" that
+            # it would have woken us if it had arrived just a little
+            # later, break out.  otherwise discard it.
+            case $s_event in
+            "powerbutton"|"lidclose"|"lidopen"|"useractive")
+                if [ ! "$s_tstamp" ] || \
+                    [ "$s_tstamp" -ge "$eventcutoff" ]
+                then
+                    return 0
+                fi
+                ;;
+            esac
+        done <&6  # from the fifo
+
+        return 1
+}
+
 snooze()
 {
+
+    local shutdowntime dimtime blanktime orig_rtctime rtctime
+    local until wakeupsource prev_wlan_power sleep_started
 
     prev_wlan_power=;
 
@@ -731,7 +774,6 @@ snooze()
 
     while :
     do
-        sleep_started=$(seconds)
         if [ $until = until_shutdown ]
         then
             # if we're waiting for a shutdown, then this is a
@@ -773,11 +815,16 @@ snooze()
                 prev_wlan_power=$(set_wlan_power 0)
             fi
             test "$tracing" && sleep 1
+            sleep_started=$(seconds)
             rtcwake -m mem -a -s $rtctime
             set_wakeupevents all
         else
             # otherwise we want most anything to wake us.
             test "$tracing" && sleep 1
+
+            event_fifo_lookahead && break
+
+            sleep_started=$(seconds)
             rtcwake -m mem -a -s $rtctime
         fi
 
@@ -920,6 +967,9 @@ snooze()
             selfinject fake_useractive $lastwakeup "$wakeupsource"
             break
         esac
+
+        # unless we've broken out of the loop, we're going to sleep
+        # again.
 
     done
 
@@ -1314,14 +1364,24 @@ event_loop()
     rm -f $EVENTFIFO
     mkfifo $EVENTFIFO
     chmod 600 $EVENTFIFO
+    exec 6<> $EVENTFIFO
 
     while :
     do
 
         reevaluate
 
-        tstamp=; arg2=; arg3=; more=;
-        read event tstamp arg2 arg3 more
+        # if we did lookahead on events in snooze(), use the result here
+        if [ "${s_event:-}" ]
+        then
+            event=$s_event
+            tstamp=$s_tstamp
+            arg2=$s_arg2
+            arg3=$s_arg3
+            unset s_event s_tstamp s_arg2 s_arg3 s_more
+        else
+            read event tstamp arg2 arg3 more
+        fi
 
         : -------------------------
         : got "<$event>", "<${tstamp:-}>" "<${arg2:-}>" "<${arg3:-}>"
@@ -1365,7 +1425,7 @@ event_loop()
             # are we still waiting for this timer?
             if [ "$timerseqno" = "$arg2" ]
             then
-                echo $arg3 $(seconds) >$EVENTFIFO
+                echo $arg3 $(seconds) >&6
                 : $((timerseqno += 1))
             fi
             ;;
@@ -1491,7 +1551,7 @@ event_loop()
             ;;
         esac
 
-    done <> $EVENTFIFO
+    done <&6  # from the fifo
 }
 
 init_tracing()
@@ -1538,21 +1598,21 @@ choose_xo_model()
 
     case $hwvendor-$hwname-$hwversion in
     OLPC-XO-1|OLPC-XO-1.5)
-	XO=$hwversion
-	;;
+        XO=$hwversion
+        ;;
     *)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
-	# also check for an olpc-only node in /sys
-	if [ -e /sys/power/wakeup_events/ebook_mode_change ]
-	then
-	    XO=1
-	fi
-	;;
+        # also check for an olpc-only node in /sys
+        if [ -e /sys/power/wakeup_events/ebook_mode_change ]
+        then
+            XO=1
+        fi
+        ;;
     esac
 
     if [ ! "$XO" ]
     then
-	log Unsupported hardware: vendor "$hwvendor", version "$hwversion"
-	exit 1
+        log Unsupported hardware: vendor "$hwvendor", version "$hwversion"
+        exit 1
     fi
 }
         
@@ -1569,7 +1629,6 @@ savebright=;
 last_t_values=;
 timerseqno=1;
 powerseqno=0;
-lastwakeup=0;
 eventcutoff=0;
 
 choose_xo_model
