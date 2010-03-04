@@ -7,11 +7,12 @@
 # These are the time in seconds (measured from last user
 # activity) until a) the laptop screen dims, b) the laptop
 # sleeps, and c) the laptop screen blanks.  All three can be
-# scheduled in any order.
+# scheduled in any order.  Setting any to '0' suppresses that
+# action.
 #
 # config_MAX_SLEEP_BEFORE_SHUTDOWN
 #  Once the laptop sleeps and the screen is blank, it will shut
-#  down after this amount of time.
+#  down after this amount of time.  '0' will prevent auto-shutdown.
 #
 # config_ALLOW_SHUTDOWN_WHEN_PLUGGED
 #  If this is disabled, the laptop will never automatically shut

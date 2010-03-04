@@ -56,6 +56,10 @@
 # scheduling dimming after blanking only serves to skip the
 # dimming state, since a blanked screen can't be dimmed.
 #
+# Setting any of the timers to '0' suppresses that action.  (The
+# value is converted to 999999999 seconds internally, so you may
+# see that in the logs.
+#
 # In any case, when the screen is dark _and_ the laptop is
 # sleeping, it's in a "deep" sleep -- keystrokes will not wake it
 # up, just as if the power button had been used.  The maximum
@@ -64,6 +68,7 @@
 # "config_MAX_SLEEP_BEFORE_SHUTDOWN".  (This is arguably
 # mis-named, since it's not really "max sleep time before
 # shutdown", but "max asleep-and-blank time before shutdown".)
+# Again, a setting of '0' will be internally converted to 999999999.
 #
 # Turning off "config_ALLOW_SHUTDOWN_WHEN_PLUGGED" will keep the
 # laptop from ever completely shutting down when it has external
@@ -182,7 +187,7 @@
 #   Because they don't, olpc-switchd also monitors these two status
 #   nodes (under /sys) and synthesizes events to represent their
 #   transitions.  (olpc-switchd will use the AC power jack input
-#   device (input3) if it's available, and will only poll the
+#   device (input3) if it's available, and will poll just the
 #   battery in that case.)
 #
 # - Wakeups:
@@ -267,8 +272,8 @@
 #   doing this will result in confusion, since when DPMS blanks the
 #   screen, powerd can't tell that it's been done.  I.e., a laptop
 #   with a screen blanked by DPMS may behave differently than one
-#   blanked by powerd.  So "xset -dpms" is recommended, preferably
-#   in olpc-session.
+#   blanked by powerd.  DPMS should be disabled, either in
+#   xorg.conf, or with "xset -dpms".
 #
 #
 # - POSIX shell
@@ -1216,12 +1221,20 @@ set_idletimes()
     # now validate the configured times...
 
     # force all to be numeric:
-    test "$dt" -eq "$dt" || { logger non-numeric dim time found; dt=120; }
-    test "$st" -eq "$st" || { logger non-numeric sleep time found; st=120; }
-    test "$bt" -eq "$bt" || { logger non-numeric blank time found; bt=120; }
-    test "$dt" -eq 0 && { logger zero dim time found; dt=120; }
-    test "$st" -eq 0 && { logger zero sleep time found; st=120; }
-    test "$bt" -eq 0 && { logger zero blank time found; bt=120; }
+    test "$dt" -eq "$dt" || \
+	{ logger non-numeric dim time found; dt=120; }
+    test "$st" -eq "$st" || \
+	{ logger non-numeric sleep time found; st=120; }
+    test "$bt" -eq "$bt" || \
+	{ logger non-numeric blank time found; bt=120; }
+
+    # change '0' to infinite
+    test "$dt" -eq 0 && \
+	{ logger zero dim time found, now 999999999; dt=999999999; }
+    test "$st" -eq 0 && \
+	{ logger zero sleep time found, now 999999999; st=999999999; }
+    test "$bt" -eq 0 && \
+	{ logger zero blank time found, now 999999999; bt=999999999; }
 
     # we want the timers in time order, so we sort them, along
     # with their associated action routines and names (for logging).
@@ -1249,7 +1262,9 @@ set_idletimes()
     reset_idlecounters $t1 $t2 $t3
 
     t4=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-0}
-    test "$t4" -eq "$t4" || t4=0
+    test "$t4" -eq "$t4" || t4=300
+    test "$t4" -eq 0 && \
+	{ logger zero max-sleep time found, now 999999999; t4=999999999; }
     test "$t4" -le "5" && t4=300
 
     log $aname1 in $t1 seconds, $aname2 in $t2, $aname3 in $t3, \
