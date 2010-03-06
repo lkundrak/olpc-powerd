@@ -123,8 +123,8 @@ edit_config()
     idledim=${config_IDLE_DIM_LEVEL:-5}
     test "$idledim" -eq "$idledim" || idledim=5
 
-    wlanwake=${config_WAKE_ON_WLAN:-yes}
     wlanpower=${config_MESH_DURING_SUSPEND:-no}
+    wlanwake=${config_WAKE_ON_WLAN:-yes}
     maxsleep=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-3600}
     test "$maxsleep" -eq "$maxsleep" || maxsleep=5
     allowshut=${config_ALLOW_SHUTDOWN_WHEN_PLUGGED:-yes}
@@ -132,6 +132,10 @@ edit_config()
 
     splashdelay=${config_CONFIRM_SECONDS:-8}
 
+
+    # Careful!  adding fields means adjusting numbers in many places
+    #  below the new field (at least two per line), and _also_ means
+    #  the results need to be assigned differently after return.  see below.
     row=1
     if ! dialog \
           --backtitle "$backtitle" --mixedform \
@@ -167,6 +171,7 @@ edit_config()
 
     if [ ! "$readonly" ]
     then
+	# assign results to to the right variables here:
         set -- $(cat $TMP)
         bat_dim=$1
         bat_sleep=$2
@@ -178,12 +183,12 @@ edit_config()
         plug_sleep=$8
         plug_blank=$9
         idledim=${10}
-        wlanwake=${11}
         wlanpower=${11}
-        maxsleep=${12}
-        allowshut=${13}
-        lidsleep=${14}
-        splashdelay=${15}
+        wlanwake=${12}
+        maxsleep=${13}
+        allowshut=${14}
+        lidsleep=${15}
+        splashdelay=${16}
 
         setvar config_BATTERY_TIME_DIM $bat_dim
         setvar config_BATTERY_TIME_SLEEP $bat_sleep
@@ -196,8 +201,8 @@ edit_config()
         setvar config_PLUGGED_TIME_BLANK $plug_blank
 
         setvar config_IDLE_DIM_LEVEL $idledim
-        setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
         setvar config_MESH_DURING_SUSPEND $(yes_no $wlanpower)
+        setvar config_WAKE_ON_WLAN $(yes_no $wlanwake)
         setvar config_MAX_SLEEP_BEFORE_SHUTDOWN $maxsleep
         setvar config_ALLOW_SHUTDOWN_WHEN_PLUGGED $(yes_no $allowshut)
         setvar config_SLEEP_WHEN_LID_CLOSED $(yes_no $lidsleep)
