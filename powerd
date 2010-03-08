@@ -80,7 +80,10 @@
 #
 # "config_CONFIRM_SECONDS" determines how long the shutdown/suspend
 # confirmation splash screen stays visible before the laptop
-# automatically suspends.
+# automatically suspends.  If this is set to zero, there will be
+# no splash screen:  the laptop will suspend immediately on a
+# power button push.  In this case, shutdown must be done via
+# a menu entry, or other command.
 #
 # "config_UNFREEZE_SECONDS" specifies the delay before powerd
 # will unfreeze the DCON, after starting up.
@@ -725,7 +728,7 @@ event_fifo_lookahead()
         #
         # i would like to do a sub-second timeout here, but
         # that's only available in a couple of shells, and the
-	# "-t" option is already non-portable.  (not in debian dash)
+        # "-t" option is already non-portable.  (not in debian dash)
         while read -t 1 s_event s_tstamp s_arg2 s_arg3 more
         do
             # if the event we read is "interesting enough" that
@@ -819,6 +822,7 @@ snooze()
             then
                 prev_wlan_power=$(set_wlan_power 0)
             fi
+
             test "$tracing" && sleep 1
             sleep_started=$(seconds)
             rtcwake -m mem -a -s $rtctime
@@ -1120,6 +1124,11 @@ read_config()
     fi
     . $CONFIGFILE
 
+    if [ "$config_CONFIRM_SECONDS" -eq 0 ]
+    then
+        logger configured so power button will cause immediate sleep
+    fi
+
     if yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
     then
         log configured to never shutdown while plugged in
@@ -1222,19 +1231,19 @@ set_idletimes()
 
     # force all to be numeric:
     test "$dt" -eq "$dt" || \
-	{ logger non-numeric dim time found; dt=120; }
+        { logger non-numeric dim time found; dt=120; }
     test "$st" -eq "$st" || \
-	{ logger non-numeric sleep time found; st=120; }
+        { logger non-numeric sleep time found; st=120; }
     test "$bt" -eq "$bt" || \
-	{ logger non-numeric blank time found; bt=120; }
+        { logger non-numeric blank time found; bt=120; }
 
     # change '0' to infinite
     test "$dt" -eq 0 && \
-	{ logger zero dim time found, now 999999999; dt=999999999; }
+        { logger zero dim time found, now 999999999; dt=999999999; }
     test "$st" -eq 0 && \
-	{ logger zero sleep time found, now 999999999; st=999999999; }
+        { logger zero sleep time found, now 999999999; st=999999999; }
     test "$bt" -eq 0 && \
-	{ logger zero blank time found, now 999999999; bt=999999999; }
+        { logger zero blank time found, now 999999999; bt=999999999; }
 
     # we want the timers in time order, so we sort them, along
     # with their associated action routines and names (for logging).
@@ -1264,7 +1273,7 @@ set_idletimes()
     t4=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-0}
     test "$t4" -eq "$t4" || t4=300
     test "$t4" -eq 0 && \
-	{ logger zero max-sleep time found, now 999999999; t4=999999999; }
+        { logger zero max-sleep time found, now 999999999; t4=999999999; }
     test "$t4" -le "5" && t4=300
 
     log $aname1 in $t1 seconds, $aname2 in $t2, $aname3 in $t3, \
@@ -1421,17 +1430,24 @@ event_loop()
                 backlight restore
                 reset_idlecounters
             else
-                if [ "$powerseqno" != "$timerseqno" ]
-                then # first press
-                    splash confirm
-                    reset_idlecounters # reprime for "useractivity"
-                    sched_powertimer $config_CONFIRM_SECONDS gotosleep
-                    powerseqno=$timerseqno
-                    backlight restore
-                else # second press
-                    nextsplash  # advance to next splash screen
-                    sleep 1
-                    do_shutdown  "power press"
+                if [ $config_CONFIRM_SECONDS = 0 ]
+                then
+                    backlight off
+                    # sleep until it's time to shut down
+                    snooze until_shutdown "$shutdowntimer"
+                else
+                    if [ "$powerseqno" != "$timerseqno" ]
+                    then # first press
+                        splash confirm
+                        reset_idlecounters # reprime for "useractivity"
+                        sched_powertimer $config_CONFIRM_SECONDS gotosleep
+                        powerseqno=$timerseqno
+                        backlight restore
+                    else # second press
+                        nextsplash  # advance to next splash screen
+                        sleep 1
+                        do_shutdown  "power press"
+                    fi
                 fi
             fi
             ;;

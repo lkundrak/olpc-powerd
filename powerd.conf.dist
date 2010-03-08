@@ -25,7 +25,9 @@
 #
 # config_CONFIRM_SECONDS
 #  How long the shutdown/suspend confirmation splash screen stays
-#  visible before the laptop automatically suspends.
+#  visible before the laptop automatically suspends.  If this is
+#  zero, there will be no splash screen:  the laptop will suspend
+#  immediately when the button is pushed.
 #
 # config_UNFREEZE_SECONDS
 #  How long after starting will powerd wait before gratuitously
