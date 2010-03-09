@@ -65,6 +65,9 @@ char *sysactive_path;
 /* how often to poll AC and battery state */
 int pollinterval;
 
+/* how many pollintervals should pass before we send a timer event */
+int timeout_polls;
+
 extern char *optarg;
 extern int optind, opterr, optopt;
 
@@ -107,6 +110,7 @@ usage(void)
         "\n"
         "   '-p N' If set, the presence of external power and the condition\n"
         "        of the battery will be polled every N seconds.\n"
+        "   '-t T' If set, will send a 'timer' event every T * N seconds\n"
         "   '-A <activity_indicator>'  Gives path whose modification time\n"
         "        will indicate (approximate) recent switch/button activity.\n"
         "        (Touched at most once every 5 seconds)\n"
@@ -386,7 +390,7 @@ acpwr_event()
     }
 }
 
-void
+int
 poll_power_sources(void)
 {
     int fd, r;
@@ -394,16 +398,17 @@ poll_power_sources(void)
     int online, capacity;
     static int was_online = -1;
     static int was_capacity = -1;
+    int sent = 0;
 
     if (acpwr_fd < 0) {
         fd = open("/sys/class/power_supply/olpc-ac/online", O_RDONLY);
         if (fd < 0)
-            return;
+            return 0;
 
         r = read(fd, buf, 1);
         if (r != 1 || (buf[0] != '0' && buf[0] != '1')) {
             close(fd);
-            return;
+            return 0;
         }
 
         online = buf[0] - '0';
@@ -418,12 +423,12 @@ poll_power_sources(void)
 
     fd = open("/sys/class/power_supply/olpc-battery/capacity", O_RDONLY);
     if (fd < 0)
-        return;
+        return 0;
 
     r = read(fd, buf, 2);
     if (r < 1 || (buf[0] < '0' || buf[0] > '9')) {
         close(fd);
-        return;
+        return 0;
     }
 
     buf[3] = '\0';
@@ -433,8 +438,10 @@ poll_power_sources(void)
         snprintf(evbuf, 32, "%d", capacity);
         send_event("battery", time(0), evbuf);
         was_capacity = capacity;
+        sent = 1;
     }
     close(fd);
+    return sent;
 }
 
 void
@@ -472,7 +479,17 @@ data_loop(void)
         if (r < 0)
             die("select failed");
 
-        poll_power_sources();
+        if (!poll_power_sources() && r == 0 && timeout_polls) {
+            static int tp = 2;
+
+            if (--tp <= 0) {
+                char timeout[16];
+                snprintf(timeout, sizeof(timeout), "%d",
+                    pollinterval * timeout_polls);
+                send_event("timer", time(0), timeout);
+                tp = timeout_polls;
+            }
+        }
 
         if (r > 0) {
             if (FD_ISSET(pwr_fd, &errors))
@@ -523,7 +540,7 @@ main(int argc, char *argv[])
     cp = strrchr(argv[0], '/');
     if (cp) me = cp + 1;
 
-    while ((c = getopt(argc, argv, "fldXp:F:A:")) != -1) {
+    while ((c = getopt(argc, argv, "fldXp:t:F:A:")) != -1) {
         switch (c) {
 
         /* daemon options */
@@ -542,6 +559,12 @@ main(int argc, char *argv[])
 
         case 'p':
             pollinterval = strtol(optarg, &eargp, 10);
+            if (*eargp != '\0' || pollinterval <= 0)
+                usage();
+            break;
+
+        case 't':
+            timeout_polls = strtol(optarg, &eargp, 10); 
             if (*eargp != '\0' || pollinterval <= 0)
                 usage();
             break;

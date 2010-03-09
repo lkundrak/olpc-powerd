@@ -55,6 +55,12 @@
 #  when closed.  If disabled, it will stay awake when the lid is
 #  closed, and will only sleep because of other timeouts.
 #
+# config_PWRLOG_INTERVAL
+#  This sets the maximum interval, in seconds, between logged
+#  samples for the purposes of battery and power usage monitoring. 
+#  A value of zero will disable power logging altogether.  A restart
+#  is required after changing this setting.
+#
 config_WAKE_ON_WLAN="yes"
 config_CPU_IDLE_LIMIT="10"
 config_BATTERY_TIME_DIM="60"
@@ -73,3 +79,4 @@ config_ALLOW_SHUTDOWN_WHEN_PLUGGED="no"
 config_SLEEP_WHEN_LID_CLOSED="yes"
 config_CONFIRM_SECONDS="7"
 config_UNFREEZE_SECONDS="12"
+config_PWRLOG_INTERVAL="0"

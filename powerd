@@ -111,6 +111,15 @@
 # to remain active while the laptop is transported.  The screen
 # will be turned off in any case, of course.
 #
+# "config_PWRLOG_INTERVAL" determines whether or not powerd will
+# perform detailed battery and power logging.  A value of less
+# than 30 seconds will disable power logging altogether.  Anything else
+# will determine the approximate maximum interval between logged
+# samples.  10 minutes (i.e., a value of 600) is a useful setting.
+# Unlike most powerd settings, changes to config_PWRLOG_INTERVAL
+# won't take effect without restarting powerd (or rebooting).
+# (The value is approximate, because the actual logging depends on
+# the granularity of the timer events received from olpc-switchd.)
 #
 # If /etc/powerd.conf is a symlink to another file, then powerd-config
 # can be used to easily manage a set of configuration "profiles".
@@ -326,7 +335,7 @@ CONFIGDIR=/etc/powerd
 CONFIGFILE=$CONFIGDIR/powerd.conf
 CONFIGFLAGS=$CONFIGDIR/flags
 
-RUNPARTSDIR=$CONFIGDIR//postresume.d
+RUNPARTSDIR=$CONFIGDIR/postresume.d
 
 # logging only used for debug, currently
 LOGFILE=/var/log/powerd.trace
@@ -785,6 +794,9 @@ snooze()
 
     while :
     do
+
+        pwrlog_take_reading suspend
+
         if [ $until = until_shutdown ]
         then
             # if we're waiting for a shutdown, then this is a
@@ -868,6 +880,9 @@ snooze()
 
         read_wakeupsource wakeupsource
         : wakeupsource is $wakeupsource
+
+        pwrlog_take_reading resume
+
         case $wakeupsource in
         "power button")
             if [ $until = until_shutdown ]
@@ -1115,7 +1130,7 @@ set_config_defaults()
     config_UNFREEZE_SECONDS=1
 
     config_CPU_IDLE_LIMIT=10
-
+    config_PWRLOG_INTERVAL=0
 }
 
 read_config()
@@ -1368,6 +1383,7 @@ sleep_action()
 
 exit_actions()
 {
+    pwrlog_take_reading shutdown
     set_wakeupevents none
     unsplash
     rm -f $EVENTFIFO
@@ -1421,6 +1437,8 @@ event_loop()
             # that are stale.
             continue
         fi
+
+        pwrlog_take_reading $event-event
 
         case $event in
 
@@ -1516,6 +1534,13 @@ event_loop()
             reset_idlecounters
             ;;
 
+        timer)
+            # olpc-switchd will emit a "timer" event periodically
+            # if asked to.  the only purpose is to make sure
+            # olpc-pwr-log.sh has a reason to log once in a while.
+            test "$tracing" && : $(seconds)
+            ;;
+
         useridle1)
             test "$tracing" && : $(seconds)
             if laptop_busy $t1
@@ -1549,10 +1574,12 @@ event_loop()
 
         ac-online)
             ac_online=true
+            pwrlog_take_reading ac-online
             ;;
 
         ac-offline)
             ac_online=;
+            pwrlog_take_reading ac-offline
             ;;
 
         battery)
@@ -1650,6 +1677,25 @@ choose_xo_model()
     fi
 }
         
+configure_pwrlog()
+{
+    if [ $config_PWRLOG_INTERVAL -gt 30 -a \
+            -s $CONFIGDIR/olpc-pwr-log.sh ]
+    then
+        pwrlog_inside_powerd=yes
+        PWRLOGDIR=$CONFIGDIR/pwrlog.d
+        mkdir -p $PWRLOGDIR
+        . $CONFIGDIR/olpc-pwr-log.sh
+        pwrlog_init $config_PWRLOG_INTERVAL 
+    else
+        # install a null handler
+        pwrlog_take_reading()
+        {
+            : pwrlog unconfigured, or unavailable
+        }
+    fi
+}
+
 
 init_tracing
 # uncomment for full tracing.
@@ -1678,6 +1724,10 @@ fi
 create_inhibit_dir
 
 read_config
+
+configure_pwrlog
+
+pwrlog_take_reading startup
 
 sched_unfreezetimer
 

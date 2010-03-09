@@ -51,6 +51,7 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd/flags
 %{__install} -p -m 644 pleaseconfirm.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/pleaseconfirm.pgm
 %{__install} -p -m 644 shuttingdown.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/shuttingdown.pgm
 %{__install} -p -m 644 powerd.conf.dist $RPM_BUILD_ROOT%{_sysconfdir}/powerd/powerd.conf
+%{__install} -p -m 644 olpc-pwr-log.sh $RPM_BUILD_ROOT%{_sysconfdir}/powerd/olpc-pwr-log.sh 
 
 
 %clean
@@ -65,6 +66,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/pnmto565fb
 %{_bindir}/powerd-config
 %{_bindir}/olpc-nosleep
+%{_sysconfdir}/powerd/olpc-pwr-log.sh
 %config(noreplace) %{_sysconfdir}/event.d/olpc-switchd
 %config(noreplace) %{_sysconfdir}/event.d/powerd
 %config(noreplace) %{_sysconfdir}/powerd/pleaseconfirm.pgm

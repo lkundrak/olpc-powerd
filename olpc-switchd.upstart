@@ -7,6 +7,8 @@ start on stopping rc5
 
 console output
 
-exec /usr/sbin/olpc-switchd -f -l -p 10 -F /var/run/powerevents
+# poll for power events every 10 seconds,
+# report periodic timer at least every 60
+exec /usr/sbin/olpc-switchd -f -l -p 10 -t 6 -F /var/run/powerevents
 
 respawn
