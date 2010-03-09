@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #   (search for POSIX, below, for notes on shell compatibility)
 #
 # powerd -- experimental power management for the XO
@@ -283,14 +283,17 @@
 #
 #   The intention is that powerd be runnable with most any modern
 #   shell.  No bash-specific features were used, unless by accident.
-#   One possible exception: in order to implement a non-blocking read of the event
-#   fifo, I had to use "read -t 1" (in event_fifo_lookahead()).
-#   Most newer shells implement this, but it's not POSIX.  (The
-#   Debian "dash" shell does not, the "ash" shell in busybox works
-#   fine.)  If run with a shell that doesn't support "-t", the only
-#   failure will be the possibility of lost wakeups:  hitting a key
-#   just as the system wakes just to dim the screen may not prevent
-#   the subsequent sleep.
+#   One possible exception:  in order to implement a non-blocking
+#   read of the event fifo, I had to use "read -t 1" (in
+#   event_fifo_lookahead()).  Most newer shells implement this, but
+#   it's not POSIX.  (The Debian "dash" shell does not, the "ash"
+#   shell in busybox works fine.) If run with a shell that doesn't
+#   support "-t", the only failure will be the possibility of lost
+#   wakeups:  hitting a key just as the system wakes just to dim
+#   the screen may not prevent the subsequent sleep.  Another
+#   exception is the (optional) inclusion of olpc-pwr-log.sh, which
+#   is heavily dependent on non-POSIX features.
+#
 #
 #
 ######
