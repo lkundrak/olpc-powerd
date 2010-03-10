@@ -33,6 +33,12 @@
 # and again only when it receives a "reconfig" event on its
 # event fifo (/var/run/powerevents).
 #
+# If /etc/powerd/powerd.conf is a symlink to another file, then
+# powerd-config can be used to easily manage a set of
+# named configuration "profiles".  So different configurations
+# can be used at different times of day, or during different
+# tasks, etc.
+#
 # All times are expressed in seconds (though a UI could do
 # whatever it wants, of course).  Booleans can be enabled with
 # "yes", "Yes", "true", "True", or "1".  Anything else will turn
@@ -111,20 +117,31 @@
 # to remain active while the laptop is transported.  The screen
 # will be turned off in any case, of course.
 #
-# "config_PWRLOG_INTERVAL" determines whether or not powerd will
-# perform detailed battery and power logging.  A value of less
-# than 30 seconds will disable power logging altogether.  Anything else
-# will determine the approximate maximum interval between logged
-# samples.  10 minutes (i.e., a value of 600) is a useful setting.
-# Unlike most powerd settings, changes to config_PWRLOG_INTERVAL
-# won't take effect without restarting powerd (or rebooting).
-# (The value is approximate, because the actual logging depends on
-# the granularity of the timer events received from olpc-switchd.)
+# powerd can optionally perform detailed power usage logging.
+# powerd must be restarted for any changes to the following
+# config_PWRLOG_XXX... settings to take effect:
 #
-# If /etc/powerd.conf is a symlink to another file, then powerd-config
-# can be used to easily manage a set of configuration "profiles".
-# So different configurations can be used at different times of day,
-# or during different tasks, etc.
+# "config_PWRLOG_INTERVAL" determines whether, and how often,
+# logging will be performed.  A value of less than 30 seconds
+# will disable power logging.  Anything else gives the
+# approximate maximum interval between logged samples.  10
+# minutes (i.e., a value of 600) is a useful setting.  (The value
+# is approximate, because the actual logging depends on the
+# granularity of the timer events received from olpc-switchd.)
+#
+# "config_PWRLOG_DIR" is the final destination for the power logs.
+# Logs are initially written to /var/log, and copied every 30 minutes
+# to the final directory.
+#
+# "config_PWRLOG_LOGSIZE" is the maximum size, in Kbytes, of any single
+# log file.  When a log file crosses this threshold, it will be
+# remove (after copying to $config_PWRLOG_DIR) and a new log
+# started.
+#
+# "config_PWRLOG_LOGDIRSIZE" is the maximum total size of
+# $config_PWRLOG_DIR.  When the directory grows too large, the
+# oldest files are removed until the size is below this threshold.
+#
 #
 ######
 #
@@ -360,8 +377,9 @@ EVENTFIFO=/var/run/powerevents
 # of runtime left.  the right answer is to use battery voltage --
 # however, we can't get woken for that.  so we fudge, and use
 # a combination.
-CAPACITY=/sys/class/power_supply/olpc-battery/capacity  # percentage
-MICROVOLTS=/sys/class/power_supply/olpc-battery/voltage_avg  # microvolts
+BATTERY_INFO=/sys/class/power_supply/olpc-battery
+CAPACITY=$BATTERY_INFO/capacity  # percentage
+MICROVOLTS=$BATTERY_INFO/voltage_avg  # microvolts
 
 if [ -d /sys/class/power_supply/olpc-ac ]
 then
@@ -1130,7 +1148,11 @@ set_config_defaults()
     config_UNFREEZE_SECONDS=1
 
     config_CPU_IDLE_LIMIT=10
+
     config_PWRLOG_INTERVAL=0
+    config_PWRLOG_DIR=/home/olpc/olpc-pwr-logs
+    config_PWRLOG_LOGSIZE=50            # Kbytes
+    config_PWRLOG_LOGDIRSIZE=1000       # Kbytes
 }
 
 read_config()
@@ -1683,10 +1705,14 @@ configure_pwrlog()
             -s $CONFIGDIR/olpc-pwr-log.sh ]
     then
         pwrlog_inside_powerd=yes
-        PWRLOGDIR=$CONFIGDIR/pwrlog.d
-        mkdir -p $PWRLOGDIR
+
+        mkdir -p $config_PWRLOG_DIR
+        chown olpc:olpc $config_PWRLOG_DIR
+
         . $CONFIGDIR/olpc-pwr-log.sh
-        pwrlog_init $config_PWRLOG_INTERVAL 
+        pwrlog_init $config_PWRLOG_INTERVAL $config_PWRLOG_DIR \
+            $config_PWRLOG_LOGSIZE $config_PWRLOG_LOGDIRSIZE
+
     else
         # install a null handler
         pwrlog_take_reading()

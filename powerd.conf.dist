@@ -56,10 +56,11 @@
 #  closed, and will only sleep because of other timeouts.
 #
 # config_PWRLOG_INTERVAL
-#  This sets the maximum interval, in seconds, between logged
-#  samples for the purposes of battery and power usage monitoring. 
-#  A value of zero will disable power logging altogether.  A restart
-#  is required after changing this setting.
+# config_PWRLOG_DIR 
+# config_PWRLOG_LOGSIZE
+# config_PWRLOG_LOGDIRSIZE
+#  Refer to the notes in the powerd script itself for descriptions
+#  of how these control powerd's optional power logging.
 #
 config_WAKE_ON_WLAN="yes"
 config_CPU_IDLE_LIMIT="10"
@@ -79,4 +80,4 @@ config_ALLOW_SHUTDOWN_WHEN_PLUGGED="no"
 config_SLEEP_WHEN_LID_CLOSED="yes"
 config_CONFIRM_SECONDS="7"
 config_UNFREEZE_SECONDS="12"
-config_PWRLOG_INTERVAL="0"
+config_PWRLOG_INTERVAL="600"

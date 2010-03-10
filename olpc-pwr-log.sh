@@ -66,7 +66,7 @@ EOF
 # convert a number into 2's complement
 pwrlog_conv_2s_comp()
 {
-    if [ $1 -gt 32767 ]
+    if (( $1 > 32767 ))
     then
         echo $(( 0 - (65535-$1+1) ))
     else
@@ -186,12 +186,16 @@ pwrlog_init()
 {
 
     pwr_LOG_INTERVAL=${1:-60}
+    pwr_LOG_DIR=${2:-}
+    pwr_MAX_LOG_SIZE=${3:-50}             # Kbytes
+    pwr_MAX_LOGDIR_SIZE=${4:-5120}        # Kbytes
+
     pwr_LOGCOPY_MINUTES=30
 
     pwr_POWERD_LOG_VERSION="0.1"
     pwr_POWERD_LOG_FORMAT="1"
 
-    if [ ! "$BATTERY_INFO" ]
+    if [ ! "$BATTERY_INFO" ]  # usually set by powerd
     then
         BATTERY_INFO=/sys/class/power_supply/olpc-battery
     fi
@@ -225,29 +229,51 @@ pwrlog_wallclock_delay()
     wall_period=5
     date1=$(seconds)
     expire=$((date1+$1))
-    while [ $(seconds) -lt $expire ]; do
+    while (( $(seconds) < $expire ))
+    do
         sleep $wall_period
     done
 }
 
 pwrlog_logcopy()
 {
-        if [ ! -d "$PWRLOGDIR" ]
-        then
-            echo "$0: Bad PWRLOGDIR: '$PWRLOGDIR'" >&2
-            return 1
-        fi
+    local size oldfiles log
 
-        # anything to copy?
-        test "$(echo /var/log/pwr-*.csv 2>/dev/null)" || return 0
+    if [ ! -d "$pwr_LOG_DIR" ]
+    then
+        echo "$0: Bad or missing log directory: '$pwr_LOG_DIR'" >&2
+        return 1
+    fi
 
-        # copy any likely logs
-        cp /var/log/pwr-*.csv $PWRLOGDIR || return 0
+    # anything to copy?
+    test "$(echo /var/log/pwr-*.csv 2>/dev/null)" || return 0
+
+    # copy any likely logs
+    cp /var/log/pwr-*.csv $pwr_LOG_DIR || return 0
+
+    # assume that only the most recently written log is still
+    # active, and that others have been preserved
+    oldfiles="$(ls -t /var/log/pwr-*.csv | sed 1d)"
+    test "$oldfiles" && rm -f $oldfiles
+
+    # keep up to 10M. after that, delete oldest first
+    size=( $(du -sk $pwr_LOG_DIR) )   # size in 1K blocks
+    if (( ${size[0]} > $pwr_MAX_LOGDIR_SIZE ))    # bigger than 10Mb?
+    then
+        for log in $(ls -rt $pwr_LOG_DIR)
+        do
+            rm -f $pwr_LOG_DIR/$log
+            size=( $(du -sk $pwr_LOG_DIR) )   # blocks
+            (( ${size[0]} < $pwr_MAX_LOGDIR_SIZE )) && break
+        done
+    fi
+
+    # remove current log file if it's too big.  (it's been copied)
+    if (( $(stat -c%s $pwr_PWRLOG_LOGFILE ) > $pwr_MAX_LOG_SIZE * 1024))
+    then
+        rm -f $pwr_PWRLOG_LOGFILE 
+    fi
         
-        # assume that only the most recently written log is still
-        # active, and that others have been preserved
-        oldfiles="$(ls -t /var/log/pwr-*.csv | sed 1d)"
-        test "$oldfiles" && rm -f $oldfiles
 }
 
 # powerd sets a variable to indicate we've been source'd
@@ -285,7 +311,12 @@ then
 
     DELAY=20
     SECONDS=$(date +%s)
-    pwrlog_init $DELAY
+    LOGDIR="/home/olpc/olpc-pwr-logs"
+
+    mkdir -p $LOGDIR
+    chown olpc:olpc $LOGDIR
+
+    pwrlog_init $DELAY $LOGDIR
 
     pwrlog_loop
 
