@@ -1622,7 +1622,8 @@ event_loop()
             # first becomes idle, at which point sugar sends a dbus
             # message to ohmd, causing ohmd to unfreeze the dcon.
             # since we don't do dbus, we unfreeze the dcon after 10
-            # seconds.  sugar can also send this command, on startup.
+            # seconds.
+            reset_idlecounters
             dcon thaw
             ;;
 
