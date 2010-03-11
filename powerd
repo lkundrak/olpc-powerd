@@ -1451,7 +1451,7 @@ event_loop()
         : -------------------------
         : got "<$event>", "<${tstamp:-}>" "<${arg2:-}>" "<${arg3:-}>"
 
-        if [ "$tstamp" ] && [ "$tstamp" -lt "$eventcutoff" ]
+        if [ "$tstamp" -a "$tstamp" != '-' ] && [ "$tstamp" -lt "$eventcutoff" ]
         then
             # it's possible for olpc-switchd to generate multiple
             # hardware-related events (e.g. lidopen/lidclose/lidopen)
@@ -1460,7 +1460,7 @@ event_loop()
             continue
         fi
 
-        pwrlog_take_reading $event-event
+        pwrlog_take_reading $event-event $arg2 $arg3 $more
 
         case $event in
 

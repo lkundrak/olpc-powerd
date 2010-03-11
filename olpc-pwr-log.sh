@@ -28,7 +28,9 @@ pwrlog_read_battery_eeprom()
 
 pwrlog_write_header()
 { 
-    local buildver
+    local buildver comment
+
+    comment="${*:-}"
 
     if [ -e /bootpart/boot/olpc_build ]
     then
@@ -39,24 +41,23 @@ pwrlog_write_header()
     fi
 
     cat >$pwr_PWRLOG_LOGFILE <<-EOF
-<Header>
 powerd_log_ver: $pwr_POWERD_LOG_VERSION
 Format: $pwr_POWERD_LOG_FORMAT
 DATE: $(date)
+COMMENT: $comment
 ECVER: $(< /ofw/ec-name)
 OFWVER: $(< /ofw/openprom/model)
 MODEL: $(< /ofw/model)
 SERNUM: $pwr_SERNUM
 BATTECH: $(< $BATTERY_INFO/technology)
 BATMFG: $(< $BATTERY_INFO/manufacturer)
-BATSER: $pwr_DS_SERNUM
+BATSER: $(< $BATTERY_INFO/serial_number )
 BUILD: $buildver
 CHGCNT: $(pwrlog_read_battery_eeprom 74 2)
 CHGSOC: $(pwrlog_read_battery_eeprom 76 1)
 DISCNT: $(pwrlog_read_battery_eeprom 77 2)
 DISSOC: $(pwrlog_read_battery_eeprom 79 1)
 XOVER: $XO
-</Header>
 <StartData>
 EOF
     # no more:
@@ -85,11 +86,11 @@ pwrlog_get_acr()
 
 pwrlog_write_data()
 {
-    local caplevel volt curr temp acr stat reason
+    local capacity volt curr temp acr stat reason
 
     reason=${1:-}
 
-    caplevel=$(< $BATTERY_INFO/$pwr_CAPACITY )
+    capacity=$(< $BATTERY_INFO/capacity )
     volt=$(< $BATTERY_INFO/voltage_avg)
     curr=$(< $BATTERY_INFO/current_avg)
     temp=$(< $BATTERY_INFO/temp)
@@ -97,7 +98,7 @@ pwrlog_write_data()
 
     acr=$(pwrlog_get_acr)
 
-    echo "$(seconds),$caplevel,$volt,$curr,$temp,$acr,$stat",$reason \
+    echo "$(seconds),$capacity,$volt,$curr,$temp,$acr,$stat",$reason \
         >> $pwr_PWRLOG_LOGFILE 
 }
 
@@ -108,62 +109,64 @@ pwrlog_filedate()
 
 pwrlog_filename()
 {
-    echo /var/log/pwr-$pwr_SERNUM-$pwr_DS_SERNUM-$1.csv 
+    echo /var/log/pwr-$pwr_SERNUM-$(pwrlog_filedate).csv 
 }
 
 pwrlog_take_reading()
 {
-    local now reason fdate newfile
-
+    local now reason newfile battery_present battery_changed
     reason=${1:-}
+    shift  # the rest of the arguments may be used below
     
-    now=$(seconds)
     newfile=;
+    battery_changed=;
 
-    case $reason in
-    *-event)  # "soft" events
-        if (( now - ${pwr_LASTLOGTIME:-0} < $pwr_LOG_INTERVAL ))
+    # start a new log evertime someone inserts a battery
+    battery_present=$(< $BATTERY_INFO/present )
+    if [ "$battery_present" != "${pwr_BATTERY_WAS_PRESENT:=$battery_present}" ]
+    then
+        if [ "$battery_present" = 1 ]
         then
-            return
+            pwr_BATTERY_WAS_PRESENT=1
+            newfile=true
+            battery_changed=-batinserted
+        else
+            battery_changed=-batremoved
         fi
-        ;;
-    esac
+        pwr_BATTERY_WAS_PRESENT="$battery_present" 
+    fi
+
+    now=$(seconds)
+
+    if [ ! "$battery_changed" ]
+    then
+        case $reason in
+        new-pwrlog-event)
+            ;;
+        *-event)  # "soft" events -- rate limit them
+            if (( now - ${pwr_LASTLOGTIME:-0} < $pwr_LOG_INTERVAL ))
+            then
+                return
+            fi
+            ;;
+        esac
+    fi
 
     pwr_LASTLOGTIME=$now
 
-    # if we started with a battery, and someone pulls it, don't
-    # switch logs because they'll probably reinsert the same one.
-    # if we started without a battery, we'll switch files when
-    # they insert, to get the battery s/n in the name.
-    if [ $(< $BATTERY_INFO/present ) -eq 1 ]
+    if [ "$battery_present" = 1 -o "$battery_changed" ]
     then
-        pwr_DS_SERNUM=$(< $BATTERY_INFO/serial_number )
-        if [ "${pwr_PREV_DS_SERNUM:-}" != "$pwr_DS_SERNUM" ]
+        # if the file we may have been writing to doesn't exist
+        # then create a new one.  always create logs with a current
+        # timestamp.
+        if [ $reason = "new-pwrlog-event" -o "$newfile" ]
         then
-            fdate=$(pwrlog_filedate)
-            pwr_PWRLOG_LOGFILE=$(pwrlog_filename $fdate)
+            pwr_PWRLOG_LOGFILE=$(pwrlog_filename)
+            pwrlog_write_header "${*:-}"
         fi
-        pwr_PREV_DS_SERNUM=$pwr_DS_SERNUM
-    else
-        if [ ! "$pwr_DS_SERNUM" ]
-        then
-            pwr_DS_SERNUM=nobattery
-            fdate=$(pwrlog_filedate)
-        fi
-        pwr_PWRLOG_LOGFILE=$(pwrlog_filename $fdate)
-    fi
+        pwrlog_write_data $reason$battery_changed
 
-    # if the file we may have been writing to doesn't exist
-    # then create a new one.  always create logs with a current
-    # timestamp.
-    if [ ! -e $pwr_PWRLOG_LOGFILE ]
-    then
-        fdate=$(pwrlog_filedate)
-        pwr_PWRLOG_LOGFILE=$(pwrlog_filename $fdate)
-        pwrlog_write_header
-        newfile=true
     fi
-    pwrlog_write_data $reason
 
     case $reason in
     resume) # don't delay this
@@ -173,9 +176,13 @@ pwrlog_take_reading()
         ;;
     *)
         # copy logs out of /var every 30 minutes
-        if (( now - ${pwr_LASTCOPYTIME:-0} >= $pwr_LOGCOPY_MINUTES * 60 ))
+        if [ "$battery_changed" ] || \
+            (( now - ${pwr_LASTCOPYTIME:-0} >= $pwr_LOGCOPY_MINUTES * 60 ))
         then
-            test "$newfile" || pwrlog_logcopy
+            if [ ! "$newfile" ]
+            then
+                pwrlog_logcopy
+            fi
             pwr_LASTCOPYTIME=$now
         fi
         ;;
@@ -192,19 +199,12 @@ pwrlog_init()
 
     pwr_LOGCOPY_MINUTES=30
 
-    pwr_POWERD_LOG_VERSION="0.1"
-    pwr_POWERD_LOG_FORMAT="1"
+    pwr_POWERD_LOG_VERSION="0.2"
+    pwr_POWERD_LOG_FORMAT="2"
 
     if [ ! "$BATTERY_INFO" ]  # usually set by powerd
     then
         BATTERY_INFO=/sys/class/power_supply/olpc-battery
-    fi
-
-    if [ -e $BATTERY_INFO/capacity_level ]
-    then
-        pwr_CAPACITY=capacity_level
-    else
-        pwr_CAPACITY=capacity
     fi
 
     if [ -e $BATTERY_INFO/charge_counter ]
@@ -237,7 +237,9 @@ pwrlog_wallclock_delay()
 
 pwrlog_logcopy()
 {
-    local size oldfiles log
+    local size oldfiles log copyall
+
+    copyall="${1:-}"
 
     if [ ! -d "$pwr_LOG_DIR" ]
     then
@@ -253,7 +255,12 @@ pwrlog_logcopy()
 
     # assume that only the most recently written log is still
     # active, and that others have been preserved
-    oldfiles="$(ls -t /var/log/pwr-*.csv | sed 1d)"
+    if [ "$copyall" ]
+    then
+        oldfiles="$(ls -t /var/log/pwr-*.csv)"
+    else
+        oldfiles="$(ls -t /var/log/pwr-*.csv | sed 1d)"
+    fi
     test "$oldfiles" && rm -f $oldfiles
 
     # keep up to 10M. after that, delete oldest first
@@ -268,10 +275,13 @@ pwrlog_logcopy()
         done
     fi
 
-    # remove current log file if it's too big.  (it's been copied)
-    if (( $(stat -c%s $pwr_PWRLOG_LOGFILE ) > $pwr_MAX_LOG_SIZE * 1024))
+    if [ "${pwr_PWRLOG_LOGFILE:-}" ]
     then
-        rm -f $pwr_PWRLOG_LOGFILE 
+        # remove current log file if it's too big.  (it's been copied)
+        if (( $(stat -c%s $pwr_PWRLOG_LOGFILE ) > $pwr_MAX_LOG_SIZE * 1024))
+        then
+            rm -f $pwr_PWRLOG_LOGFILE 
+        fi
     fi
         
 }
