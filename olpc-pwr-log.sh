@@ -141,7 +141,8 @@ pwrlog_take_reading()
     if [ ! "$battery_changed" ]
     then
         case $reason in
-        new-pwrlog-event)
+        new-pwrlog-event|startup)
+	    newfile=true
             ;;
         *-event)  # "soft" events -- rate limit them
             if (( now - ${pwr_LASTLOGTIME:-0} < $pwr_LOG_INTERVAL ))
@@ -159,7 +160,7 @@ pwrlog_take_reading()
         # if the file we may have been writing to doesn't exist
         # then create a new one.  always create logs with a current
         # timestamp.
-        if [ $reason = "new-pwrlog-event" -o "$newfile" ]
+        if [ "$newfile" ]
         then
             pwr_PWRLOG_LOGFILE=$(pwrlog_filename)
             pwrlog_write_header "${*:-}"
