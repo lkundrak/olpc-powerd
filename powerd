@@ -1645,6 +1645,7 @@ init_tracing()
     # the trace file will collect stderr, regardless of whether
     # tracing is really on
     exec 2>>$LOGFILE
+    echo powerd startup at $(date) >&2
 }
 
 set_tracing()
