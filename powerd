@@ -19,6 +19,7 @@
 # -- different power management behavior when on wall power vs. battery.
 # -- different behavior when in ebook mode
 # -- ease of customization, given that its written in shell.
+# -- integrated power logging, to assist in analyzing XO power usage
 #
 # Unimplemented:
 # -- inhibiting idle suspend based on network load.
@@ -199,8 +200,9 @@
 #       power button
 #       ebook
 #       lid
+#       AC plugged/unplugged (recent kernels)
 #   Actions on these switches appear as input events on
-#   /dev/input/event[012].  Powerd relies on the companion program
+#   /dev/input/event[012].  powerd relies on the companion program
 #   "olpc-switchd" to report these events via the /var/run/powerevents
 #   fifo it creates for the purpose.  It's unfortunate that these
 #   events have no corresponding /sys state indicators, since
@@ -229,13 +231,14 @@
 #       ps2event
 #       wlan
 #       lid (or sometimes "empty sci")
-#   When the system wakes from sleep, /sys/power/wakeup-source reports
-#   the cause.  Lid reporting is not reliable -- sometimes "empty sci"
-#   is reported instead.  (This can happen either for lid open or close
-#   events.)  Note that in older kernels (including the kernel that
-#   shipped with build 767) an rtc wakeup will report "empty sci"
-#   instead of "rtc alarm".  powerd doesn't support those kernels
-#   very well, since "empty sci" can mean either "lid" or "rtc".
+#   When the system wakes from sleep, /sys/power/wakeup-source
+#   reports the cause.  (On the XO-1, lid reporting is not reliable
+#   -- sometimes "empty sci" is reported instead.  This can happen
+#   either for lid open or close events.  Also, in older XO-1
+#   kernels (including the kernel that shipped with build 767) an
+#   rtc wakeup will report "empty sci" instead of "rtc alarm". 
+#   powerd doesn't support those kernels very well, since "empty
+#   sci" can mean either "lid" or "rtc".
 #
 # - User activity/idleness:
 #   powerd expects user activity and user idle events to be delivered via
