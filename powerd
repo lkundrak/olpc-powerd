@@ -1710,6 +1710,7 @@ init_tracing()
     # the trace file will collect stderr, regardless of whether
     # tracing is really on
     exec 2>>$LOGFILE
+    exec 1>&2   # capture stdout, too. (prevents console spew)
     echo powerd startup at $(date) >&2
 }
 
