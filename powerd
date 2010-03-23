@@ -118,6 +118,15 @@
 # to remain active while the laptop is transported.  The screen
 # will be turned off in any case, of course.
 #
+# "config_KEYPRESS_WAKE_FROM_IDLE_SLEEP" says that if the screen
+# is blank and the laptop is asleep due to the user being idle,
+# that a keypress (or touchpad gesture) will wake the laptop. 
+# otherwise this condition (which is visually the same as a power
+# button-induced sleep) will require the power button to wake it. 
+# if you like having the keyboard completely disabled during any
+# "dark" sleep, then set this to "no".
+#
+#
 # powerd can optionally perform detailed power usage logging.
 # powerd must be restarted for any changes to the following
 # config_PWRLOG_XXX... settings to take effect:
@@ -792,7 +801,7 @@ snooze()
 {
 
     local shutdowntime dimtime blanktime orig_rtctime rtctime
-    local until wakeupsource prev_wlan_power sleep_started
+    local until sleep_type wakeupsource prev_wlan_power sleep_started
 
     prev_wlan_power=;
 
@@ -802,6 +811,7 @@ snooze()
     # we've been sleeping for a while, or b) shutdown after we've been
     # sleeping for a while.  if we do a), we'll do b) next.
     until=$1   # "until_dim", "until_blank", or "until_shutdown"
+    sleep_type=$keypress_sleep;
     shutdowntime=${2:-}
     case $until in
     until_dim)
@@ -815,6 +825,7 @@ snooze()
         ;;
     until_shutdown)
         orig_rtctime=$shutdowntime
+        sleep_type=$3  # "hard" or "soft", i.e., can kbd/tpad wake us up
         ;;  
     esac
 
@@ -825,8 +836,10 @@ snooze()
 
         pwrlog_take_reading suspend
 
-        if [ $until = until_shutdown ]
-        then
+        : until-sleep_type is $until-$sleep_type 
+
+        case $until-$sleep_type in
+        until_shutdown-hard)
             # if we're waiting for a shutdown, then this is a
             # pretty sound sleep.  only let the lid wake us up
             # (we can't actually prevent that), as well as battery
@@ -870,7 +883,8 @@ snooze()
             sleep_started=$(seconds)
             rtcwake -m mem -a -s $rtctime
             set_wakeupevents all
-        else
+            ;;
+        *)
             # otherwise we want most anything to wake us.
             test "$tracing" && sleep 1
 
@@ -878,7 +892,8 @@ snooze()
 
             sleep_started=$(seconds)
             rtcwake -m mem -a -s $rtctime
-        fi
+            ;;
+        esac
 
         # prepare for the default case of simply re-sleeping for
         # the remaining time.  may be overridden.  note that this
@@ -1139,8 +1154,8 @@ lid_closed()
     if yes_or_true "$config_SLEEP_WHEN_LID_CLOSED"
     then
         invalidate_powertimer
-        # sleep until it's time to shut down
-        snooze until_shutdown "$shutdowntimer"
+        # hard sleep until it's time to shut down
+        snooze until_shutdown "$shutdowntimer" hard
     fi
 }
 
@@ -1190,6 +1205,7 @@ set_config_defaults()
     config_MAX_SLEEP_BEFORE_SHUTDOWN=3600
     config_ALLOW_SHUTDOWN_WHEN_PLUGGED=yes
     config_SLEEP_WHEN_LID_CLOSED=yes
+    config_KEYPRESS_WAKE_FROM_IDLE_SLEEP=yes
 
     config_CONFIRM_SECONDS=7
     config_UNFREEZE_SECONDS=1
@@ -1226,6 +1242,13 @@ read_config()
     then
         wake_on_wlan=true
         log configured to wake on wireless activity
+    fi
+
+    if yes_or_true "$config_KEYPRESS_WAKE_FROM_IDLE_SLEEP"
+    then
+        keypress_sleep=soft
+    else
+        keypress_sleep=hard
     fi
 
 }
@@ -1446,7 +1469,7 @@ sleep_action()
     then
         snooze until_blank "$shutdowntimer" "$delta1"
     else
-        snooze until_shutdown "$shutdowntimer"
+        snooze until_shutdown "$shutdowntimer" $keypress_sleep
     fi
 }
 
@@ -1525,8 +1548,8 @@ event_loop()
                 if [ $config_CONFIRM_SECONDS = 0 ]
                 then
                     backlight off
-                    # sleep until it's time to shut down
-                    snooze until_shutdown "$shutdowntimer"
+                    # hard sleep until it's time to shut down
+                    snooze until_shutdown "$shutdowntimer" hard
                 else
                     if [ "$powerseqno" != "$timerseqno" ]
                     then # first press
@@ -1556,8 +1579,8 @@ event_loop()
         gotosleep)
             invalidate_powertimer
             backlight off
-            # sleep until it's time to shut down
-            snooze until_shutdown "$shutdowntimer"
+            # hard sleep until it's time to shut down
+            snooze until_shutdown "$shutdowntimer" hard
             ;;
 
         lidclose)
