@@ -405,6 +405,13 @@ else
     WAKE_ON_CLOSE=;
 fi
 
+if [ -e /proc/acpi/button/lid/LID/state ]
+then
+    LID_STATE=/proc/acpi/button/lid/LID/state 
+else
+    LID_STATE=;
+fi
+
 DCON_FREEZE=/sys/devices/platform/dcon/freeze
 DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
 
@@ -1122,6 +1129,43 @@ dcon()
     esac
 }
 
+lid_closed()
+{
+    am_ebook=;
+    backlight off
+    if yes_or_true "$config_SLEEP_WHEN_LID_CLOSED"
+    then
+        invalidate_powertimer
+        # sleep until it's time to shut down
+        snooze until_shutdown "$shutdowntimer"
+    fi
+}
+
+read_lidstate()
+{
+    local x
+    read x < $LID_STATE
+    eval $1=\"$x\"
+}
+
+if [ "$LID_STATE" ]
+then
+    lid_check()
+    {
+        read_lidstate lidstate
+        case $lidstate in
+        *closed)     # check against "state:   closed"
+            lid_closed
+            ;;
+        esac
+    }
+else
+    lid_check()
+    {
+        :
+    }
+fi
+
 set_config_defaults()
 {
     # give all config values defaults, so we'll
@@ -1431,6 +1475,8 @@ event_loop()
     chmod 600 $EVENTFIFO
     exec 6<> $EVENTFIFO
 
+    lid_check
+
     while :
     do
 
@@ -1512,14 +1558,7 @@ event_loop()
             ;;
 
         lidclose)
-            am_ebook=;
-            backlight off
-            if yes_or_true "$config_SLEEP_WHEN_LID_CLOSED"
-            then
-                invalidate_powertimer
-                # sleep until it's time to shut down
-                snooze until_shutdown "$shutdowntimer"
-            fi
+            lid_closed
             ;;
 
         lidopen)
