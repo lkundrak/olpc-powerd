@@ -1660,14 +1660,15 @@ event_loop()
             $useridle3_action none "" ""
             ;;
 
-        ac-online)
-            ac_online=true
-            pwrlog_take_reading ac-online
-            ;;
-
-        ac-offline)
-            ac_online=;
-            pwrlog_take_reading ac-offline
+        ac-online|ac-offline)
+            # the driver is buggy, and sometimes gets out-of-phase
+            # with reality.  so do a reality check.
+            if plugged_in
+            then
+                pwrlog_take_reading ac-online
+            else
+                pwrlog_take_reading ac-offline
+            fi
             ;;
 
         battery)
