@@ -13,7 +13,7 @@ ifeq ($(do_rel),)
     SNAP=.$(DATETAG)$(GITHEAD)
 endif
 
-VERSION=13
+VERSION=14
 RELEASE=$(shell cat .spec_release 2>/dev/null || echo error)
 SRELEASE=$(RELEASE)$(SNAP)
 

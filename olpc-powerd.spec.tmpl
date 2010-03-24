@@ -109,6 +109,15 @@ fi
 exit 0
 
 %changelog
+* Wed Mar 24 2010 Paul Fox <pgf@laptop.org>
+- 14-1
+- allow keypress to wake from a blanked idle-suspend state
+- properly keep wireless working during idle suspends
+- check for closed lid on startup, so we sleep right away
+- workaround issues with AC jack reporting
+- capture stdout to the trace file, to prevent console spew
+- force a date stamp into the trace file on startup
+
 * Fri Mar 12 2010 Paul Fox <pgf@laptop.org>
 - 13-1
 - early enhancements/fixes to olpc-pwr-log functionality
