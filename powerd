@@ -882,10 +882,11 @@ snooze()
             test "$tracing" && sleep 1
             sleep_started=$(seconds)
             rtcwake -m mem -a -s $rtctime
-            set_wakeupevents all
             ;;
         *)
             # otherwise we want most anything to wake us.
+            set_wakeupevents all
+
             test "$tracing" && sleep 1
 
             event_fifo_lookahead && break
