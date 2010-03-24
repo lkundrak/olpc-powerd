@@ -889,7 +889,7 @@ snooze()
 
             test "$tracing" && sleep 1
             sleep_started=$(seconds)
-            rtcwake -m mem -a -s $rtctime
+            rtcwake -m mem -a -s $rtctime >/dev/null
 
             set_wakeupevents all_sci
             ;;
@@ -902,7 +902,7 @@ snooze()
             event_fifo_lookahead && break
 
             sleep_started=$(seconds)
-            rtcwake -m mem -a -s $rtctime
+            rtcwake -m mem -a -s $rtctime >/dev/null
             ;;
         esac
 
