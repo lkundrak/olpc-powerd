@@ -734,10 +734,18 @@ set_wakeupevents()
 {
     # this routine was simpler when only the XO-1 was around -- all
     # it dealt with was the nodes in /sys/power/wakeup_events.
+    # note that /sys/power/wakeup_events isn't just masking wakeups --
+    # it's masking SCI events, which also provide battery and EC input
+    # events (and ebook on XO-1).
     case $1 in
     all)        set_acpi_wakeupevents EBK enable
                 set_wake_on_wlan $wake_on_wlan
                 test "$WAKE_ON_CLOSE" && echo 1 > $WAKE_ON_CLOSE
+                echo 1 >$WAKEUP_EVENTS/all
+                ;;
+    all_sci)    # we want to unmask all SCI events at the EC when
+                # we awaken after having masked them, but we don't
+                # need to run ethtool, massage the acpi settings, etc.
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
     none)       set_acpi_wakeupevents EBK disable
@@ -882,6 +890,8 @@ snooze()
             test "$tracing" && sleep 1
             sleep_started=$(seconds)
             rtcwake -m mem -a -s $rtctime
+
+            set_wakeupevents all_sci
             ;;
         *)
             # otherwise we want most anything to wake us.
