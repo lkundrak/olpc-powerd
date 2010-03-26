@@ -1420,6 +1420,7 @@ reevaluate()
 
 selfinject()
 {
+    test -p $EVENTFIFO || exit 1
     echo $* >$EVENTFIFO
 }
 
@@ -1632,13 +1633,6 @@ event_loop()
             reset_idlecounters
             ;;
 
-        timer)
-            # olpc-switchd will emit a "timer" event periodically
-            # if asked to.  the only purpose is to make sure
-            # olpc-pwr-log.sh has a reason to log once in a while.
-            test "$tracing" && : $(seconds)
-            ;;
-
         useridle1)
             test "$tracing" && : $(seconds)
             if laptop_busy $t1
@@ -1684,6 +1678,13 @@ event_loop()
         battery)
             battery_capacity=$arg2
             maybe_battery_shutdown
+            ;;
+
+        timer)
+            # olpc-switchd will emit a "timer" event periodically
+            # if asked to.  the only purpose is to make sure
+            # olpc-pwr-log.sh has a reason to log once in a while.
+            test "$tracing" && : $(seconds)
             ;;
 
         reconfig)
@@ -1803,6 +1804,41 @@ configure_pwrlog()
 }
 
 
+init_netactivity_tracking()
+{
+    local iface oface newactivity
+    iface="-i eth0"
+    oface="-o eth0"
+
+    iptables -P INPUT ACCEPT
+    iptables -P OUTPUT ACCEPT
+    iptables -P FORWARD ACCEPT
+    iptables -F
+
+    iptables -N netactivity         # create the chain
+    #iptables -I INPUT -p icmp $iface -j netactivity # 
+    #iptables -I INPUT -p tcp $iface -j netactivity
+    #iptables -I OUTPUT -p tcp $oface -j netactivity
+    #iptables -I INPUT -p tcp ! --syn $iface -j netactivity
+    iptables -I OUTPUT -p tcp ! --syn $oface -j netactivity
+    iptables -I netactivity 
+
+    oldactivity=;
+    while sleep 5
+    do
+	newactivity=$(iptables --list netactivity --zero --verbose --numeric)
+	if [ "$newactivity" != "$oldactivity" ]
+	then
+	    # selfinject networkactive $(seconds) 
+	    touch $INHIBIT_BY_TOUCH
+	    oldactivity="$newactivity"
+	fi
+	# | sed -n -e '3s/[[:space:]]*\([[:digit:]]\).*/\1/p')
+	test -p $EVENTFIFO || exit 1
+    done &
+}
+
+
 init_tracing
 # uncomment for full tracing.
 # (use powerd-control =tracing-on to enable at runtime.)
@@ -1820,6 +1856,8 @@ eventcutoff=0;
 choose_xo_model
 
 log starting
+
+test "${experimental_netactivity:-}" && init_netactivity_tracking
 
 set_config_defaults
 if [ -r $CONFIGFILE ]
