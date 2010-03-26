@@ -44,7 +44,23 @@
 # config_WAKE_ON_WLAN
 #  Controls whether a packet destined for your laptop will wake it
 #  up from idle suspend, in much the same way that a keystroke or
-#  mouse movement will wake it up.
+#  mouse movement will wake it up.  Also see the following option:
+#
+# config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP
+#  Controls whether the config_WAKE_ON_WLAN setting (above) also
+#  applies once the screen has blanked.  Laptops which are
+#  regularly accessed remotely should probably set this to "yes",
+#  otherwise it saves power to leave it set to "no".
+#
+# config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP
+#  If the screen is blank and the laptop has suspended due to the
+#  user being idle, then setting this to "yes" will let user
+#  activity wake the laptop.  Otherwise, being suspended with a
+#  blank screen (which is visually the same as a power
+#  button-induced sleep) will require the power button to wake. 
+#  If you like having the keyboard completely disabled during any
+#  "dark" sleep, then set this to "no".
+#
 #
 # config_CPU_IDLE_LIMIT
 #  If the cpu is idle less than this percentage, then the laptop
@@ -75,6 +91,8 @@ config_PLUGGED_TIME_BLANK="420"
 config_IDLE_DIM_LEVEL="5"
 config_MESH_DURING_SUSPEND="no"
 config_WAKE_ON_WLAN="yes"
+config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP="no"
+config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP="yes"
 config_MAX_SLEEP_BEFORE_SHUTDOWN="14400"
 config_ALLOW_SHUTDOWN_WHEN_PLUGGED="no"
 config_SLEEP_WHEN_LID_CLOSED="yes"

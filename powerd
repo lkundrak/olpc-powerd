@@ -101,10 +101,6 @@
 # this to "yes" is if you want the laptop to forward packets for
 # other mesh users while you're not using it.
 #
-# "config_WAKE_ON_WLAN" -- controls whether a packet destined for
-# your laptop will wake it up from idle suspend, in much the same
-# way that a keystroke or mouse movement will wake it up.
-#
 # "config_CPU_IDLE_LIMIT" (integer)  If the cpu is idle less than
 # this percentage, then the laptop won't suspend, on the
 # assumption that the system is doing something "important" for the
@@ -118,13 +114,30 @@
 # to remain active while the laptop is transported.  The screen
 # will be turned off in any case, of course.
 #
-# "config_KEYPRESS_WAKE_FROM_IDLE_SLEEP" says that if the screen
-# is blank and the laptop is asleep due to the user being idle,
-# that a keypress (or touchpad gesture) will wake the laptop. 
-# otherwise this condition (which is visually the same as a power
-# button-induced sleep) will require the power button to wake it. 
-# if you like having the keyboard completely disabled during any
-# "dark" sleep, then set this to "no".
+# "config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP" says that if the
+# screen is blank and the laptop is asleep due to the user being
+# idle, that a keypress (or touchpad gesture) will wake the
+# laptop.  otherwise this condition (which is visually the same
+# as a power button-induced sleep) will require the power button
+# to wake it.  if you like having the keyboard completely
+# disabled during any "dark" sleep, then set this to "no".  if
+# the power button is used to put the laptop to sleep, this
+# setting will have no effect.
+#
+# "config_WAKE_ON_WLAN" -- determines whether a packet destined for
+# your laptop will wake it up from idle suspend, in much the same
+# way that a keystroke or mouse movement will wake it up.  see
+# also config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP.
+#
+# "config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP" controls whether the
+# config_WAKE_ON_WLAN setting also applies once the screen has
+# blanked.  (the "blanked" state is the final idle state, and
+# usually means the laptop simply isn't being used.  laptops
+# being access remotely, however, should probably have this set
+# to "yes".)  this setting is conditional on enabling keypress
+# wakeups with config_KEYPRESS_E_FROM_BLANK_IDLE_SLEEP.  like
+# that one, if the power button is used to put the laptop to
+# sleep, this setting will have no effect.
 #
 #
 # powerd can optionally perform detailed power usage logging.
@@ -667,16 +680,32 @@ set_wlan_power()
 
 set_wake_on_wlan()
 {
-    # not on XO-1
-    test "$XO" = 1 && return
+    # note:  ethtool settings aren't remembered after a resume,
+    # i.e., they're essentially a "one-shot" configuration.  the
+    # good news is that this means we never have to clear
+    # wake-on-lan settings.
 
-    if [ "${1:-}" ]
-    then
-        #ethtool -s eth0 wol ua   # we don't support wake-on-arp (yet?)
-        ethtool -s eth0 wol u
-    else
-        ethtool -s eth0 wol d
-    fi
+    #ethtool -s eth0 wol ua   # we don't support wake-on-arp (yet?)
+    ethtool -s eth0 wol u
+}
+
+wlan_associated()
+{
+    # do some crude "editor logic" on the iwconfig output. 
+    # produce a string that's empty if we're associated, i.e.,
+    # not empty if we're unassociated:  try and produce output if
+    # the radio is off, or if it says "unassociated" or
+    # "Not-Associated", but scratch that second part if we're in
+    # ad-hoc mode.
+
+    unassociated=$(
+        iwconfig eth0 |
+        sed -n \
+            -e '/Mode:Ad-Hoc/d' \
+            -e '/radio off\|Tx-Power=off\|[ut][n-][aA]ssociated/p'
+    )
+
+    test ! "$unassociated"   # set return value
 }
 
 runparts()
@@ -739,17 +768,16 @@ set_wakeupevents()
     # events (and ebook on XO-1).
     case $1 in
     all)        set_acpi_wakeupevents EBK enable
-                set_wake_on_wlan $wake_on_wlan
                 test "$WAKE_ON_CLOSE" && echo 1 > $WAKE_ON_CLOSE
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
     all_sci)    # we want to unmask all SCI events at the EC when
                 # we awaken after having masked them, but we don't
-                # need to run ethtool, massage the acpi settings, etc.
+                # need to massage the acpi settings, etc.  i.e.,
+                # this is used when we awaken, not when we go to sleep.
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
     none)       set_acpi_wakeupevents EBK disable
-                set_wake_on_wlan
                 test "$WAKE_ON_CLOSE" && echo 0 > $WAKE_ON_CLOSE
                 echo 0 >$WAKEUP_EVENTS/all
                 ;;
@@ -897,12 +925,27 @@ snooze()
             # otherwise we want most anything to wake us.
             set_wakeupevents all
 
+            if [ "$wake_on_wlan" ]
+            then
+                # wake on wlan if we're only waiting for dim or
+                # blank.  else we're blank, so w-o-l if we've
+                # been asked to and we're currently associated with
+                # something.
+                if [ "$until" != until_shutdown ] || \
+                    ( yes_or_true $config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP && \
+                        wlan_associated )
+                then
+                    set_wake_on_wlan
+                fi
+            fi
+
             test "$tracing" && sleep 1
 
             event_fifo_lookahead && break
 
             sleep_started=$(seconds)
             rtcwake -m mem -a -s $rtctime >/dev/null
+            # no need for this here: set_wakeupevents all_sci
             ;;
         esac
 
@@ -1212,11 +1255,12 @@ set_config_defaults()
     config_IDLE_DIM_LEVEL=5
 
     config_WAKE_ON_WLAN=yes
-    config_MESH_DURING_SUSPEND=no
+    config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP=no
+    config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP=yes
     config_MAX_SLEEP_BEFORE_SHUTDOWN=3600
     config_ALLOW_SHUTDOWN_WHEN_PLUGGED=yes
     config_SLEEP_WHEN_LID_CLOSED=yes
-    config_KEYPRESS_WAKE_FROM_IDLE_SLEEP=yes
+    config_MESH_DURING_SUSPEND=no
 
     config_CONFIRM_SECONDS=7
     config_UNFREEZE_SECONDS=1
@@ -1249,13 +1293,14 @@ read_config()
     fi
 
     wake_on_wlan=;
-    if yes_or_true "$config_WAKE_ON_WLAN"
+    # no wake on wlan on XO-1
+    if [ "$XO" = 1.5 ] && yes_or_true "$config_WAKE_ON_WLAN"
     then
         wake_on_wlan=true
         log configured to wake on wireless activity
     fi
 
-    if yes_or_true "$config_KEYPRESS_WAKE_FROM_IDLE_SLEEP"
+    if yes_or_true "$config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP"
     then
         keypress_sleep=soft
     else
@@ -1826,15 +1871,15 @@ init_netactivity_tracking()
     oldactivity=;
     while sleep 5
     do
-	newactivity=$(iptables --list netactivity --zero --verbose --numeric)
-	if [ "$newactivity" != "$oldactivity" ]
-	then
-	    # selfinject networkactive $(seconds) 
-	    touch $INHIBIT_BY_TOUCH
-	    oldactivity="$newactivity"
-	fi
-	# | sed -n -e '3s/[[:space:]]*\([[:digit:]]\).*/\1/p')
-	test -p $EVENTFIFO || exit 1
+        newactivity=$(iptables --list netactivity --zero --verbose --numeric)
+        if [ "$newactivity" != "$oldactivity" ]
+        then
+            # selfinject networkactive $(seconds) 
+            touch $INHIBIT_BY_TOUCH
+            oldactivity="$newactivity"
+        fi
+        # | sed -n -e '3s/[[:space:]]*\([[:digit:]]\).*/\1/p')
+        test -p $EVENTFIFO || exit 1
     done &
 }
 
@@ -1884,6 +1929,6 @@ chmod a+w $BRIGHTNESS $MONO_MODE
 
 set_acpi_wakeupevents LID enable
 set_acpi_wakeupevents EC enable
-set_wakeupevents all
+set_wakeupevents all_sci
 
 event_loop
