@@ -51,6 +51,7 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd/flags
 %{__install} -p -m 644 pleaseconfirm.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/pleaseconfirm.pgm
 %{__install} -p -m 644 shuttingdown.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/shuttingdown.pgm
 %{__install} -p -m 644 powerd.conf.dist $RPM_BUILD_ROOT%{_sysconfdir}/powerd/powerd.conf
+%{__install} -p -m 644 version $RPM_BUILD_ROOT%{_sysconfdir}/powerd/version
 %{__install} -p -m 644 olpc-pwr-log.sh $RPM_BUILD_ROOT%{_sysconfdir}/powerd/olpc-pwr-log.sh 
 
 
@@ -72,6 +73,7 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) %{_sysconfdir}/powerd/pleaseconfirm.pgm
 %config(noreplace) %{_sysconfdir}/powerd/shuttingdown.pgm
 %config(noreplace) %{_sysconfdir}/powerd/powerd.conf
+%config(noreplace) %{_sysconfdir}/powerd/version
 
 %post
 # Only on install

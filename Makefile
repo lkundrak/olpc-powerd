@@ -38,12 +38,14 @@ CFLAGS = -Wall $(OPT_FLAGS) -DVERSION=$(VERSION)
 
 #####
 
-all: $(PROGS)
+all: version $(PROGS)
 
 # testing targets
 tarball:  $(TARBALL)
 srpm: $(SRPM)
 
+version: Makefile
+	@echo "powerd_version='version $(VERSION)'" >version
 
 src_distribute: $(TARBALL) $(SRPM)
 	scp $(TARBALL) $(SRPM)  \

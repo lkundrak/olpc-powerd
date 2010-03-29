@@ -374,6 +374,7 @@
 XO=;
 CONFIGDIR=/etc/powerd
 
+VERSIONFILE=$CONFIGDIR/version
 CONFIGFILE=$CONFIGDIR/powerd.conf
 CONFIGFLAGS=$CONFIGDIR/flags
 
@@ -454,8 +455,42 @@ set -u
 log()
 {
     logger -t powerd -p daemon.info -- "$@"
-    test "$tracing" && echo "$(date +'%F %T') $@" >>$LOGFILE
+    echo : @ $(date +'%F %T') $@ >&2
 }
+
+powerd_version="version unknown"
+test -e $VERSIONFILE && . $VERSIONFILE
+
+tracing=;
+# the trace file will collect stderr, regardless of whether tracing is really on
+exec 2>>$LOGFILE
+exec 1>&2   # capture stdout, too. (prevents console spew)
+
+log powerd $powerd_version startup at $(date)
+
+set_tracing()
+{
+    case $1 in
+    on)
+        set -x
+        tracing=1
+        : @ tracing begun, $powerd_version
+        ;;
+    off)
+        if [ "$tracing" ]
+        then
+            : @ tracing stopped
+            set +x
+            tracing=;
+        fi
+        ;;
+    esac
+}
+
+# uncomment for full tracing.  (or, use "powerd-control =tracing-on"
+# to enable at runtime.)
+
+# set_tracing on
 
 yes_or_true()
 {
@@ -814,7 +849,7 @@ event_fifo_lookahead()
         # i would like to do a sub-second timeout here, but
         # that's only available in a couple of shells, and the
         # "-t" option is already non-portable.  (not in debian dash)
-        while read -t 1 s_event s_tstamp s_arg2 s_arg3 more
+        while read -t 1 s_event s_tstamp s_arg2 s_arg3 s_more
         do
             # if the event we read is "interesting enough" that
             # it would have woken us if it had arrived just a little
@@ -872,7 +907,7 @@ snooze()
 
         pwrlog_take_reading suspend
 
-        : until-sleep_type is $until-$sleep_type 
+        : @ until-sleep_type is $until-$sleep_type 
 
         case $until-$sleep_type in
         until_shutdown-hard)
@@ -976,7 +1011,8 @@ snooze()
         power_check
 
         read_wakeupsource wakeupsource
-        : wakeupsource is $wakeupsource
+        : @ got wakeup $wakeupsource @ $lastwakeup, \
+                slept $(( lastwakeup - sleep_started ))
 
         pwrlog_take_reading resume
 
@@ -1005,7 +1041,7 @@ snooze()
 
         "rtc alarm"|"ac power"|battery*)
 
-            : until-wakeupsource is $until-$wakeupsource
+            : @ until-wakeupsource is $until-$wakeupsource
 
             case $until-$wakeupsource in
             until_dim-rtc*)
@@ -1036,11 +1072,11 @@ snooze()
                     # if we didn't shut down, we'll sleep again for
                     # the same time as before, before we check again.
                     rtctime=$orig_rtctime
-                    log "found external power, sleeping instead of shutdown"
+                    log found external power, sleeping instead of shutdown
                 else
                     # not sure why this happens, but i've seen a
                     # sleep of 999999999 turn into 69506 seconds
-                    log "awoke for shutdown too early, sleeping again"
+                    : awoke for shutdown too early, sleeping again
                 fi
                 ;;
 
@@ -1442,8 +1478,7 @@ set_idletimes()
         { logger zero max-sleep time found, now 999999999; t4=999999999; }
     test "$t4" -le "5" && t4=300
 
-    log $aname1 in $t1 seconds, $aname2 in $t2, $aname3 in $t3, \
-                then shutdown after $t4
+    log $aname1 $t1, $aname2 $t2, $aname3 $t3, shutdown after $t4
     dimtimer=;
     blanktimer=;
     shutdowntimer=$t4
@@ -1544,7 +1579,7 @@ event_loop()
 {
     local event tstamp arg2 arg3 more
 
-    : starting eventloop
+    : @ starting eventloop
 
     set_idletimes
 
@@ -1572,13 +1607,14 @@ event_loop()
             tstamp=$s_tstamp
             arg2=$s_arg2
             arg3=$s_arg3
+            more=$s_more
             unset s_event s_tstamp s_arg2 s_arg3 s_more
         else
             read event tstamp arg2 arg3 more
         fi
 
         : -------------------------
-        : got "<$event>", "<${tstamp:-}>" "<${arg2:-}>" "<${arg3:-}>"
+        : @ got event $event, $tstamp, $arg2, $arg3, $more.
 
         if [ "$tstamp" -a "$tstamp" != '-' ] && [ "$tstamp" -lt "$eventcutoff" ]
         then
@@ -1761,36 +1797,6 @@ event_loop()
     done <&6  # from the fifo
 }
 
-init_tracing()
-{
-    tracing=;
-    # exec 3>&2  # save stderr, in case we want it back someday
-    # the trace file will collect stderr, regardless of whether
-    # tracing is really on
-    exec 2>>$LOGFILE
-    exec 1>&2   # capture stdout, too. (prevents console spew)
-    echo powerd startup at $(date) >&2
-}
-
-set_tracing()
-{
-    case $1 in
-    on)
-        set -x
-        : tracing begun
-        tracing=1
-        ;;
-    off)
-        if [ "$tracing" ]
-        then
-            : tracing stopped
-            set +x
-            tracing=;
-        fi
-        ;;
-    esac
-}
-
 read_hwinfo()
 {
     read hwvendor < /sys/class/dmi/id/sys_vendor ||
@@ -1843,7 +1849,7 @@ configure_pwrlog()
         # install a null handler
         pwrlog_take_reading()
         {
-            : pwrlog unconfigured, or unavailable
+            : @ pwrlog unconfigured, or unavailable
         }
     fi
 }
@@ -1883,11 +1889,6 @@ init_netactivity_tracking()
     done &
 }
 
-
-init_tracing
-# uncomment for full tracing.
-# (use powerd-control =tracing-on to enable at runtime.)
-# set_tracing on
 
 am_ebook=;
 o_ebook=xxx;
