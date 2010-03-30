@@ -1,7 +1,7 @@
 #!/bin/bash
 #   (search for POSIX, below, for notes on shell compatibility)
 #
-# powerd -- experimental power management for the XO
+# powerd -- power management for the XO
 #
 # This daemon is a more transparent and flexible (if somewhat
 # incompatible) replacement for ohmd on the XO.  powerd is
@@ -583,13 +583,36 @@ cpu_busy()
     # ensure numeric.  if failure, assume we're not busy.
     test "$idle" && test $idle -eq $idle >/dev/null || return 1
 
-    test $idle -lt $config_CPU_IDLE_LIMIT && return 0
+    test $idle -lt $config_CPU_IDLE_LIMIT && : @ cpu busy && return 0
 
     return 1
 }
 
+# unused for now, because too many sound apps leave the
+# device open:  the tamtams, record (after playing), browse
+# and firefox (after playing)
+audio_busy()
+{
+    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && : audio busy
+}
+
+camera_busy()
+{
+    grep -q via-dma /proc/interrupts && : camera busy
+}
+
+
+# if using both of the above, combine them into a single grep:
+#audio_or_camera_busy()
+#{
+#    egrep -q 'RUNNING|via-dma' \
+#        /proc/asound/card0/pcm0?/sub0/status /proc/interrupts && \
+#            : @ audio or camera busy
+#}
+
+
 # see if there's been activity during the recent idle period.
-# checks vty devices, and our special touchfile, all in one loop
+# checks vty devices and our special touchfile, with one stat.
 touchfiles="/dev/tty1 /dev/tty2 $INHIBIT_BY_TOUCH"
 
 filetimes_busy()
@@ -598,7 +621,8 @@ filetimes_busy()
     now=$(seconds)
     for touched in $(stat -c '%Y' $touchfiles 2>/dev/null )
     do
-        test $(( touched > now - timer )) = 1 && return 0
+        test $(( touched > now - timer )) = 1 && \
+		: @ touchfile busy && return 0
     done
     return 1
 }
@@ -608,22 +632,6 @@ network_busy()
     # TBD
     return 1
 }
-
-#touchfile_is_recent()
-#{
-#    if [ -e $INHIBIT_BY_TOUCH ]
-#    then
-#        # see if there's been touchfile "activity" more
-#        # during the recent idle period
-#        timer=$1
-#        touched=$(stat --format=%Y $INHIBIT_BY_TOUCH)
-#        now=$(seconds)
-#        # NB: comparison inverted -- expression returns boolean, but
-#        # we want a shell success value.
-#        return $(( now - touched > timer ))
-#    fi
-#    return 1
-#}
 
 inhibit_files_present()
 {
@@ -667,8 +675,10 @@ laptop_busy()
     timer=$1
     inhibit_files_present || \
         filetimes_busy $timer || \
-            cpu_busy || \
-                network_busy && return 0
+            camera_busy || \
+                cpu_busy || \
+                    network_busy && \
+                        return 0
     return 1
 }
 
@@ -1323,7 +1333,7 @@ read_config()
         logger configured so power button will cause immediate sleep
     fi
 
-    if yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
+    if ! yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
     then
         log configured to never shutdown while plugged in
     fi
@@ -1886,6 +1896,7 @@ init_netactivity_tracking()
         fi
         # | sed -n -e '3s/[[:space:]]*\([[:digit:]]\).*/\1/p')
         test -p $EVENTFIFO || exit 1
+        kill -0 $PPID || exit 1
     done &
 }
 

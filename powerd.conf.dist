@@ -78,7 +78,7 @@
 #  Refer to the notes in the powerd script itself for descriptions
 #  of how these control powerd's optional power logging.
 #
-config_CPU_IDLE_LIMIT="10"
+config_CPU_IDLE_LIMIT="85"
 config_BATTERY_TIME_DIM="180"
 config_BATTERY_TIME_SLEEP="15"
 config_BATTERY_TIME_BLANK="420"
