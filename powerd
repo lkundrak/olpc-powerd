@@ -573,20 +573,77 @@ do_shutdown()
     sleep 9999999
 }
 
-cpu_busy()
+#
+# both cpu_busy and network_busy integrated below, since they
+# both need a time span over which to work.
+#cpu_busy()
+#{
+#    # pull the cpu idle percentage (over one second) out of the
+#    # 15th field of vmstat output.  (this metric borrowed from ohmd.)
+#    field='\([[:space:]]\+[[:digit:]]\+\)'
+#    idle=$(vmstat 1 2  | sed -n "\$s/$field\{15\}.*/\1/p")
+#
+#    # ensure numeric.  if failure, assume we're not busy.
+#    test "$idle" && test $idle -eq $idle >/dev/null || return 1
+#
+#    test $idle -lt $config_CPU_IDLE_LIMIT && : @ cpu busy && return 0
+#
+#    return 1
+#}
+#
+#network_busy()
+#{
+#    # TBD
+#    return 1
+#}
+
+
+cpu_or_network_busy()
 {
-    # pull the cpu idle percentage (over one second) out of the
-    # 15th field of vmstat output.  (this metric borrowed from ohmd.)
-    field='\([[:space:]]\+[[:digit:]]\+\)'
-    idle=$(vmstat 1 2  | sed -n "\$s/$field\{15\}.*/\1/p")
+    # initial cpu stats
+    procstat1=( $(< /proc/stat) )
+    jiffies1=$(( procstat1[1] + procstat1[2] + procstat1[3] + procstat1[4] ))
+    idlejifs1=${procstat1[4]}
 
-    # ensure numeric.  if failure, assume we're not busy.
-    test "$idle" && test $idle -eq $idle >/dev/null || return 1
+    # initial network stats
+    if [ "${experimental_netactivity:-}" ]
+    then
+        netactivity=$(iptables --list netactivity --verbose --numeric)
+    fi
 
-    test $idle -lt $config_CPU_IDLE_LIMIT && : @ cpu busy && return 0
+    start=$(seconds)
+    while :
+    do
+        event_fifo_lookahead soft && return 0
+        test $(($(seconds) - start)) -ge 5 && break
+    done
+
+    # secondary cpu stats
+    procstat2=( $(< /proc/stat) )
+    jiffies2=$(( procstat2[1] + procstat2[2] + procstat2[3] + procstat2[4] ))
+    idlejifs2=${procstat2[4]}
+
+    idle=$(( (100 * ( idlejifs2 - idlejifs1 ) / ( jiffies2 - jiffies1 ) ) ))
+    if [ $idle -lt $config_CPU_IDLE_LIMIT ]
+    then
+        : @ cpu busy
+        return 0
+    fi
+
+    # secondary network stats
+    if [ "${experimental_netactivity:-}" ]
+    then
+        newnetactivity=$(iptables --list netactivity --verbose --numeric)
+        if [ "$newnetactivity" != "$netactivity" ]
+        then
+            : @ network busy
+            return 0
+        fi
+    fi
 
     return 1
 }
+
 
 # unused for now, because too many sound apps leave the
 # device open:  the tamtams, record (after playing), browse
@@ -622,14 +679,8 @@ filetimes_busy()
     for touched in $(stat -c '%Y' $touchfiles 2>/dev/null )
     do
         test $(( touched > now - timer )) = 1 && \
-		: @ touchfile busy && return 0
+                : @ touchfile busy && return 0
     done
-    return 1
-}
-
-network_busy()
-{
-    # TBD
     return 1
 }
 
@@ -676,8 +727,7 @@ laptop_busy()
     inhibit_files_present || \
         filetimes_busy $timer || \
             camera_busy || \
-                cpu_busy || \
-                    network_busy && \
+                cpu_or_network_busy && \
                         return 0
     return 1
 }
@@ -731,7 +781,10 @@ set_wake_on_wlan()
     # wake-on-lan settings.
 
     #ethtool -s eth0 wol ua   # we don't support wake-on-arp (yet?)
-    ethtool -s eth0 wol u
+    case $1 in
+    yes) ethtool -s eth0 wol u ;;
+    *)   ethtool -s eth0 wol d ;;
+    esac
 }
 
 wlan_associated()
@@ -849,33 +902,37 @@ read_wakeupsource()
 
 event_fifo_lookahead()
 {
-        # in some cases in snooze() we wake just to perform
-        # a short action or status check, and then we sleep again
-        # immediately.  if we don't check the event fifo, we may
-        # well miss an event that would normally wake us (or
-        # keep us from sleeping).  there's no way to close this
-        # race completely, but this is way better than nothing.
-        #
-        # i would like to do a sub-second timeout here, but
-        # that's only available in a couple of shells, and the
-        # "-t" option is already non-portable.  (not in debian dash)
-        while read -t 1 s_event s_tstamp s_arg2 s_arg3 s_more
-        do
-            # if the event we read is "interesting enough" that
-            # it would have woken us if it had arrived just a little
-            # later, break out.  otherwise discard it.
-            case $s_event in
-            "powerbutton"|"lidclose"|"lidopen"|"useractive")
-                if [ ! "$s_tstamp" ] || \
-                    [ "$s_tstamp" -ge "$eventcutoff" ]
-                then
-                    return 0
-                fi
-                ;;
-            esac
-        done <&6  # from the fifo
+    local type
+    type=$1
 
-        return 1
+    # in some cases in snooze() we wake just to perform
+    # a short action or status check, and then we sleep again
+    # immediately.  if we don't check the event fifo, we may   
+    # well miss an event that would normally wake us (or
+    # keep us from sleeping).  there's no way to close this
+    # race completely, but this is way better than nothing.
+
+    while read -t 1 s_event s_tstamp s_arg2 s_arg3 s_more
+    do
+        # if the event we read is "interesting enough" that
+        # it would have woken us if it had arrived just a little
+        # later, break out.  otherwise discard it.
+        : @ s_event-type is $s_event-$type
+        case $s_event-$type in
+        powerbutton-hard|lidopen-hard|\
+         lid*-soft|ebook*-soft|battery-soft|ac-*-soft|\
+         useractive-soft)
+            if [ ! "$s_tstamp" ] || \
+                [ "$s_tstamp" -ge "$eventcutoff" ]
+            then
+                return 0
+            fi
+            ;;
+        esac
+    done <&6  # from the fifo
+
+    return 1
+
 }
 
 snooze()
@@ -960,7 +1017,15 @@ snooze()
                 prev_wlan_power=$(set_wlan_power 0)
             fi
 
+            if [ "$wake_on_wlan" ]
+            then
+                set_wake_on_wlan no
+            fi
+
             test "$tracing" && sleep 1
+
+            event_fifo_lookahead hard && break
+
             sleep_started=$(seconds)
             rtcwake -m mem -a -s $rtctime >/dev/null
 
@@ -980,13 +1045,13 @@ snooze()
                     ( yes_or_true $config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP && \
                         wlan_associated )
                 then
-                    set_wake_on_wlan
+                    set_wake_on_wlan yes
                 fi
             fi
 
             test "$tracing" && sleep 1
 
-            event_fifo_lookahead && break
+            event_fifo_lookahead soft && break
 
             sleep_started=$(seconds)
             rtcwake -m mem -a -s $rtctime >/dev/null
@@ -1470,9 +1535,22 @@ set_idletimes()
     t2=$4; aname2=$5; useridle2_action=$6
     t3=$7; aname3=$8; useridle3_action=$9
 
-    # if any delta is 0 or negative, make it 60
-    test "$t2" -le "$t1"        && t2=$((t1 + 60))
-    test "$t3" -le "$t2"        && t3=$((t2 + 60))
+    # this is a pain.  first, we want the timers to be at least a
+    # second apart.  in addition, if the timer will trigger a
+    # sleep, we want to have advance it by extra 5 seconds, so we
+    # can do a cpu and network activity check before actually
+    # sleeping.  so for that one, the gap needs to be 6 seconds.
+    test "$aname1" = "sleep" && d=5 || d=0
+    test $(( (t1 - d) )) -le 0 && : $(( t1 += (1 + d) ))
+    test "$aname1" = "sleep" && nt1=$(( t1 - d ))
+
+    test "$aname2" = "sleep" && d=5 || d=0
+    test $(( (t2 - d) )) -le $t1 && : $(( t2 = t1 + (1 + d) ))
+    test "$aname2" = "sleep" && nt2=$(( t2 - d ))
+
+    test "$aname3" = "sleep" && d=5 || d=0
+    test $(( (t3 - d) )) -le $t2 && : $(( t3 = t2 + (1 + d) ))
+    test "$aname3" = "sleep" && nt3=$(( t3 - d ))
 
     useridle1_delta=$((t2 - t1))
     useridle2_delta=$((t3 - t2))
@@ -1480,7 +1558,7 @@ set_idletimes()
     useridle2_next=$useridle3_action
 
     # give olpc-kbdshim the timeouts
-    reset_idlecounters $t1 $t2 $t3
+    reset_idlecounters ${nt1:-$t1} ${nt2:-$t2} ${nt3:-$t3}
 
     t4=${config_MAX_SLEEP_BEFORE_SHUTDOWN:-0}
     test "$t4" -eq "$t4" || t4=300
@@ -1561,6 +1639,13 @@ sleep_action()
     then
         reset_idlecounters
         return
+    fi
+
+    # we've allowed an extra 5 seconds for this action.  use it here.
+    if laptop_busy $t1
+    then
+        reset_idlecounters  # restart the timers
+        continue
     fi
 
     # sleep until it's time to shut down
@@ -1726,32 +1811,17 @@ event_loop()
 
         useridle1)
             test "$tracing" && : $(seconds)
-            if laptop_busy $t1
-            then
-                reset_idlecounters  # restart the timers
-                continue
-            fi
             $useridle1_action \
                 $useridle1_next $useridle1_delta $useridle2_delta
             ;;
 
         useridle2)
             test "$tracing" && : $(seconds)
-            if laptop_busy $t2
-            then
-                reset_idlecounters  # restart the timers
-                continue
-            fi
             $useridle2_action $useridle2_next $useridle2_delta ""
             ;;
 
         useridle3)
             test "$tracing" && : $(seconds)
-            if laptop_busy $t3
-            then
-                reset_idlecounters  # restart the timers
-                continue
-            fi
             $useridle3_action none "" ""
             ;;
 
@@ -1867,37 +1937,41 @@ configure_pwrlog()
 
 init_netactivity_tracking()
 {
-    local iface oface newactivity
-    iface="-i eth0"
-    oface="-o eth0"
+    #local iface oface newactivity
+    ##iface="-i eth0"
+    ##oface="-o eth0"
+    iface=;
+    oface=;
 
     iptables -P INPUT ACCEPT
     iptables -P OUTPUT ACCEPT
     iptables -P FORWARD ACCEPT
     iptables -F
 
-    iptables -N netactivity         # create the chain
-    #iptables -I INPUT -p icmp $iface -j netactivity # 
+    iptables -N netactivity 2>/dev/null         # create the chain
+    #iptables -I INPUT -p icmp $iface -j netactivity
     #iptables -I INPUT -p tcp $iface -j netactivity
     #iptables -I OUTPUT -p tcp $oface -j netactivity
-    #iptables -I INPUT -p tcp ! --syn $iface -j netactivity
+    iptables -I INPUT -p tcp ! --syn $iface -j netactivity
     iptables -I OUTPUT -p tcp ! --syn $oface -j netactivity
     iptables -I netactivity 
 
-    oldactivity=;
-    while sleep 5
-    do
-        newactivity=$(iptables --list netactivity --zero --verbose --numeric)
-        if [ "$newactivity" != "$oldactivity" ]
-        then
-            # selfinject networkactive $(seconds) 
-            touch $INHIBIT_BY_TOUCH
-            oldactivity="$newactivity"
-        fi
-        # | sed -n -e '3s/[[:space:]]*\([[:digit:]]\).*/\1/p')
-        test -p $EVENTFIFO || exit 1
-        kill -0 $PPID || exit 1
-    done &
+    #return
+    #
+    #oldactivity=;
+    #while sleep 5
+    #do
+    #    newactivity=$(iptables --list netactivity --zero --verbose --numeric)
+    #    if [ "$newactivity" != "$oldactivity" ]
+    #    then
+    #        # selfinject networkactive $(seconds) 
+    #        touch $INHIBIT_BY_TOUCH
+    #        oldactivity="$newactivity"
+    #    fi
+    #    # | sed -n -e '3s/[[:space:]]*\([[:digit:]]\).*/\1/p')
+    #    test -p $EVENTFIFO || exit 1
+    #    kill -0 $PPID || exit 1
+    #done &
 }
 
 
@@ -1914,8 +1988,6 @@ choose_xo_model
 
 log starting
 
-test "${experimental_netactivity:-}" && init_netactivity_tracking
-
 set_config_defaults
 if [ -r $CONFIGFILE ]
 then
@@ -1925,6 +1997,8 @@ fi
 create_inhibit_dir
 
 read_config
+
+test "${experimental_netactivity:-}" && init_netactivity_tracking
 
 configure_pwrlog
 
