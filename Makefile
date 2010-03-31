@@ -2,6 +2,8 @@
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
 PACKAGE=olpc-powerd
+VERSION=16
+
 
 # don't edit .spec -- edit .spec.tmpl
 SPEC=$(PACKAGE).spec
@@ -13,7 +15,6 @@ ifeq ($(do_rel),)
     SNAP=.$(DATETAG)$(GITHEAD)
 endif
 
-VERSION=15
 
 RELEASE=$(shell cat .spec_release 2>/dev/null || echo error)
 SRELEASE=$(RELEASE)$(SNAP)

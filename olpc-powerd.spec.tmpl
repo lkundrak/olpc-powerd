@@ -73,7 +73,7 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) %{_sysconfdir}/powerd/pleaseconfirm.pgm
 %config(noreplace) %{_sysconfdir}/powerd/shuttingdown.pgm
 %config(noreplace) %{_sysconfdir}/powerd/powerd.conf
-%config(noreplace) %{_sysconfdir}/powerd/version
+%{_sysconfdir}/powerd/version
 
 %post
 # Only on install
@@ -111,6 +111,14 @@ fi
 exit 0
 
 %changelog
+* Tue Mar 30 2010 Paul Fox <pgf@laptop.org>
+- 16-1
+- inhibit suspend when camera is active
+- lower the cpu busy-ness threshold required to inhibit suspend --
+  audio apps now inhibit.
+- make trace file easier to summarize.
+- suppress wake-on-wlan when screen is blanked, by default.
+
 * Wed Mar 24 2010 Paul Fox <pgf@laptop.org>
 - 15-1
 - ensure battery and AC events are always reported correctly
