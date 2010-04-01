@@ -1937,41 +1937,27 @@ configure_pwrlog()
 
 init_netactivity_tracking()
 {
-    #local iface oface newactivity
-    ##iface="-i eth0"
-    ##oface="-o eth0"
-    iface=;
-    oface=;
+    local iface oface
 
-    iptables -P INPUT ACCEPT
-    iptables -P OUTPUT ACCEPT
-    iptables -P FORWARD ACCEPT
-    iptables -F
+    iface="! --in-interface lo"
+    oface="! --out-interface lo"
 
-    iptables -N netactivity 2>/dev/null         # create the chain
-    #iptables -I INPUT -p icmp $iface -j netactivity
-    #iptables -I INPUT -p tcp $iface -j netactivity
-    #iptables -I OUTPUT -p tcp $oface -j netactivity
-    iptables -I INPUT -p tcp ! --syn $iface -j netactivity
-    iptables -I OUTPUT -p tcp ! --syn $oface -j netactivity
-    iptables -I netactivity 
+    iptables --flush INPUT
+    iptables --policy INPUT ACCEPT
+    iptables --flush OUTPUT
+    iptables --policy OUTPUT ACCEPT
 
-    #return
-    #
-    #oldactivity=;
-    #while sleep 5
-    #do
-    #    newactivity=$(iptables --list netactivity --zero --verbose --numeric)
-    #    if [ "$newactivity" != "$oldactivity" ]
-    #    then
-    #        # selfinject networkactive $(seconds) 
-    #        touch $INHIBIT_BY_TOUCH
-    #        oldactivity="$newactivity"
-    #    fi
-    #    # | sed -n -e '3s/[[:space:]]*\([[:digit:]]\).*/\1/p')
-    #    test -p $EVENTFIFO || exit 1
-    #    kill -0 $PPID || exit 1
-    #done &
+
+    iptables --flush netactivity        2>/dev/null
+    iptables --delete-chain netactivity 2>/dev/null
+    iptables --new-chain netactivity  # (re)create the chain
+
+    #iptables --insert INPUT -p icmp $iface -j netactivity
+
+    iptables --insert INPUT -p tcp ! --syn $iface -j netactivity
+    iptables --insert OUTPUT -p tcp ! --syn $oface -j netactivity
+    iptables --insert netactivity 
+
 }
 
 
