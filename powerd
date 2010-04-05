@@ -450,6 +450,11 @@ TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
 USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
 
 
+# we signal ourselves early, so we have time to see if it's
+# really okay to sleep.  units are seconds. 
+BUSYCHECK=5   
+
+
 set -u
 
 log()
@@ -600,7 +605,7 @@ do_shutdown()
 
 cpu_or_network_busy()
 {
-    # initial cpu stats
+    # initial cpu stats -- search for /proc/stat in  "man 5 proc"
     procstat1=( $(< /proc/stat) )
     jiffies1=$(( procstat1[1] + procstat1[2] + procstat1[3] + procstat1[4] ))
     idlejifs1=${procstat1[4]}
@@ -611,11 +616,15 @@ cpu_or_network_busy()
         netactivity=$(iptables --list netactivity --verbose --numeric)
     fi
 
+    # wait a while ($BUSYCHECK, or 5 seconds, currently), and
+    # check for events while doing so.  we can wait this 5
+    # seconds because we arranged to be signalled 5 seconds
+    # before actually wanting to suspend.
     start=$(seconds)
     while :
     do
         event_fifo_lookahead soft && return 0
-        test $(($(seconds) - start)) -ge 5 && break
+        test $(($(seconds) - start)) -ge $BUSYCHECK && break
     done
 
     # secondary cpu stats
@@ -623,6 +632,7 @@ cpu_or_network_busy()
     jiffies2=$(( procstat2[1] + procstat2[2] + procstat2[3] + procstat2[4] ))
     idlejifs2=${procstat2[4]}
 
+    # what fraction of total elapsed jiffies were idle jiffies?
     idle=$(( (100 * ( idlejifs2 - idlejifs1 ) / ( jiffies2 - jiffies1 ) ) ))
     if [ $idle -lt $config_CPU_IDLE_LIMIT ]
     then
@@ -630,7 +640,7 @@ cpu_or_network_busy()
         return 0
     fi
 
-    # secondary network stats
+    # secondary network stats -- any network activity?
     if [ "${experimental_netactivity:-}" ]
     then
         newnetactivity=$(iptables --list netactivity --verbose --numeric)
@@ -724,10 +734,10 @@ create_inhibit_dir()
 laptop_busy()
 {
     timer=$1
-    inhibit_files_present || \
-        filetimes_busy $timer || \
-            camera_busy || \
-                cpu_or_network_busy && \
+    cpu_or_network_busy || \
+        inhibit_files_present || \
+            filetimes_busy $timer || \
+                camera_busy && \
                         return 0
     return 1
 }
@@ -1537,18 +1547,19 @@ set_idletimes()
 
     # this is a pain.  first, we want the timers to be at least a
     # second apart.  in addition, if the timer will trigger a
-    # sleep, we want to have advance it by extra 5 seconds, so we
-    # can do a cpu and network activity check before actually
-    # sleeping.  so for that one, the gap needs to be 6 seconds.
-    test "$aname1" = "sleep" && d=5 || d=0
+    # sleep, we want to have advance it by an extra $BUSYCHECK
+    # seconds, so we can do a cpu and network activity check
+    # before actually sleeping.  so for that one, the gap needs
+    # to be 6 (i.e., $BUSYCHECK + 1) seconds.
+    test "$aname1" = "sleep" && d=$BUSYCHECK || d=0
     test $(( (t1 - d) )) -le 0 && : $(( t1 += (1 + d) ))
     test "$aname1" = "sleep" && nt1=$(( t1 - d ))
 
-    test "$aname2" = "sleep" && d=5 || d=0
+    test "$aname2" = "sleep" && d=$BUSYCHECK || d=0
     test $(( (t2 - d) )) -le $t1 && : $(( t2 = t1 + (1 + d) ))
     test "$aname2" = "sleep" && nt2=$(( t2 - d ))
 
-    test "$aname3" = "sleep" && d=5 || d=0
+    test "$aname3" = "sleep" && d=$BUSYCHECK || d=0
     test $(( (t3 - d) )) -le $t2 && : $(( t3 = t2 + (1 + d) ))
     test "$aname3" = "sleep" && nt3=$(( t3 - d ))
 
@@ -1641,7 +1652,7 @@ sleep_action()
         return
     fi
 
-    # we've allowed an extra 5 seconds for this action.  use it here.
+    # we've allowed an extra $BUSYCHECK seconds for this action.  use it here.
     if laptop_busy $t1
     then
         reset_idlecounters  # restart the timers
