@@ -1488,6 +1488,7 @@ reset_idlecounters()
 
 set_idletimes()
 {
+    local dt st bt nt1 nt2 nt3 d
 
     if [ "$ac_online" ]
     then
@@ -1551,6 +1552,7 @@ set_idletimes()
     # seconds, so we can do a cpu and network activity check
     # before actually sleeping.  so for that one, the gap needs
     # to be 6 (i.e., $BUSYCHECK + 1) seconds.
+
     test "$aname1" = "sleep" && d=$BUSYCHECK || d=0
     test $(( (t1 - d) )) -le 0 && : $(( t1 += (1 + d) ))
     test "$aname1" = "sleep" && nt1=$(( t1 - d ))
