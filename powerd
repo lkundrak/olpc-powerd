@@ -1676,6 +1676,8 @@ exit_actions()
     pwrlog_take_reading shutdown
     set_wakeupevents none
     unsplash
+    dcon thaw
+    dcon wake
     rm -f $EVENTFIFO
     rm -rf $INHIBITDIR
     exit
@@ -1688,8 +1690,6 @@ event_loop()
     : @ starting eventloop
 
     set_idletimes
-
-    trap "exit_actions" 0
 
     unsplash
 
@@ -2002,6 +2002,8 @@ configure_pwrlog
 pwrlog_take_reading startup
 
 sched_unfreezetimer
+
+trap "exit_actions" 0
 
 power_check
 
