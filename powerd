@@ -494,7 +494,6 @@ set_tracing()
 
 # uncomment for full tracing.  (or, use "powerd-control =tracing-on"
 # to enable at runtime.)
-
 # set_tracing on
 
 yes_or_true()
@@ -1965,10 +1964,25 @@ init_netactivity_tracking()
     iptables --delete-chain netactivity 2>/dev/null
     iptables --new-chain netactivity  # (re)create the chain
 
-    #iptables --insert INPUT -p icmp $iface -j netactivity
+    # count incoming pings
+    iptables --insert INPUT -p icmp $iface -j netactivity
 
+    # count incoming, already-connected tcp
     iptables --insert INPUT -p tcp ! --syn $iface -j netactivity
-    iptables --insert OUTPUT -p tcp ! --syn $oface -j netactivity
+
+    # count outgoing already-connected tcp
+    # redundant with next rule
+    #iptables --insert OUTPUT -p tcp ! --syn $oface -j netactivity
+
+    # count all outgoing packets _except_ mdns
+    iptables --insert OUTPUT -p tcp ! --dport mdns $oface -j netactivity
+    iptables --insert OUTPUT -p udp ! --dport mdns $oface -j netactivity
+
+    ## count all incoming packets _except_ mdns
+    #iptables --insert INPUT -p tcp ! --dport mdns $iface -j netactivity
+    #iptables --insert INPUT -p udp ! --dport mdns $iface -j netactivity
+
+    # this is the null "rule" that aggregates the above counts,
     iptables --insert netactivity 
 
 }
