@@ -111,6 +111,15 @@ fi
 exit 0
 
 %changelog
+* Tue Apr  6 2010 Paul Fox <pgf@laptop.org>
+- 18-1
+- ensure dcon is awake and unfrozen if powerd exits.
+- enable network activity checks:  pings, inbound traffic for
+  established tcp connections, as well as any non-mdns outbound
+  traffic, within 5 seconds of the target time, will all keep the
+  inhibit suspend.
+- bug fixes for recently introduced problems.
+
 * Mon Apr  5 2010 Paul Fox <pgf@laptop.org>
 - 17-1
 - reorder the background "xxx_is_busy" checks for better useability.
@@ -120,7 +129,7 @@ exit 0
 - inhibit suspend when camera is active
 - lower the cpu busy-ness threshold required to inhibit suspend --
   audio apps now inhibit.
-- make trace file easier to summarize.
+- make trace file easier to summarize.  (grep for ": @")
 - suppress wake-on-wlan when screen is blanked, by default.
 
 * Wed Mar 24 2010 Paul Fox <pgf@laptop.org>

@@ -2,7 +2,7 @@
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
 PACKAGE=olpc-powerd
-VERSION=17
+VERSION=18
 
 
 # don't edit .spec -- edit .spec.tmpl
@@ -95,7 +95,7 @@ $(SRPM): $(SPEC) $(TARBALL)
 		 --nodeps -bs $(SPEC)
 
 # build rpm from the srpm
-mock: $(SRPM)
+mock: version $(SRPM)
 	@mkdir -p $(MOCKDIR)
 	$(MOCK) -q --init
 	$(MOCK) --installdeps $(SRPM)
