@@ -609,11 +609,8 @@ cpu_or_network_busy()
     jiffies1=$(( procstat1[1] + procstat1[2] + procstat1[3] + procstat1[4] ))
     idlejifs1=${procstat1[4]}
 
-    # initial network stats
-    if [ "${experimental_netactivity:-}" ]
-    then
-        netactivity=$(iptables --list netactivity --verbose --numeric)
-    fi
+    # take initial network stats
+    netactivity=$(iptables --list netactivity --verbose --numeric)
 
     # wait a while ($BUSYCHECK, or 5 seconds, currently), and
     # check for events while doing so.  we can wait this 5
@@ -626,7 +623,7 @@ cpu_or_network_busy()
         test $(($(seconds) - start)) -ge $BUSYCHECK && break
     done
 
-    # secondary cpu stats
+    # second cpu stats
     procstat2=( $(< /proc/stat) )
     jiffies2=$(( procstat2[1] + procstat2[2] + procstat2[3] + procstat2[4] ))
     idlejifs2=${procstat2[4]}
@@ -639,15 +636,12 @@ cpu_or_network_busy()
         return 0
     fi
 
-    # secondary network stats -- any network activity?
-    if [ "${experimental_netactivity:-}" ]
+    # second network stats -- any network activity?
+    newnetactivity=$(iptables --list netactivity --verbose --numeric)
+    if [ "$newnetactivity" != "$netactivity" ]
     then
-        newnetactivity=$(iptables --list netactivity --verbose --numeric)
-        if [ "$newnetactivity" != "$netactivity" ]
-        then
-            : @ network busy
-            return 0
-        fi
+        : @ network busy
+        return 0
     fi
 
     return 1
@@ -1954,6 +1948,8 @@ init_netactivity_tracking()
     iface="! --in-interface lo"
     oface="! --out-interface lo"
 
+    # this initialization may interfere with other future
+    # uses of iptables.  but for now it's the right thing.
     iptables --flush INPUT
     iptables --policy INPUT ACCEPT
     iptables --flush OUTPUT
@@ -2011,7 +2007,7 @@ create_inhibit_dir
 
 read_config
 
-test "${experimental_netactivity:-}" && init_netactivity_tracking
+init_netactivity_tracking
 
 configure_pwrlog
 
