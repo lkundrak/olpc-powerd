@@ -1840,7 +1840,8 @@ event_loop()
         ac-online|ac-offline)
             # the driver is buggy, and sometimes gets out-of-phase
             # with reality.  so do a reality check.
-            if plugged_in
+            plugged_in
+            if [ "$ac_online" ]
             then
                 pwrlog_take_reading ac-online
             else
