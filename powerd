@@ -1382,7 +1382,7 @@ set_config_defaults()
     config_CPU_IDLE_LIMIT=10
 
     config_PWRLOG_INTERVAL=0
-    config_PWRLOG_DIR=/home/olpc/olpc-pwr-logs
+    config_PWRLOG_DIR=/home/olpc/power-logs
     config_PWRLOG_LOGSIZE=50            # Kbytes
     config_PWRLOG_LOGDIRSIZE=1000       # Kbytes
 }
