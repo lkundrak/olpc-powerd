@@ -47,6 +47,7 @@ DATE: $(date)
 COMMENT: $comment
 ECVER: $(< /ofw/ec-name)
 OFWVER: $(< /ofw/openprom/model)
+KERNVER: $(< /proc/version)
 MODEL: $(< /ofw/model)
 SERNUM: $pwr_SERNUM
 BATTECH: $(< $BATTERY_INFO/technology)
@@ -142,7 +143,7 @@ pwrlog_take_reading()
     then
         case $reason in
         new-pwrlog-event|startup)
-	    newfile=true
+            newfile=true
             ;;
         *-event)  # "soft" events -- rate limit them
             if (( now - ${pwr_LASTLOGTIME:-0} < $pwr_LOG_INTERVAL ))
@@ -153,9 +154,17 @@ pwrlog_take_reading()
         esac
     fi
 
+    # finally, if we have already have a logname, and it doesn't
+    # exist, then it must have been previously copied and removed.
+    # so start a new file. 
+    if [ "$pwr_PWRLOG_LOGFILE" -a ! -f "$pwr_PWRLOG_LOGFILE" ]
+    then
+        newfile=true
+    fi
+
     pwr_LASTLOGTIME=$now
 
-    if [ "$battery_present" = 1 -o "$battery_changed" ]
+    if [ "$newfile" -o "$battery_present" = 1 -o "$battery_changed" ]
     then
         # if the file we may have been writing to doesn't exist
         # then create a new one.  always create logs with a current
@@ -180,7 +189,7 @@ pwrlog_take_reading()
         if [ "$battery_changed" ] || \
             (( now - ${pwr_LASTCOPYTIME:-0} >= $pwr_LOGCOPY_MINUTES * 60 ))
         then
-            if [ ! "$newfile" ]
+            if [ ! "$newfile" ]  # don't bother copying a brand new file
             then
                 pwrlog_logcopy
             fi
