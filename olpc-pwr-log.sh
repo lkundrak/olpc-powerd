@@ -145,6 +145,8 @@ pwrlog_take_reading()
         new-pwrlog-event|startup)
             newfile=true
             ;;
+        ac*|battery*)
+            ;;
         *-event)  # "soft" events -- rate limit them
             if (( now - ${pwr_LASTLOGTIME:-0} < $pwr_LOG_INTERVAL ))
             then
@@ -157,7 +159,7 @@ pwrlog_take_reading()
     # finally, if we have already have a logname, and it doesn't
     # exist, then it must have been previously copied and removed.
     # so start a new file. 
-    if [ "$pwr_PWRLOG_LOGFILE" -a ! -f "$pwr_PWRLOG_LOGFILE" ]
+    if [ "${pwr_PWRLOG_LOGFILE:-}" ] && [ ! -f "$pwr_PWRLOG_LOGFILE" ]
     then
         newfile=true
     fi
