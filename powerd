@@ -922,9 +922,8 @@ event_fifo_lookahead()
         # later, break out.  otherwise discard it.
         : @ s_event-type is $s_event-$type
         case $s_event-$type in
-        powerbutton-hard|lidopen-hard|\
-         lid*-soft|ebook*-soft|battery-soft|ac-*-soft|\
-         useractive-soft)
+        powerbutton-hard|lidopen-hard|lid*-soft|\
+         ebook*-soft|ac-*-soft|useractive-soft)
             if [ ! "$s_tstamp" ] || \
                 [ "$s_tstamp" -ge "$eventcutoff" ]
             then
@@ -1002,7 +1001,7 @@ snooze()
             # obviously if we ignore AC wakeups, we won't do the following
             # if we're subsequently unplugged.  hopefully the critical
             # wakeup above will save the day.
-            if [ ! "$ac_online" ]
+            if [ "$ac" != "online" ]
             then
                 read_battery
                 if [ "$battery_capacity" -le 20 ]
@@ -1096,16 +1095,19 @@ snooze()
 
         case $wakeupsource in
         "power button")
-            if [ $until = until_shutdown ]
-            then
+            : @ power button during $until
+            case $until in
+            until_shutdown)
                 # this takes care of the "screen blanked but not sleeping"
                 # case.  we only want the button to give the splash menu
                 # when the screen was lit when it was pushed.
                 selfinject fake_useractive $lastwakeup "$wakeupsource"
-            else
+                ;;
+            *)
                 # waiting until_dim or until_blank, so screen is still on
                 selfinject fake_powerbutton $lastwakeup "$wakeupsource"
-            fi
+                ;;
+            esac
             break
             ;;
 
@@ -1117,12 +1119,10 @@ snooze()
             fi
             ;;
 
-        "rtc alarm"|"ac power"|battery*)
-
-            : @ until-wakeupsource is $until-$wakeupsource
-
-            case $until-$wakeupsource in
-            until_dim-rtc*)
+        "rtc alarm")
+            : @ rtc alarm during $until
+            case $until in
+            until_dim)
                 # we don't get woken on lid close, so check here.
                 # if we can't tell, assume we're still open
                 backlight dim
@@ -1131,17 +1131,17 @@ snooze()
                 rtctime=$blanktime
                 ;;
 
-            until_blank-rtc*)
+            until_blank)
                 backlight off
                 until=until_shutdown
                 orig_rtctime=$shutdowntime
                 rtctime=$shutdowntime
                 ;;
 
-            until_shutdown-rtc*)
+            until_shutdown)
                 if [ $rtctime -le 2 ]  # time really expired
                 then
-                    if [ ! "$ac_online" ] || \
+                    if [ "$ac" != "online" ] || \
                             yes_or_true "$config_ALLOW_SHUTDOWN_WHEN_PLUGGED"
                     then
                         splash shutdown
@@ -1157,15 +1157,20 @@ snooze()
                     : awoke for shutdown too early, sleeping again
                 fi
                 ;;
+            esac
+            ;;
 
-            # NB -- we no longer wake on AC, so this doesn't happen
-            until_shutdown-ac*)
-                # restart the shutdown timer.  the choice of sleep time
-                # is kind of a guess, since we're not tracking how much
+        "ac power")
+            : @ ac power during $until
+            case $until in
+            until_shutdown)
+                # we don't wake on AC, so this shouldn't happen.  if it did: 
+                # restart the shutdown timer.  the choice of sleep time is
+                # kind of a guess, since we're not tracking how much
                 # charging we're getting while plugged in.  so if we're
                 # plugged in, we sleep forever, otherwise, we sleep (again)
                 # for the original time.
-                if [ "$ac_online" ]
+                if [ "$ac" = "online" ]
                 then
                     rtctime=999999999
                 else
@@ -1173,20 +1178,11 @@ snooze()
                 fi
                 ;;
 
-            # NB -- we no longer wake on AC, so this doesn't happen
-            until_*-ac*)
-                # we were waiting for dim or blank, and we got plugged in.
+            *)  # we were waiting for dim or blank, and we got plugged in.
                 # we'll wake up fully, so we can re-decide whether we
                 # should really be sleeping aggressively.
                 break;
                 ;;
-
-            *-battery*)  # all we do is check level, above.
-                ;;
-
-            *) # it's a leftover (spurious?) rtc wakeup.  go back to sleep.
-                ;;
-
             esac
             ;;
 
@@ -1201,9 +1197,13 @@ snooze()
             break
             ;;
 
+        battery*)  # all we do is check battery level, and sleep again
+            ;;
+
         *)  # "key press"|"ebook")
             selfinject fake_useractive $lastwakeup "$wakeupsource"
             break
+            ;;
         esac
 
         # unless we've broken out of the loop, we're going to sleep
@@ -1426,7 +1426,7 @@ read_config()
 maybe_battery_shutdown()
 {
 
-    test "$ac_online" && return
+    test "$ac" = "online" && return
 
     case $battery_capacity in
     [987654321])
@@ -1454,10 +1454,10 @@ plugged_in()
     read on_ac < $AC_ONLINE
     if [ "$on_ac" = 1 ]
     then
-        ac_online=true
+        ac="online"
         return 0
     else
-        ac_online=;
+        ac="offline"
         return 1
     fi
 }
@@ -1483,7 +1483,7 @@ set_idletimes()
 {
     local dt st bt nt1 nt2 nt3 d
 
-    if [ "$ac_online" ]
+    if [ "$ac" = "online" ]
     then
         dt=$config_PLUGGED_TIME_DIM
         st=$config_PLUGGED_TIME_SLEEP
@@ -1583,13 +1583,13 @@ set_idletimes()
 reevaluate()
 {
     if [ "${1:-}" = all -o \
-         "${o_ac_online:-}" != "$ac_online" -o \
+         "${o_ac:-}" != "$ac" -o \
          "${o_ebook:-}" != "$am_ebook" ]
     then
         set_idletimes || reset_idlecounters
     fi
     o_ebook=$am_ebook
-    o_ac_online=$ac_online
+    o_ac=$ac
 }
 
 selfinject()
@@ -1832,15 +1832,7 @@ event_loop()
             ;;
 
         ac-online|ac-offline)
-            # the driver is buggy, and sometimes gets out-of-phase
-            # with reality.  so do a reality check.
-            plugged_in
-            if [ "$ac_online" ]
-            then
-                pwrlog_take_reading ac-online
-            else
-                pwrlog_take_reading ac-offline
-            fi
+            ac=${event#ac-}
             ;;
 
         battery)
