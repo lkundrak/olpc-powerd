@@ -610,7 +610,10 @@ cpu_or_network_busy()
     idlejifs1=${procstat1[4]}
 
     # take initial network stats
-    netactivity=$(iptables --list netactivity --verbose --numeric)
+    if  [ "$monitor_network_activity" ]
+    then
+        netactivity=$(iptables --list netactivity --verbose --numeric)
+    fi
 
     # wait a while ($BUSYCHECK, or 5 seconds, currently), and
     # check for events while doing so.  we can wait this 5
@@ -636,12 +639,15 @@ cpu_or_network_busy()
         return 0
     fi
 
-    # second network stats -- any network activity?
-    newnetactivity=$(iptables --list netactivity --verbose --numeric)
-    if [ "$newnetactivity" != "$netactivity" ]
+    if [ "$monitor_network_activity" ]
     then
-        : @ network busy
-        return 0
+        # second network stats -- any network activity?
+        newnetactivity=$(iptables --list netactivity --verbose --numeric)
+        if [ "$newnetactivity" != "$netactivity" ]
+        then
+            : @ network busy
+            return 0
+        fi
     fi
 
     return 1
@@ -1380,6 +1386,7 @@ set_config_defaults()
     config_UNFREEZE_SECONDS=1
 
     config_CPU_IDLE_LIMIT=10
+    config_MONITOR_NETWORK_ACTIVITY=yes
 
     config_PWRLOG_INTERVAL=0
     config_PWRLOG_DIR=/home/olpc/power-logs
@@ -1937,6 +1944,15 @@ configure_pwrlog()
 init_netactivity_tracking()
 {
     local iface oface
+
+    monitor_network_activity=;
+
+    if ! yes_or_true "$config_MONITOR_NETWORK_ACTIVITY" || \
+        ! test -x /sbin/iptables
+    then
+        return
+    fi
+    monitor_network_activity=true
 
     iface="! --in-interface lo"
     oface="! --out-interface lo"
