@@ -391,56 +391,94 @@ acpwr_event()
 }
 
 int
-poll_power_sources(void)
+read_ac_online(void)
 {
     int fd, r;
     char buf[4];
-    int online, capacity;
-    static int was_online = -1;
-    static int was_capacity = -1;
-    int sent = 0;
+    fd = open("/sys/class/power_supply/olpc-ac/online", O_RDONLY);
+    if (fd < 0)
+        return 0;
 
-    if (acpwr_fd < 0) {
-        fd = open("/sys/class/power_supply/olpc-ac/online", O_RDONLY);
-        if (fd < 0)
-            return 0;
+    r = read(fd, buf, 1);
+    close(fd);
 
-        r = read(fd, buf, 1);
-        if (r != 1 || (buf[0] != '0' && buf[0] != '1')) {
-            close(fd);
-            return 0;
-        }
-
-        online = buf[0] - '0';
-
-        if (was_online != online) {
-            send_event(online ? "ac-online" : "ac-offline", time(0), 0);
-            was_online = online;
-        }
-
-        close(fd);
+    if (r != 1 || (buf[0] != '0' && buf[0] != '1')) {
+        return 0;
     }
 
+    return buf[0] - '0';
+}
+
+int
+read_battery_capacity(void)
+{
+    int fd, r;
+    char buf[4];
     fd = open("/sys/class/power_supply/olpc-battery/capacity", O_RDONLY);
     if (fd < 0)
         return 0;
 
     r = read(fd, buf, 2);
+    close(fd);
     if (r < 1 || (buf[0] < '0' || buf[0] > '9')) {
-        close(fd);
         return 0;
     }
 
     buf[3] = '\0';
-    capacity = atoi(buf);
-    if (was_capacity != capacity) {
+
+    return atoi(buf);
+}
+
+char *
+read_battery_status(void)
+{
+    int fd, r;
+    static char buf[40];
+    fd = open("/sys/class/power_supply/olpc-battery/capacity", O_RDONLY);
+    if (fd < 0)
+        return 0;
+
+    r = read(fd, buf, sizeof(buf));
+    close(fd);
+    if (r < 1)
+        buf[0] = '\0';
+    else
+        buf[sizeof(buf)-1] = '\0';
+
+    return buf;
+}
+
+int
+poll_power_sources(void)
+{
+    int online, capacity;
+    static int was_online = -1;
+    static int was_capacity = -1;
+    static char was_status[20];
+    char *status;
+    int sent = 0;
+
+    /* if we don't have an AC jack input device, poll it here */
+    if (acpwr_fd < 0) {
+        online = read_ac_online();
+        if (was_online != online) {
+            send_event(online ? "ac-online" : "ac-offline", time(0), 0);
+            was_online = online;
+            sent = 1;
+        }
+    }
+
+    capacity = read_battery_capacity();
+    status = read_battery_status();
+    if (was_capacity != capacity || strcmp(status, was_status) != 0) {
         char evbuf[32];
+        was_capacity = capacity;
+        strcpy(was_status, status);
         snprintf(evbuf, 32, "%d", capacity);
         send_event("battery", time(0), evbuf);
-        was_capacity = capacity;
         sent = 1;
     }
-    close(fd);
+
     return sent;
 }
 

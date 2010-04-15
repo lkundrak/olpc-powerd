@@ -61,8 +61,11 @@ DISSOC: $(pwrlog_read_battery_eeprom 79 1)
 XOVER: $XO
 <StartData>
 EOF
+
     # no more:
     # MFG_SER: $(pwrlog_read_battery_eeprom 64 5)
+
+    pwr_LASTBATTSTAT=;
 }
 
 # convert a number into 2's complement
@@ -91,16 +94,29 @@ pwrlog_write_data()
 
     reason=${1:-}
 
+    stat=$(< $BATTERY_INFO/status)
+
+    # suppress consecutive periodic Full messages, since they
+    # don't provide interesting data.
+    if [ "$reason" = timer-event -a \
+         "$stat" = Full -a \
+         "${pwr_LASTBATTSTAT:-}" = Full ]
+    then
+        return
+    fi
+
+
     capacity=$(< $BATTERY_INFO/capacity )
     volt=$(< $BATTERY_INFO/voltage_avg)
     curr=$(< $BATTERY_INFO/current_avg)
     temp=$(< $BATTERY_INFO/temp)
-    stat=$(< $BATTERY_INFO/status)
 
     acr=$(pwrlog_get_acr)
 
     echo "$(seconds),$capacity,$volt,$curr,$temp,$acr,$stat",$reason \
         >> $pwr_PWRLOG_LOGFILE 
+
+    pwr_LASTBATTSTAT=$stat
 }
 
 pwrlog_filedate()
