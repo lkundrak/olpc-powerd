@@ -45,6 +45,7 @@ powerd_log_ver: $pwr_POWERD_LOG_VERSION
 Format: $pwr_POWERD_LOG_FORMAT
 DATE: $(date)
 COMMENT: $comment
+DESKTOP: ${pwr_DESKTOP}
 ECVER: $(< /ofw/ec-name)
 OFWVER: $(< /ofw/openprom/model)
 KERNVER: $(< /proc/version)
@@ -131,7 +132,7 @@ pwrlog_filename()
 
 pwrlog_take_reading()
 {
-    local now reason newfile battery_present battery_changed
+    local now reason newfile battery_present battery_changed newdesk
     reason=${1:-}
     shift  # the rest of the arguments may be used below
     
@@ -170,6 +171,13 @@ pwrlog_take_reading()
             fi
             ;;
         esac
+    fi
+
+    newdesk="$(< /home/olpc/.olpc-active-desktop)" 2>/dev/null
+    if [ "${newdesk:=sugar}" != "${pwr_DESKTOP:=sugar}" ]
+    then
+	newfile=true
+	pwr_DESKTOP=$newdesk
     fi
 
     # finally, if we have already have a logname, and it doesn't
