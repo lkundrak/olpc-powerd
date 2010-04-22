@@ -1658,7 +1658,7 @@ sleep_action()
     if laptop_busy $t1
     then
         reset_idlecounters  # restart the timers
-        continue
+        return
     fi
 
     # sleep until it's time to shut down
