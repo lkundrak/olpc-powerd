@@ -1206,7 +1206,7 @@ snooze()
         battery*)  # all we do is check battery level, and sleep again
             ;;
 
-        *)  # "key press"|"ebook")
+        *)  # "key press"|"ebook"|"unknown")
             selfinject fake_useractive $lastwakeup "$wakeupsource"
             break
             ;;
@@ -1813,8 +1813,8 @@ event_loop()
             test "$tracing" && : $(seconds)
             gotactivity
             case "$arg2-$arg3" in
-            wlan-packet)
-                ;;  # don't brighten for wlan packets
+            wlan-packet|unknown-|ec-timer)
+                ;;  # don't brighten for wlan or other unknowns
             *)
                 backlight restore
                 ;;
@@ -1870,6 +1870,14 @@ event_loop()
             # seconds.
             reset_idlecounters
             dcon thaw
+            ;;
+
+        dark-suspend)
+            # we have some external power measurement scripts that
+            # want to quiesce the laptop without killing off powerd.
+            # this lets them work together.
+            backlight off
+            snooze until_shutdown "$shutdowntimer" soft
             ;;
 
         trace-on)
