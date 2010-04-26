@@ -21,9 +21,6 @@
 # -- ease of customization, given that its written in shell.
 # -- integrated power logging, to assist in analyzing XO power usage
 #
-# Unimplemented:
-# -- inhibiting idle suspend based on network load.
-# -- probably more.
 #
 #####
 #
@@ -32,7 +29,7 @@
 # Major config variables are documented below.  powerd reads
 # its configuration from /etc/powerd/powerd.conf once at startup,
 # and again only when it receives a "reconfig" event on its
-# event fifo (/var/run/powerevents).
+# event fifo.  (short answer:  "sudo powerd-config =restart")
 #
 # If /etc/powerd/powerd.conf is a symlink to another file, then
 # powerd-config can be used to easily manage a set of
@@ -65,39 +62,41 @@
 #
 # Setting any of the timers to '0' suppresses that action.  (The
 # value is converted to 999999999 seconds internally, so you may
-# see that in the logs.
+# see that in the logs.)
 #
-# In any case, when the screen is dark _and_ the laptop is
-# sleeping, it's in a "deep" sleep -- keystrokes will not wake it
-# up, just as if the power button had been used.  The maximum
-# time that this state (screen off, cpu sleeping) will last
-# before the laptop shuts down is given by
-# "config_MAX_SLEEP_BEFORE_SHUTDOWN".  (This is arguably
-# mis-named, since it's not really "max sleep time before
-# shutdown", but "max asleep-and-blank time before shutdown".)
-# Again, a setting of '0' will be internally converted to 999999999.
+# Depending on the setting of # "config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP",
+# when the screen is dark _and_ the laptop is sleeping, it may or
+# may not be in a "deep" sleep -- keystrokes may or may not wake it
+# up.  Likewise, "config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP" controls
+# whether wlan packets may wake the laptop.  (See below for more
+# information.)  The maximum time that this state (i.e., screen off, cpu
+# sleeping) will last before the laptop shuts down is given by
+# "config_MAX_SLEEP_BEFORE_SHUTDOWN".  (This is arguably mis-named,
+# since it's not really "max sleep time before shutdown", but "max
+# sleeping-and-blank time before shutdown".) Again, a setting of '0'
+# will be internally converted to 999999999.
 #
 # Turning off "config_ALLOW_SHUTDOWN_WHEN_PLUGGED" will keep the
 # laptop from ever completely shutting down when it has external
 # power.  It may still shut down when using battery power.
 #
 # "config_IDLE_DIM_LEVEL" specifies how far the screen will dim
-# when the ("config_..._TIME_DIM") timer fires.  The range is
-# 0-15.  If set to 15, the screen will never dim.
+# when the dim timer fires.  The range is 0-15.  If set to 15, the
+# screen will never dim.
 #
 # "config_CONFIRM_SECONDS" determines how long the shutdown/suspend
 # confirmation splash screen stays visible before the laptop
 # automatically suspends.  If this is set to zero, there will be
-# no splash screen:  the laptop will suspend immediately on a
+# no splash screen, and the laptop will suspend immediately on a
 # power button push.  In this case, shutdown must be done via
-# a menu entry, or other command.
+# a menu entry or other command.
 #
 # "config_UNFREEZE_SECONDS" specifies the delay before powerd
 # will unfreeze the DCON, after starting up.
 #
 # "config_MESH_DURING_SUSPEND" (boolean) controls whether the
 # wireless remains powered while the laptop is fully suspended
-# (i.e.  sleeping with a dark screen).  The only reason to set
+# (i.e., sleeping with a dark screen).  The only reason to set
 # this to "yes" is if you want the laptop to forward packets for
 # other mesh users while you're not using it.
 #
@@ -108,21 +107,20 @@
 # how busy the CPU.
 #
 # "config_SLEEP_WHEN_LID_CLOSED" causes the laptop to go to sleep
-# when closed, and is usually desirable.  Cases where one might
-# want to turn this off might be a laptop being used as a server
-# on a shelf, or perhaps when running an application which needs
-# to remain active while the laptop is transported.  The screen
-# will be turned off in any case, of course.
+# when closed, and is usually desirable.  One might want to turn this
+# off if using the laptop as a server, or perhaps when running an
+# application which needs to keep running while the laptop is
+# transported.  The screen will be turned off in any case, of course.
 #
-# "config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP" says that if the
-# screen is blank and the laptop is asleep due to the user being
-# idle, that a keypress (or touchpad gesture) will wake the
-# laptop.  otherwise this condition (which is visually the same
-# as a power button-induced sleep) will require the power button
-# to wake it.  if you like having the keyboard completely
-# disabled during any "dark" sleep, then set this to "no".  if
-# the power button is used to put the laptop to sleep, this
-# setting will have no effect.
+# "config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP" says that if the screen
+# is blank and the laptop has "idle suspended" (i.e., gone to sleep
+# due to inactivity), that a keypress (or touchpad gesture) will wake
+# the laptop.  Otherwise this blank-sleeping condition (which is
+# visually the same as a power button-induced sleep) will require the
+# power button to wake it.  If you like having the keyboard completely
+# disabled during any "dark" sleep, then set this to "no".  If the
+# power button is used to put the laptop to sleep, this setting will
+# have no effect.
 #
 # "config_WAKE_ON_WLAN" -- determines whether a packet destined for
 # your laptop will wake it up from idle suspend, in much the same
@@ -131,80 +129,88 @@
 #
 # "config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP" controls whether the
 # config_WAKE_ON_WLAN setting also applies once the screen has
-# blanked.  (the "blanked" state is the final idle state, and
-# usually means the laptop simply isn't being used.  laptops
-# being access remotely, however, should probably have this set
-# to "yes".)  this setting is conditional on enabling keypress
-# wakeups with config_KEYPRESS_E_FROM_BLANK_IDLE_SLEEP.  like
-# that one, if the power button is used to put the laptop to
-# sleep, this setting will have no effect.
+# blanked.  (The "blanked" state is the final idle state, and usually
+# means the laptop simply isn't being used.  Laptops being access
+# remotely, however, should probably have this set to "yes".) This
+# setting is conditional on enabling keypress wakeups with
+# config_KEYPRESS_E_FROM_BLANK_IDLE_SLEEP.  If the power button is
+# used to put the laptop to sleep, this setting will have no effect.
 #
 #
-# powerd can optionally perform detailed power usage logging.
-# powerd must be restarted for any changes to the following
-# config_PWRLOG_XXX... settings to take effect:
+#####
+# Power logging
 #
-# "config_PWRLOG_INTERVAL" determines whether, and how often,
-# logging will be performed.  A value of less than 30 seconds
-# will disable power logging.  Anything else gives the
-# approximate maximum interval between logged samples.  10
-# minutes (i.e., a value of 600) is a useful setting.  (The value
-# is approximate, because the actual logging depends on the
-# granularity of the timer events received from olpc-switchd.)
+# powerd can optionally perform detailed power usage logging.  powerd
+# must be restarted for any changes to the following config_PWRLOG_*
+# settings to take effect:
+#
+# "config_PWRLOG_INTERVAL" determines whether, and how often, logging
+# will be performed.  A value of less than 30 seconds will disable
+# power logging.  Anything else gives the approximate maximum interval
+# between logged samples.  5 minutes (i.e., 300 seconds) is a useful
+# setting.  (The value is approximate, because the actual logging
+# depends on the granularity of the timer events received from
+# olpc-switchd.)
 #
 # "config_PWRLOG_DIR" is the final destination for the power logs.
 # Logs are initially written to /var/log, and copied every 30 minutes
-# to the final directory.
+# to the final directory destination.
 #
 # "config_PWRLOG_LOGSIZE" is the maximum size, in Kbytes, of any single
 # log file.  When a log file crosses this threshold, it will be
-# remove (after copying to $config_PWRLOG_DIR) and a new log
-# started.
+# copied to $config_PWRLOG_DIR, removed, and a new log started.
 #
-# "config_PWRLOG_LOGDIRSIZE" is the maximum total size of
-# $config_PWRLOG_DIR.  When the directory grows too large, the
-# oldest files are removed until the size is below this threshold.
+# "config_PWRLOG_LOGDIRSIZE" is the maximum total space alloted for
+# $config_PWRLOG_DIR.  When the directory grows too large, the oldest
+# files are removed until the size is below this threshold.
 #
 #
 ######
 #
 # Inhibiting sleep
 #
-# Idle dim/blank/sleep can be inhibited externally by two separate
+# Idle dim/blank/sleep can be inhibited externally by three separate
 # means:
 #
 # 1) A file may be created in
 #     /var/run/powerd-inhibit-suspend/
 #   The file must be named after the PID of the process doing the
 #   inhibiting (and may be empty).  Stale inhibit files (i.e.,
-#   their owner pid doesn't exist) will be removed when the next
-#   dim is attempted.  To manually inhibit dim/blank/sleep one can
-#   simply create a file named after a long-running process:  e.g.,
-#   "touch /var/run/powerd-inhibit-suspend/1".  (Such a file will
-#   need to be manually removed, of course.)  To assist with the
+#   their owner pid no longer exists) will be removed the next time
+#   the laptop might sleep.  To manually inhibit dim/blank/sleep one
+#   can simply create a file named after a long-running process: 
+#   e.g., "touch /var/run/powerd-inhibit-suspend/1".  (Such a file
+#   will need to be manually removed, of course.) To assist with the
 #   common case of inhibiting suspend while a given program is
-#   running, the "olpc-nosleep" wrapper is provided.  e.g.:
+#   running, the "olpc-nosleep" wrapper is provided.  e.g.,
 #       $ olpc-nosleep wget http://veryslow.downloads.com/bigfile
 #
-#   The above pid-based flags aren't persistent.  To inhibit
-#   suspend in a persistent way (i.e., across reboots), create the
-#   file:
+#   The above pid-based flags aren't persistent.  To inhibit suspend
+#   in a persistent way (i.e., across reboots), create the file:
 #     /etc/powerd/flags/inhibit-suspend
+#   (This is the mechanism used by the Sugar control panel UI.)
 #
 # 2) The modification time of the file
 #     /var/run/powerd-inhibit-suspend/.fake_activity
-#   will be checked before any dim/blank/sleep occurs, and will be
-#   compared to the time of the last "real" user activity.  If it
-#   is newer, the dim/blank/sleep will be skipped.  So a program
-#   wishing to indicate that it is "active" can simply touch this
-#   file periodically to keep it up-to-date.  As a convenience, the
-#   command:
+#   will be checked before any sleep occurs, and will be compared to
+#   the time of the last "real" user activity.  If it is newer, the
+#   dim/blank/sleep will be skipped.  So a program wishing to indicate
+#   that it is "active" can simply touch this file periodically to
+#   keep it up-to-date.  As a convenience, the command:
 #     powerd-config -a
-#   will do this touch.  For example, to keep the laptop alive while
-#   an ssh session is in use, add:
+#   will do this touch.  For example, to help keep the laptop alive while
+#   an ssh serial console session is in use, add:
 #     export PROMPT_COMMAND='powerd-config -a'
 #   to your .bash_profile.  This will cause the file to be touched
-#   at ever shell prompt.
+#   at every shell prompt.
+#
+# 3) Finally, powerd will try and keep the laptop awake based on
+#   various system conditions:  CPU utilizations, network activity, VT
+#   console usage, camera and audio usage.  Network and CPU activity
+#   are monitored for 5 seconds before sleep should occur.  These
+#   conditions are all checked from the "laptop_busy" function, so
+#   look there for details.
+#
 #
 # Post-resume scripts can be put in /etc/powerd/postresume.d -- the
 # scripts will be run in lexicographic order.  The scripts are run
@@ -217,55 +223,34 @@
 # Background discussion:
 #
 # The inputs that contribute to power management are:
-#
-# - Switches:
 #       power button
 #       ebook
 #       lid
-#       AC plugged/unplugged (recent kernels)
-#   Actions on these switches appear as input events on
-#   /dev/input/event[012].  powerd relies on the companion program
-#   "olpc-switchd" to report these events via the /var/run/powerevents
-#   fifo it creates for the purpose.  It's unfortunate that these
-#   events have no corresponding /sys state indicators, since
-#   knowing the state of the lid (or of ebook mode) would be useful
-#   in the absence of events (at startup, for instance).
-#
-#
-# - Conditions:
-#       AC input (boolean)
+#       AC plugged/unplugged
 #       battery capacity (numeric)
-#   It's unfortunate that these have no easily accessible
-#   corresponding events (they're available via uevents, sigh).
-#   Because they don't, olpc-switchd also monitors these two status
-#   nodes (under /sys) and synthesizes events to represent their
-#   transitions.  (olpc-switchd will use the AC power jack input
-#   device (input3) if it's available, and will poll just the
-#   battery in that case.)
+#   Changes on these inputs cause input events on evdev devices
+#   /dev/input/eventN.  powerd relies on the companion program
+#   "olpc-switchd" to report these events via the /var/run/powerevents
+#   fifo it creates for the purpose.  The state of these conditions can
+#   also be read from nodes in /sys.  (Some are only available as events
+#   on XO-1.)
 #
 # - Wakeups:
 #       rtc wakeup
 #       ac_power
 #       battery_error
-#       battery_soc (i.e. "state of charge" --> capacity)
+#       battery_soc (i.e., "state of charge" --> capacity)
 #       battery_state
 #       ebook_mode_change
 #       ps2event
 #       wlan
-#       lid (or sometimes "empty sci")
+#       lid
 #   When the system wakes from sleep, /sys/power/wakeup-source
-#   reports the cause.  (On the XO-1, lid reporting is not reliable
-#   -- sometimes "empty sci" is reported instead.  This can happen
-#   either for lid open or close events.  Also, in older XO-1
-#   kernels (including the kernel that shipped with build 767) an
-#   rtc wakeup will report "empty sci" instead of "rtc alarm". 
-#   powerd doesn't support those kernels very well, since "empty
-#   sci" can mean either "lid" or "rtc".
+#   reports the cause.
 #
 # - User activity/idleness:
 #   powerd expects user activity and user idle events to be delivered via
-#   the olpc-kbdshim daemon, when invoked with "-A /var/run/powerevents".
-#   The possible events are:
+#   the olpc-kbdshim daemon. The possible kbdshim events are:
 #       useractivity
 #       useridle1
 #       useridle2
@@ -274,8 +259,7 @@
 #   These events may be used to dim the screen, blank the screen, and/or
 #   put the CPU to sleep, in any order.
 #
-# - Other system activity: cpu load (implemented), network load
-#       (unimplemented), etc.
+# - Other system activity: cpu load, network load, etc.
 #
 #
 ######
@@ -324,7 +308,7 @@
 #   (This won't happen, of course, unless the DPMS "standby" time
 #   is shorter than powerd's "sleep" time.)  The effect of DPMS
 #   doing this will result in confusion, since when DPMS blanks the
-#   screen, powerd can't tell that it's been done.  I.e., a laptop
+#   screen, powerd can't tell that it's happened.  I.e., a laptop
 #   with a screen blanked by DPMS may behave differently than one
 #   blanked by powerd.  DPMS should be disabled, either in
 #   xorg.conf, or with "xset -dpms".
@@ -341,10 +325,10 @@
 #   shell in busybox works fine.) If run with a shell that doesn't
 #   support "-t", the only failure will be the possibility of lost
 #   wakeups:  hitting a key just as the system wakes just to dim
-#   the screen may not prevent the subsequent sleep.  Another
-#   exception is the (optional) inclusion of olpc-pwr-log.sh, which
-#   is heavily dependent on non-POSIX features.
+#   the screen may not prevent the subsequent sleep.
 #
+#   Another exception is the (optional) inclusion of olpc-pwr-log.sh,
+#   which is heavily dependent on non-POSIX features.
 #
 #
 ######
@@ -436,6 +420,14 @@ then
     LID_STATE=/proc/acpi/button/lid/LID/state 
 else
     LID_STATE=;
+fi
+
+if [ -e /proc/acpi/olpc-switch/ebook/EBK/state ]
+then
+    EBOOK_STATE=/proc/acpi/olpc-switch/ebook/EBK/state 
+                /proc/acpi/olpc-switch/ebook/EBK/state
+else
+    EBOOK_STATE=;
 fi
 
 DCON_FREEZE=/sys/devices/platform/dcon/freeze
@@ -657,10 +649,10 @@ cpu_or_network_busy()
 # unused for now, because too many sound apps leave the
 # device open:  the tamtams, record (after playing), browse
 # and firefox (after playing)
-audio_busy()
-{
-    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && : audio busy
-}
+#audio_busy()
+#{
+#    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && : audio busy
+#}
 
 camera_busy()
 {
@@ -879,9 +871,9 @@ set_wakeupevents()
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
     all_sci)    # we want to unmask all SCI events at the EC when
-                # we awaken after having masked them, but we don't
+                # we waken after having masked them, but we don't
                 # need to massage the acpi settings, etc.  i.e.,
-                # this is used when we awaken, not when we go to sleep.
+                # this is used when we awake, not when we go to sleep.
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
     none)       set_acpi_wakeupevents EBK disable
@@ -994,9 +986,9 @@ snooze()
             set_wakeupevents none
             # note:  it's tempting to allow AC wakeups here, but in
             # practice a) there's no advantage -- we won't do anything
-            # differently if we wake and go back to sleep, and b) it's
-            # tricky, when awoken for one reason, for which we might
-            # simply sleep again (i.e. AC), to know that we shouldn't
+            # differently if we wake and then go back to sleep, and b) it's
+            # tricky, when woken for one reason, for which we might
+            # simply sleep again (i.e., AC), to know that we shouldn't
             # also have awoken for another reason (i.e., LID) without
             # draining the event queue.  far simpler to not take AC
             # and LID wakeups at the same time.
@@ -1193,7 +1185,7 @@ snooze()
             ;;
 
         "lid"|"empty sci")
-            # assume "empty sci" comes from lid (kernel bug).
+            # assume "empty sci" comes from lid (kernel bug on XO-1).
             # in older kernels an rtc wakeup will report "empty
             # sci" as well.  powerd doesn't support those kernels
             # very well.
@@ -1346,13 +1338,35 @@ then
     {
         read_lidstate lidstate
         case $lidstate in
-        *closed)     # check against "state:   closed"
-            lid_closed
-            ;;
+        *closed) lid_closed ;;     # check against "state:   closed"
         esac
     }
 else
     lid_check()
+    {
+        :
+    }
+fi
+
+read_ebookstate()
+{
+    local x
+    read x < $EBOOK_STATE
+    eval $1=\"$x\"
+}
+
+if [ "$EBOOK_STATE" ]
+then
+    ebook_check()
+    {
+        read_ebookstate ebookstate
+        case $ebookstate in
+        *closed) am_ebook=true ;;     # check against "state:   closed"
+	*)       am_ebook=;    ;;
+        esac
+    }
+else
+    ebook_check()
     {
         :
     }
@@ -1727,7 +1741,7 @@ event_loop()
         if [ "$tstamp" -a "$tstamp" != '-' ] && [ "$tstamp" -lt "$eventcutoff" ]
         then
             # it's possible for olpc-switchd to generate multiple
-            # hardware-related events (e.g. lidopen/lidclose/lidopen)
+            # hardware-related events (e.g., lidopen/lidclose/lidopen)
             # before we go to sleep due the first one.  toss any
             # that are stale.
             continue
@@ -2035,6 +2049,7 @@ sched_unfreezetimer
 trap "exit_actions" 0
 
 power_check
+ebook_check
 
 reevaluate all
 
@@ -2044,5 +2059,6 @@ chmod a+w $BRIGHTNESS $MONO_MODE
 set_acpi_wakeupevents LID enable
 set_acpi_wakeupevents EC enable
 set_wakeupevents all_sci
+
 
 event_loop
