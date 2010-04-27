@@ -1022,8 +1022,7 @@ snooze()
                 set_wake_on_wlan no
             fi
 
-            test "$tracing" && sleep 1
-
+            reset_idlecounters
             event_fifo_lookahead hard && break
 
             sleep_started=$(seconds)
@@ -1049,8 +1048,7 @@ snooze()
                 fi
             fi
 
-            test "$tracing" && sleep 1
-
+            reset_idlecounters
             event_fifo_lookahead soft && break
 
             sleep_started=$(seconds)
