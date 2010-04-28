@@ -725,8 +725,8 @@ create_inhibit_dir()
 laptop_busy()
 {
     timer=$1
-    cpu_or_network_busy || \
-        inhibit_files_present || \
+    inhibit_files_present || \
+        cpu_or_network_busy || \
             filetimes_busy $timer || \
                 camera_busy && \
                         return 0
@@ -1084,13 +1084,18 @@ snooze()
         power_check
 
         read_wakeupsource wakeupsource
+
+        # compress out spaces
+        set -- $wakeupsource
+        wakeupsource=$1${2:-}${3:-}
+
         : @ got wakeup $wakeupsource @ $lastwakeup, \
                 slept $(( lastwakeup - sleep_started ))
 
-        pwrlog_take_reading resume
+        pwrlog_take_reading resume-$wakeupsource
 
         case $wakeupsource in
-        "power button")
+        "powerbutton")
             : @ power button during $until
             case $until in
             until_shutdown)
@@ -1107,7 +1112,7 @@ snooze()
             break
             ;;
 
-        "wlan packet")
+        "wlanpacket")
             if yes_or_true "$config_WAKE_ON_WLAN"
             then
                 selfinject fake_useractive $lastwakeup "$wakeupsource"
@@ -1115,8 +1120,8 @@ snooze()
             fi
             ;;
 
-        "rtc alarm")
-            : @ rtc alarm during $until
+        "rtcalarm")
+            : @ rtcalarm during $until
             case $until in
             until_dim)
                 # we don't get woken on lid close, so check here.
@@ -1156,8 +1161,8 @@ snooze()
             esac
             ;;
 
-        "ac power")
-            : @ ac power during $until
+        "acpower")
+            : @ acpower during $until
             case $until in
             until_shutdown)
                 # we don't wake on AC, so this shouldn't happen.  if it did: 
@@ -1182,7 +1187,7 @@ snooze()
             esac
             ;;
 
-        "lid"|"empty sci")
+        "lid"|"emptysci")
             # assume "empty sci" comes from lid (kernel bug on XO-1).
             # in older kernels an rtc wakeup will report "empty
             # sci" as well.  powerd doesn't support those kernels
@@ -1196,7 +1201,7 @@ snooze()
         battery*)  # all we do is check battery level, and sleep again
             ;;
 
-        *)  # "key press"|"ebook"|"unknown")
+        *)  # "keypress"|"ebook"|"unknown")
             selfinject fake_useractive $lastwakeup "$wakeupsource"
             break
             ;;
@@ -1360,7 +1365,7 @@ then
         read_ebookstate ebookstate
         case $ebookstate in
         *closed) am_ebook=true ;;     # check against "state:   closed"
-	*)       am_ebook=;    ;;
+        *)       am_ebook=;    ;;
         esac
     }
 else
@@ -1824,8 +1829,8 @@ event_loop()
         fake_useractive)
             test "$tracing" && : $(seconds)
             gotactivity
-            case "$arg2-$arg3" in
-            wlan-packet|unknown-|ec-timer)
+            case "$arg2" in
+            wlanpacket|unknown|ectimer)
                 ;;  # don't brighten for wlan or other unknowns
             *)
                 backlight restore
