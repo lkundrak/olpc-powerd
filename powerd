@@ -920,7 +920,7 @@ event_fifo_lookahead()
         # later, break out.  otherwise discard it.
         : @ s_event-type is $s_event-$type
         case $s_event-$type in
-        powerbutton-hard|lidopen-hard|lid*-soft|\
+        powerbutton-*|lidopen-hard|lid*-soft|\
          ebook*-soft|ac-*-soft|useractive-soft)
             if [ ! "$s_tstamp" ] || \
                 [ "$s_tstamp" -ge "$eventcutoff" ]
@@ -1671,6 +1671,10 @@ sleep_action()
         return
     fi
 
+    # kick off a sync.  it will be less disruptive to the
+    # user now than if it happens during the actual suspend.
+    sync &
+
     # we've allowed an extra $BUSYCHECK seconds for this action.  use it here.
     if laptop_busy $t1
     then
@@ -1755,6 +1759,10 @@ event_loop()
         case $event in
 
         powerbutton|fake_powerbutton)
+            # sync, in case the user keeps pressing.  hope it's finished
+            # in 4 seconds.
+            sync &
+
             if backlight is_off
             then
                 # if the screen is off, the power button should simply
