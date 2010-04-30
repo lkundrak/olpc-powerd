@@ -2,7 +2,7 @@
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
 PACKAGE=olpc-powerd
-VERSION=19
+VERSION=20
 
 
 # don't edit .spec -- edit .spec.tmpl
