@@ -604,7 +604,7 @@ cpu_or_network_busy()
     # take initial network stats
     if  [ "$monitor_network_activity" ]
     then
-        netactivity=$(iptables --list netactivity --verbose --numeric)
+        netactivity=$(netactivity_snapshot)
     fi
 
     # wait a while ($BUSYCHECK, or 5 seconds, currently), and
@@ -634,7 +634,7 @@ cpu_or_network_busy()
     if [ "$monitor_network_activity" ]
     then
         # second network stats -- any network activity?
-        newnetactivity=$(iptables --list netactivity --verbose --numeric)
+        newnetactivity=$(netactivity_snapshot)
         if [ "$newnetactivity" != "$netactivity" ]
         then
             : @ network busy
@@ -1976,6 +1976,10 @@ configure_pwrlog()
     fi
 }
 
+netactivity_snapshot()
+{
+    iptables --list netactivity --verbose --exact --numeric
+}
 
 init_netactivity_tracking()
 {
