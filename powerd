@@ -725,9 +725,12 @@ create_inhibit_dir()
 laptop_busy()
 {
     timer=$1
+    # we'll check the files again later, just before sleeping
+    # checking now keeps from doing extra work, and checking
+    # later narrows the race condition.
     inhibit_files_present || \
-        cpu_or_network_busy || \
-            filetimes_busy $timer || \
+        filetimes_busy $timer || \
+            cpu_or_network_busy || \
                 camera_busy && \
                         return 0
     return 1
@@ -1021,17 +1024,10 @@ snooze()
             then
                 set_wake_on_wlan no
             fi
-
-            reset_idlecounters
-            event_fifo_lookahead hard && break
-
-            sleep_started=$(seconds)
-            rtcwake -m mem -a -s $rtctime >/dev/null
-
-            set_wakeupevents all_sci
             ;;
         *)
             # otherwise we want most anything to wake us.
+            sleep_type=soft
             set_wakeupevents all
 
             if [ "$wake_on_wlan" ]
@@ -1047,15 +1043,22 @@ snooze()
                     set_wake_on_wlan yes
                 fi
             fi
-
-            reset_idlecounters
-            event_fifo_lookahead soft && break
-
-            sleep_started=$(seconds)
-            rtcwake -m mem -a -s $rtctime >/dev/null
-            # no need for this here: set_wakeupevents all_sci
             ;;
         esac
+
+        reset_idlecounters
+        event_fifo_lookahead $sleep_type && break
+        if [ "$sleep_type" = soft ]
+        then
+            inhibit_files_present || filetimes_busy $t1 && break
+        fi
+
+        sleep_started=$(seconds)
+
+        # this is it.  here's where we suspend or sleep.
+        rtcwake -m mem -a -s $rtctime >/dev/null
+
+        set_wakeupevents all_sci
 
         # prepare for the default case of simply re-sleeping for
         # the remaining time.  may be overridden.  note that this
