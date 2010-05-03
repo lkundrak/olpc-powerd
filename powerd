@@ -425,7 +425,6 @@ fi
 if [ -e /proc/acpi/olpc-switch/ebook/EBK/state ]
 then
     EBOOK_STATE=/proc/acpi/olpc-switch/ebook/EBK/state 
-                /proc/acpi/olpc-switch/ebook/EBK/state
 else
     EBOOK_STATE=;
 fi
