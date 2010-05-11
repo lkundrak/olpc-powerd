@@ -211,6 +211,12 @@
 #   conditions are all checked from the "laptop_busy" function, so
 #   look there for details.
 #
+# 4) Idle-suspend will be unconditionally inhibited for 60 seconds
+#   after a wakeup from a "dark" (lid or power button) sleep.  In
+#   these sleeps, the wlan is powered down, and it sometimes takes
+#   some time to reassociate after wakeup.  We don't really want to
+#   sleep while the user is waiting for that association to happen.
+#
 #
 # Post-resume scripts can be put in /etc/powerd/postresume.d -- the
 # scripts will be run in lexicographic order.  The scripts are run
@@ -1047,6 +1053,7 @@ snooze()
 
         reset_idlecounters
         event_fifo_lookahead $sleep_type && break
+
         if [ "$sleep_type" = soft ]
         then
             inhibit_files_present || filetimes_busy $t1 && break
@@ -1105,6 +1112,7 @@ snooze()
                 # case.  we only want the button to give the splash menu
                 # when the screen was lit when it was pushed.
                 selfinject fake_useractive $lastwakeup "$wakeupsource"
+                holdoff_start=$lastwakeup
                 ;;
             *)
                 # waiting until_dim or until_blank, so screen is still on
@@ -1197,6 +1205,7 @@ snooze()
             am_ebook=;
             selfinject fake_useractive $lastwakeup "$wakeupsource"
             touchpad_recalibrate
+            holdoff_start=$lastwakeup
             break
             ;;
 
@@ -1668,6 +1677,15 @@ sleep_action()
     # if we're still booting, the dcon may still be frozen.
     # don't sleep until we're sort of all the way up.
     if dcon is_frozen
+    then
+        reset_idlecounters
+        return
+    fi
+
+    # extend the first wakeup after power or lid sleep to at
+    # least 60 seconds to work around slow wlan startup (#9854)
+    : ${holdoff_start:=}
+    if [ "$holdoff_start" -a $(($(seconds) - holdoff_start)) -lt 60 ]
     then
         reset_idlecounters
         return
