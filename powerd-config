@@ -90,7 +90,8 @@ edit_config()
     ro=;
     test "$readonly" && ro=2
 
-    source $cfg
+    # suck in the config
+    . $cfg
 
     bat_dim=${config_BATTERY_TIME_DIM:-120}
     bat_sleep=${config_BATTERY_TIME_SLEEP:-240}
