@@ -656,12 +656,12 @@ cpu_or_network_busy()
 # and firefox (after playing)
 #audio_busy()
 #{
-#    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && : audio busy
+#    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && : @ audio busy
 #}
 
 camera_busy()
 {
-    grep -q via-dma /proc/interrupts && : camera busy
+    grep -q via-dma /proc/interrupts && : @ camera busy
 }
 
 
@@ -727,18 +727,16 @@ create_inhibit_dir()
     chmod a+rw $CONFIGFLAGS
 }
 
+# checking inhibit files is much faster then checking laptop
+# "busyness", so it's separated out.
+inhibited_by_files()
+{
+    inhibit_files_present || filetimes_busy $t1
+}
+
 laptop_busy()
 {
-    timer=$1
-    # we'll check the files again later, just before sleeping
-    # checking now keeps from doing extra work, and checking
-    # later narrows the race condition.
-    inhibit_files_present || \
-        filetimes_busy $timer || \
-            cpu_or_network_busy || \
-                camera_busy && \
-                        return 0
-    return 1
+    cpu_or_network_busy || camera_busy
 }
 
 if [ -e $TPAD_RECAL ]
@@ -1056,7 +1054,7 @@ snooze()
 
         if [ "$sleep_type" = soft ]
         then
-            inhibit_files_present || filetimes_busy $t1 && break
+            inhibited_by_files && break
         fi
 
         sleep_started=$(seconds)
@@ -1691,12 +1689,24 @@ sleep_action()
         return
     fi
 
-    # kick off a sync.  it will be less disruptive to the
-    # user now than if it happens during the actual suspend.
-    sync &
+    # we'll check the files again later, just before sleeping.
+    # checking now keeps from doing extra work, and checking
+    # later narrows the race condition (laptop_busy() takes many
+    # seconds)
+    if inhibited_by_files
+    then
+        reset_idlecounters
+        return
+    fi
 
-    # we've allowed an extra $BUSYCHECK seconds for this action.  use it here.
-    if laptop_busy $t1
+    # kick off a sync if there isn't one running.  it will be
+    # less disruptive to the user now than if it happens during
+    # the actual suspend.
+    killall -q -0 sync || { sync & }
+
+    # we've allowed an extra $BUSYCHECK seconds for this action. 
+    # use it here.
+    if laptop_busy
     then
         reset_idlecounters  # restart the timers
         return
@@ -1779,9 +1789,9 @@ event_loop()
         case $event in
 
         powerbutton|fake_powerbutton)
-            # sync, in case the user keeps pressing.  hope it's finished
-            # in 4 seconds.
-            sync &
+            # sync, in case the user keeps holding the button.
+            # hope it's finished in 4 seconds.
+            killall -q -0 sync || { sync & }
 
             if backlight is_off
             then
