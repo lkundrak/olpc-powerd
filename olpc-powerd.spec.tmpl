@@ -111,6 +111,12 @@ fi
 exit 0
 
 %changelog
+* Tue May 18 2010 Paul Fox <pgf@laptop.org>
+- 22-1
+- delay initial idle-suspend until at least 60 seconds after a resume
+  from lid- or powerbutton-sleep, to let wifi reassociate.
+- don't keep respawning olpc-switchd during shutdown.
+
 * Mon May  3 2010 Paul Fox <pgf@laptop.org>
 - 21-1
 - close hole where creation of inhibit file won't always inhibit suspend.
