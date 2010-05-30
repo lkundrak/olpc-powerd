@@ -206,10 +206,17 @@
 #
 # 3) Finally, powerd will try and keep the laptop awake based on
 #   various system conditions:  CPU utilizations, network activity, VT
-#   console usage, camera and audio usage.  Network and CPU activity
-#   are monitored for 5 seconds before sleep should occur.  These
-#   conditions are all checked from the "laptop_busy" function, so
-#   look there for details.
+#   console usage, camera and audio usage, and usb device presence. 
+#   Network and CPU activity are monitored for 5 seconds before
+#   sleep should occur.  These conditions are all checked from the
+#   "laptop_busy" function, so look there for details.
+#
+#   Regarding USB device presence:  if the file /etc/powerd/flags/usb-inhibits
+#   is present, it will be consulted for strings matching USB
+#   device id (as hex vend:prod format) or USB device class (as
+#   either two byte hex or kernel-reported string.  (i.e., "03" or
+#   "hid" will both work to match all HID devices, while
+#   "0603:00f2" might match a specific keyboard.
 #
 # 4) Idle-suspend will be unconditionally inhibited for 60 seconds
 #   after a wakeup from a "dark" (lid or power button) sleep.  In
@@ -734,9 +741,24 @@ inhibited_by_files()
     inhibit_files_present || filetimes_busy $t1
 }
 
+usb_inhibit()
+{
+
+    test -e $CONFIGFLAGS/usb-inhibits || return 1
+
+    # find all USB vendor:productid, and class values, and cross-reference
+    # against list which should cause inhibit.
+    gotusb=$(sed -n -e 's/^.*Cls=\([[:xdigit:]]\{2\}\)(\([^ )]\+\).*/\1 \2/p' \
+	-e 's/^.*Vendor=\([[:xdigit:]]\{4\}\).*ProdID=\([[:xdigit:]]\{4\}\).*/\1:\2/p' \
+	    /proc/bus/usb/devices |
+	fgrep -if $CONFIGFLAGS/usb-inhibits )
+    test "$gotusb" && : @ got usb $gotusb
+}
+
+
 laptop_busy()
 {
-    cpu_or_network_busy || camera_busy
+    usb_inhibit || cpu_or_network_busy || camera_busy
 }
 
 if [ -e $TPAD_RECAL ]
