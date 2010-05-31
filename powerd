@@ -211,12 +211,13 @@
 #   sleep should occur.  These conditions are all checked from the
 #   "laptop_busy" function, so look there for details.
 #
-#   Regarding USB device presence:  if the file /etc/powerd/flags/usb-inhibits
-#   is present, it will be consulted for strings matching USB
-#   device id (as hex vend:prod format) or USB device class (as
-#   either two byte hex or kernel-reported string.  (i.e., "03" or
-#   "hid" will both work to match all HID devices, while
-#   "0603:00f2" might match a specific keyboard.
+#   For USB device presence, if the file /etc/powerd/flags/usb-inhibits
+#   is present, it will be consulted for matches against USB device
+#   id (as hex vend:prod format), just the vendor (as 4 hex
+#   characters) or USB device class (as either two byte hex or
+#   kernel-reported string.  (i.e., "03" or "hid" will both work to
+#   match all HID devices, while "0603:00f2" might match a specific
+#   keyboard, and "0603" will match all devices by that vendor.
 #
 # 4) Idle-suspend will be unconditionally inhibited for 60 seconds
 #   after a wakeup from a "dark" (lid or power button) sleep.  In
@@ -744,14 +745,28 @@ inhibited_by_files()
 usb_inhibit()
 {
 
-    test -e $CONFIGFLAGS/usb-inhibits || return 1
+    usbpats=/var/run/powerd-usbpatterns 
+    usbconf=$CONFIGFLAGS/usb-inhibits
 
-    # find all USB vendor:productid, and class values, and cross-reference
-    # against list which should cause inhibit.
-    gotusb=$(sed -n -e 's/^.*Cls=\([[:xdigit:]]\{2\}\)(\([^ )]\+\).*/\1 \2/p' \
-	-e 's/^.*Vendor=\([[:xdigit:]]\{4\}\).*ProdID=\([[:xdigit:]]\{4\}\).*/\1:\2/p' \
+    test -e $usbconf || return 1
+
+    # convert user "strings" to "^strings$", only when user config changes.
+    if [ ! -e $usbpats -o $usbconf -nt $usbpats ]
+    then
+	sed -e 's/^/\^/' -e 's/$/\$/' $usbconf > $usbpats
+    fi
+
+    # pull out all USB class, vendor, and vendor:id values, and
+    # make them available for comparison, one per line, against
+    # the user-supplied strings.
+    gotusb=$(sed -n -e 's/^.*Cls=\([[:xdigit:]]\{2\}\)(\([^ )]\+\).*/\1\
+\2/p' \
+	-e 's/^.*Vendor=\([[:xdigit:]]\{4\}\).*ProdID=\([[:xdigit:]]\{4\}\).*/\1:\2\
+\1/p' \
 	    /proc/bus/usb/devices |
-	fgrep -if $CONFIGFLAGS/usb-inhibits )
+	grep -if $usbpats )
+
+    # implicit return value
     test "$gotusb" && : @ got usb $gotusb
 }
 
