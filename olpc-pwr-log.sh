@@ -173,11 +173,17 @@ pwrlog_take_reading()
         esac
     fi
 
-    newdesk="$(< /home/olpc/.olpc-active-desktop)" 2>/dev/null
-    if [ "${newdesk:=sugar}" != "${pwr_DESKTOP:=sugar}" ]
+
+    if [ -f /home/olpc/.olpc-active-desktop ]
     then
-	newfile=true
-	pwr_DESKTOP=$newdesk
+        newdesk="$(< /home/olpc/.olpc-active-desktop)"
+        if [ "${newdesk:=sugar}" != "${pwr_DESKTOP:=sugar}" ]
+        then
+            newfile=true
+            pwr_DESKTOP=$newdesk
+        fi
+    else
+        pwr_DESKTOP=sugar
     fi
 
     # finally, if we have already have a logname, and it doesn't
