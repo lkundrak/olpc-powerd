@@ -53,6 +53,7 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd/flags
 %{__install} -p -m 644 powerd.conf.dist $RPM_BUILD_ROOT%{_sysconfdir}/powerd/powerd.conf
 %{__install} -p -m 644 version $RPM_BUILD_ROOT%{_sysconfdir}/powerd/version
 %{__install} -p -m 644 olpc-pwr-log.sh $RPM_BUILD_ROOT%{_sysconfdir}/powerd/olpc-pwr-log.sh 
+%{__install} -p -m 644 usb-inhibits $RPM_BUILD_ROOT%{_sysconfdir}/powerd/flags/usb-inhibits
 
 
 %clean
@@ -73,6 +74,7 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) %{_sysconfdir}/powerd/pleaseconfirm.pgm
 %config(noreplace) %{_sysconfdir}/powerd/shuttingdown.pgm
 %config(noreplace) %{_sysconfdir}/powerd/powerd.conf
+%config(noreplace) %{_sysconfdir}/powerd/flags/usb-inhibits
 %{_sysconfdir}/powerd/version
 
 %post
@@ -111,6 +113,11 @@ fi
 exit 0
 
 %changelog
+* Wed Jun  9 2010 Paul Fox <pgf@laptop.org>
+- add ability to inhibit suspend based on USB device id or class
+- inhibit suspend if any USB HID devices are plugged in.
+- fix multiply-spawned sync issue
+
 * Tue May 18 2010 Paul Fox <pgf@laptop.org>
 - 22-1
 - delay initial idle-suspend until at least 60 seconds after a resume
