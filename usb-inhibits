@@ -1,0 +1,4 @@
+# inhibit suspend when using USB input devices -- USB devices
+# can't wake the laptop.  you can also list just specific devices
+# here, instead, if you wish.  use "vendor:id", both in hex, without "0x".
+hid
