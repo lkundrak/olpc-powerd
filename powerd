@@ -745,16 +745,9 @@ inhibited_by_files()
 usb_inhibit()
 {
 
-    usbpats=/var/run/powerd-usbpatterns 
     usbconf=$CONFIGFLAGS/usb-inhibits
 
     test -e $usbconf || return 1
-
-    # convert user "strings" to "^strings$", only when user config changes.
-    if [ ! -e $usbpats -o $usbconf -nt $usbpats ]
-    then
-	sed -e 's/^/\^/' -e 's/$/\$/' $usbconf > $usbpats
-    fi
 
     # pull out all USB class, vendor, and vendor:id values, and
     # make them available for comparison, one per line, against
@@ -764,7 +757,7 @@ usb_inhibit()
 	-e 's/^.*Vendor=\([[:xdigit:]]\{4\}\).*ProdID=\([[:xdigit:]]\{4\}\).*/\1:\2\
 \1/p' \
 	    /proc/bus/usb/devices |
-	grep -if $usbpats )
+	grep -ixf $usbconf )
 
     # implicit return value
     test "$gotusb" && : @ got usb $gotusb
