@@ -796,6 +796,8 @@ read_wlan_power()
 set_wlan_power()
 {
     # only on XO-1.  (no echo, but that's okay with the callers)
+    # (on XO-1.5, wlan power is controlled automatically in the driver --
+    # power is turned off if no wake-on-wlan options are set.)
     test "$XO" != 1 && return
 
     # very important not to do extra writes to wlan-enabled -- the
@@ -817,10 +819,10 @@ set_wake_on_wlan()
     # good news is that this means we never have to clear
     # wake-on-lan settings.
 
-    #ethtool -s eth0 wol ua   # we don't support wake-on-arp (yet?)
-    case $1 in
-    yes) ethtool -s eth0 wol u ;;
-    *)   ethtool -s eth0 wol d ;;
+    case $XO-$1 in
+    1.5-yes) ethtool -s eth0 wol u ;; # no wake-on-arp on 1.5 (yet?)
+    1-yes) ethtool -s eth0 wol ua ;;
+    *-no)  ethtool -s eth0 wol d ;;
     esac
 }
 
@@ -1047,15 +1049,18 @@ snooze()
             #    nm-tool | grep msh0 -A4 | grep Active | awk '{print $2}'\"
             # to determine whether mesh is active before turning off wireless.
             # i guess we could do the same.
-            if [ ! "$prev_wlan_power" ] && \
+            if [ "$XO" = 1 && ! "$prev_wlan_power" ] && \
                  ! yes_or_true "$config_MESH_DURING_SUSPEND"
             then
                 prev_wlan_power=$(set_wlan_power 0)
-            fi
-
-            if [ "$wake_on_wlan" ]
-            then
-                set_wake_on_wlan no
+	    else
+		# the next test looks wrong, but it's not:  we only
+		# need to disable wake-on-wlan if it might have
+		# been enabled in the first place.
+		if [ "$wake_on_wlan" ]
+		then
+		    set_wake_on_wlan no
+		fi
             fi
             ;;
         *)
@@ -1066,7 +1071,7 @@ snooze()
             if [ "$wake_on_wlan" ]
             then
                 # wake on wlan if we're only waiting for dim or
-                # blank.  else we're blank, so w-o-l if we've
+                # blank.  else we're already blank, so w-o-l if we've
                 # been asked to and we're currently associated with
                 # something.
                 if [ "$until" != until_shutdown ] || \
@@ -1469,12 +1474,12 @@ read_config()
         log configured to never shutdown while plugged in
     fi
 
-    wake_on_wlan=;
-    # no wake on wlan on XO-1
-    if [ "$XO" = 1.5 ] && yes_or_true "$config_WAKE_ON_WLAN"
+    if yes_or_true "$config_WAKE_ON_WLAN"
     then
         wake_on_wlan=true
         log configured to wake on wireless activity
+    else
+	wake_on_wlan=;
     fi
 
     if yes_or_true "$config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP"
