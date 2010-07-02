@@ -25,7 +25,7 @@ The powerd daemon can function as an easily customizable replacement for ohmd,
 which is independent of X, dbus, and hald.  This package provides the powerd
 and olpc-switchd daemons, and related utilities.
 
-%subpackage dbus
+%package dbus
 Summary: D-Bus interface to powerd
 Group: System Environment/Base
 Requires: olpc-powerd, dbus
@@ -136,6 +136,9 @@ fi
 exit 0
 
 %changelog
+* Fri Jul  2 2010 Daniel Drake <dsd@laptop.org>
+- add dbus interface
+
 * Wed Jun  9 2010 Paul Fox <pgf@laptop.org>
 - add ability to inhibit suspend based on USB device id or class
 - inhibit suspend if any USB HID devices are plugged in.
