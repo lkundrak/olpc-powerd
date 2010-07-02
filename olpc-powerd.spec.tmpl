@@ -25,6 +25,16 @@ The powerd daemon can function as an easily customizable replacement for ohmd,
 which is independent of X, dbus, and hald.  This package provides the powerd
 and olpc-switchd daemons, and related utilities.
 
+%subpackage dbus
+Summary: D-Bus interface to powerd
+Group: System Environment/Base
+Requires: olpc-powerd, dbus
+BuildRequires: dbus-glib-devel
+
+%description dbus
+Provides a dbus-activated daemon to provide access to powerd functionality
+over the D-Bus system bus.
+
 %prep
 %setup -q
 
@@ -36,6 +46,9 @@ make
 rm -rf $RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT/%{_sbindir}
 mkdir -p $RPM_BUILD_ROOT/%{_bindir}
+mkdir -p $RPM_BUILD_ROOT/%{_libexecdir}
+mkdir -p $RPM_BUILD_ROOT/%{_datadir}/dbus-1/system-services
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/dbus-1/system.d
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/event.d
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd/postresume.d
@@ -54,6 +67,10 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd/flags
 %{__install} -p -m 644 version $RPM_BUILD_ROOT%{_sysconfdir}/powerd/version
 %{__install} -p -m 644 olpc-pwr-log.sh $RPM_BUILD_ROOT%{_sysconfdir}/powerd/olpc-pwr-log.sh 
 %{__install} -p -m 644 usb-inhibits $RPM_BUILD_ROOT%{_sysconfdir}/powerd/flags/usb-inhibits
+
+%{__install} -p -m 755 powerd-dbus/powerd-dbus $RPM_BUILD_ROOT%{_libexecdir}/powerd-dbus
+%{__install} -p -m 644 powerd-dbus/powerd.conf $RPM_BUILD_ROOT%{_sysconfdir}/dbus-1/system.d/powerd.conf
+%{__install} -p -m 644 powerd-dbus/org.freedesktop.ohm.service $RPM_BUILD_ROOT%{_datadir}/dbus-1/system-services/org.freedesktop.ohm.service
 
 
 %clean
@@ -76,6 +93,12 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) %{_sysconfdir}/powerd/powerd.conf
 %config(noreplace) %{_sysconfdir}/powerd/flags/usb-inhibits
 %{_sysconfdir}/powerd/version
+
+%files dbus
+%defattr(-,root,root,-)
+%{_libexecdir}/powerd-dbus
+%config(noreplace) %{_sysconfdir}/dbus-1/system.d/powerd.conf
+%{_datadir}/dbus-1/system-services/org.freedesktop.ohm.service
 
 %post
 # Only on install

@@ -35,11 +35,15 @@ OPT_FLAGS ?= -O2 -g
 
 PROGS = olpc-switchd pnmto565fb
 
-CFLAGS = -Wall $(OPT_FLAGS) -DVERSION=$(VERSION)
+export CFLAGS = -Wall $(OPT_FLAGS) -DVERSION=$(VERSION)
 
 #####
 
-all: version $(PROGS)
+all: version $(PROGS) powerd-dbus
+
+powerd-dbus:
+	$(MAKE) -C $@
+.PHONY: powerd-dbus
 
 olpc-switchd: olpc-switchd.c
 	$(CC) $(CFLAGS) -fwhole-program $^ -o $@
@@ -111,5 +115,6 @@ clean:
 	rm -f *.o $(PROGS)
 	-$(RM) $(SRPM) $(TARBALL)
 	-$(RM) -rf $(MOCKDIR)
+	make -C powerd-dbus clean
 
 .PHONY: tarball srpm mock ALWAYS
