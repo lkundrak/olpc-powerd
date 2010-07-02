@@ -31,9 +31,11 @@
 #
 # config_UNFREEZE_SECONDS
 #  How long after starting will powerd wait before gratuitously
-#  unfreezing the DCON, to activate the display.  This allows most
-#  of the intermediate stages of boot screens to be hidden until
-#  the window manager is ready.
+#  unfreezing the DCON, to activate the display.  Note that under normal
+#  circumstances, the display will be unfrozen automatically at the correct
+#  time during desktop environment startup, and if the desktop fails to launch,
+#  the event.d script will unfreeze the DCON. This can be seen as an emergency
+#  fallback for when all else fails.
 #
 # config_MESH_DURING_SUSPEND  (only on XO-1)
 #  This controls whether the wireless remains powered while the
@@ -97,5 +99,5 @@ config_MAX_SLEEP_BEFORE_SHUTDOWN="14400"
 config_ALLOW_SHUTDOWN_WHEN_PLUGGED="no"
 config_SLEEP_WHEN_LID_CLOSED="yes"
 config_CONFIRM_SECONDS="7"
-config_UNFREEZE_SECONDS="12"
+config_UNFREEZE_SECONDS="30"
 config_PWRLOG_INTERVAL="300"

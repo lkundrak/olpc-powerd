@@ -1675,7 +1675,10 @@ sched_powertimer()
 
 sched_unfreezetimer()
 {
-    (sleep $config_UNFREEZE_SECONDS; selfinject unfreeze_dcon ) &
+    # unfreeze the dcon if nothing else unfroze it within a timeout
+    # this is an "emergency fallback" to make sure that the dcon
+    # unfreezes if the system crashes in unpredictable ways
+    (sleep $config_UNFREEZE_SECONDS; selfinject unfreeze_dcon from_timer ) &
 }
 
 invalidate_powertimer()
@@ -1683,6 +1686,11 @@ invalidate_powertimer()
     # bump the seq number so we won't match a scheduled timer
     # when it arrives.
     : $((timerseqno += 1))
+}
+
+invalidate_unfreezetimer()
+{
+    dcon_unfrozen=1
 }
 
 gotactivity()
@@ -1950,16 +1958,22 @@ event_loop()
             reevaluate all
             ;;
 
-        unfreeze_dcon)
-            # this is a bit of a hack.  on the XO, the bootanim
-            # script contrives to leave the dcon frozen at the end
-            # of the init sequence.  it remains frozen until sugar
-            # first becomes idle, at which point sugar sends a dbus
-            # message to ohmd, causing ohmd to unfreeze the dcon.
-            # since we don't do dbus, we unfreeze the dcon after 10
-            # seconds.
+        freeze_dcon)
             reset_idlecounters
-            dcon thaw
+            dcon freeze
+            ;;
+
+        unfreeze_dcon)
+            reset_idlecounters
+            invalidate_unfreezetimer
+            case "$arg2" in
+            from_timer)
+                [ "$dcon_unfrozen" = "0" ] && dcon thaw
+                ;;
+            *)
+                dcon thaw
+                ;;
+            esac
             ;;
 
         dark-suspend)
@@ -2103,6 +2117,7 @@ last_t_values=;
 timerseqno=1;
 powerseqno=0;
 eventcutoff=0;
+dcon_unfrozen=0;
 
 choose_xo_model
 
