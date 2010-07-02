@@ -41,6 +41,12 @@ CFLAGS = -Wall $(OPT_FLAGS) -DVERSION=$(VERSION)
 
 all: version $(PROGS)
 
+olpc-switchd: olpc-switchd.c
+	$(CC) $(CFLAGS) -fwhole-program $^ -o $@
+
+pnmto565fb: pnmto565fb.c
+	$(CC) $(CFLAGS) -fwhole-program $^ -o $@
+
 # testing targets
 tarball:  $(TARBALL)
 srpm: $(SRPM)

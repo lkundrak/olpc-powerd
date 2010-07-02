@@ -61,13 +61,13 @@ int dcon;
 
 char *devfb = "/dev/fb";
 
-static void vt_deinit(void);
+void vt_deinit(void);
 int consolefd = -1;
 int orig_vt = -1;
 
 sigjmp_buf nxt_jmpbuf;
 
-void
+__attribute__((noreturn)) void
 die(const char *fmt, ...)
 {
     va_list ap;
@@ -82,7 +82,7 @@ die(const char *fmt, ...)
     exit(1);
 }
 
-static void
+void
 warn(const char *fmt, ...)
 {
     va_list ap;
@@ -94,14 +94,14 @@ warn(const char *fmt, ...)
 }
 
 
-static void
+void
 sighandler(int signo)
 {
     signal(signo, SIG_IGN);
     die("Caught signal %d. Exiting\n", signo);
 }
 
-static void
+void
 signextimage(int signo)
 {
     longjmp(nxt_jmpbuf, 1);
@@ -134,7 +134,7 @@ void dcon_thaw(void)
     dcon_control(0);
 }
 
-static void chvt(int num)
+void chvt(int num)
 {
     if (ioctl(consolefd,VT_ACTIVATE,num)) {
         perror("VT_ACTIVATE");
@@ -142,7 +142,7 @@ static void chvt(int num)
     }
 }
 
-static int fgconsole(void)
+int fgconsole(void)
 {
     struct vt_stat vtstat;
     if (ioctl(consolefd, VT_GETSTATE, &vtstat)) {
@@ -166,7 +166,7 @@ void switch_to_vt(int num)
 }
 
 
-static void
+void
 vt_deinit(void)
 {
     struct vt_mode vterm;
@@ -254,7 +254,7 @@ usage(void)
     exit(1);
 }
 
-static inline unsigned short
+inline unsigned short
 reduce_24_to_rgb565(unsigned char *sp)
 {
     unsigned short p;
@@ -264,7 +264,7 @@ reduce_24_to_rgb565(unsigned char *sp)
     return p;
 }
 
-static inline unsigned short
+inline unsigned short
 reduce_8grey_to_rgb565(unsigned char *sp)
 {
     unsigned short p;
@@ -274,7 +274,7 @@ reduce_8grey_to_rgb565(unsigned char *sp)
     return p;
 }
 
-static inline unsigned long
+inline unsigned long
 expand_24_to_argb32(unsigned char *sp)
 {
     unsigned long p;
@@ -285,7 +285,7 @@ expand_24_to_argb32(unsigned char *sp)
     return p;
 }
 
-static inline unsigned long
+inline unsigned long
 expand_8grey_to_argb32(unsigned char *sp)
 {
     unsigned long p;

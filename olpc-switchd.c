@@ -119,7 +119,7 @@ usage(void)
     exit(1);
 }
 
-static void
+void
 report(const char *fmt, ...)
 {
     va_list ap;
@@ -134,7 +134,7 @@ report(const char *fmt, ...)
     }
 }
 
-static void
+void
 dbg(int level, const char *fmt, ...)
 {
     va_list ap;
@@ -150,7 +150,7 @@ dbg(int level, const char *fmt, ...)
     fputc('\n', stderr);
 }
 
-void
+__attribute__((noreturn)) void
 die(const char *fmt, ...)
 {
     va_list ap;
@@ -558,13 +558,6 @@ void
 sighandler(int sig)
 {
     die("got signal %d", sig);
-}
-
-void
-sigpipehandler(int sig)
-{
-    close(fifo_fd);
-    fifo_fd = -1;
 }
 
 int
