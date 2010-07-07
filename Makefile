@@ -2,6 +2,7 @@
 # Licensed under the terms of the GNU GPL v2 or later; see COPYING for details.
 
 PACKAGE=olpc-powerd
+PACKAGEDBUS=olpc-powerd-dbus
 VERSION=24
 
 
@@ -27,6 +28,7 @@ MOCKDIR=./rpms
 CWD=$(shell pwd)
 
 PKGVER=$(PACKAGE)-$(VERSION)
+PKGVERDBUS=$(PACKAGEDBUS)-$(VERSION)
 
 # may be set externally to RPM_OPT_FLAGS
 OPT_FLAGS ?= -O2 -g
@@ -65,14 +67,19 @@ src_distribute: $(TARBALL) $(SRPM)
 #		crank:public_html/rpms/srpms/$(SPEC)-$(VERSION)-$(SRELEASE)
 distribute: src_distribute rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm
 	scp rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm \
+		rpms/$(PKGVERDBUS)-$(SRELEASE).fc11.i586.rpm \
 		crank:public_html/rpms
 
 privdist:
 	scp rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm \
+		rpms/$(PKGVERDBUS)-$(SRELEASE).fc11.i586.rpm \
 		crank:public_html/private_rpms
 	ssh crank ln -sf \
 		$(PKGVER)-$(SRELEASE).fc11.i586.rpm \
 		public_html/private_rpms/$(PKGVER)-$(RELEASE).latest.rpm
+	ssh crank ln -sf \
+		$(PKGVERDBUS)-$(SRELEASE).fc11.i586.rpm \
+		public_html/private_rpms/$(PKGVERDBUS)-$(RELEASE).latest.rpm
 
 # create the real spec (carefully!) so it refers to a) our tarball, and
 # b) our prerelease string.
