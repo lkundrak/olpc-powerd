@@ -819,10 +819,9 @@ set_wake_on_wlan()
     # good news is that this means we never have to clear
     # wake-on-lan settings.
 
-    case $XO-$1 in
-    1.5-yes) ethtool -s eth0 wol u ;; # no wake-on-arp on 1.5 (yet?)
-    1-yes) ethtool -s eth0 wol ua ;;
-    *-no)  ethtool -s eth0 wol d ;;
+    case $1 in
+    yes) ethtool -s eth0 wol u ;;
+    no)  ethtool -s eth0 wol d ;;
     esac
 }
 
