@@ -606,6 +606,14 @@ do_shutdown()
 #    return 1
 #}
 
+cafe_activity_snapshot()
+{
+    # print the current count of CAFE interrupts
+    sed -n \
+        '/ 11:.*cafe-ccic/s/ *11: *\([[:digit:]]\+\).*/\1/p' \
+            /proc/interrupts
+}
+
 
 cpu_or_network_busy()
 {
@@ -618,6 +626,13 @@ cpu_or_network_busy()
     if  [ "$monitor_network_activity" ]
     then
         netactivity=$(netactivity_snapshot)
+    fi
+
+    # check CAFE interrupts on XO-1.  this includes SD activity,
+    # but it will have to do.
+    if [ "$XO" = 1 ]
+    then
+        cafe_activity=$(cafe_activity_snapshot)
     fi
 
     # wait a while ($BUSYCHECK, or 5 seconds, currently), and
@@ -655,6 +670,17 @@ cpu_or_network_busy()
         fi
     fi
 
+    if [ "$XO" = 1 ]
+    then
+        new_cafe_activity=$(cafe_activity_snapshot)
+        # the camera generates about 25 ints/sec
+        if [ $(( (new_cafe_activity - cafe_activity) / BUSYCHECK > 20 )) = 1 ]
+        then
+            : @ cafe/camera busy
+            return 0
+        fi
+    fi
+
     return 1
 }
 
@@ -667,10 +693,19 @@ cpu_or_network_busy()
 #    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && : @ audio busy
 #}
 
-camera_busy()
-{
-    grep -q via-dma /proc/interrupts && : @ camera busy
-}
+if [ "$XO" = 1.5 ]
+then
+    camera_busy()
+    {
+        grep -q via-dma /proc/interrupts && : @ camera busy
+    }
+else
+    # XO-1 camera busyness checked via cafe interrupt activity, above
+    camera_busy()
+    {
+        false
+    }
+fi
 
 
 # if using both of the above, combine them into a single grep:
