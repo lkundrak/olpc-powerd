@@ -789,10 +789,10 @@ usb_inhibit()
     # the user-supplied strings.
     gotusb=$(sed -n -e 's/^.*Cls=\([[:xdigit:]]\{2\}\)(\([^ )]\+\).*/\1\
 \2/p' \
-	-e 's/^.*Vendor=\([[:xdigit:]]\{4\}\).*ProdID=\([[:xdigit:]]\{4\}\).*/\1:\2\
+        -e 's/^.*Vendor=\([[:xdigit:]]\{4\}\).*ProdID=\([[:xdigit:]]\{4\}\).*/\1:\2\
 \1/p' \
-	    /proc/bus/usb/devices |
-	grep -ixf $usbconf )
+            /proc/bus/usb/devices |
+        grep -ixf $usbconf )
 
     # implicit return value
     test "$gotusb" && : @ got usb $gotusb
@@ -1087,14 +1087,14 @@ snooze()
                  ! yes_or_true "$config_MESH_DURING_SUSPEND"
             then
                 prev_wlan_power=$(set_wlan_power 0)
-	    else
-		# the next test looks wrong, but it's not:  we only
-		# need to disable wake-on-wlan if it might have
-		# been enabled in the first place.
-		if [ "$wake_on_wlan" ]
-		then
-		    set_wake_on_wlan no
-		fi
+            else
+                # the next test looks wrong, but it's not:  we only
+                # need to disable wake-on-wlan if it might have
+                # been enabled in the first place.
+                if [ "$wake_on_wlan" ]
+                then
+                    set_wake_on_wlan no
+                fi
             fi
             ;;
         *)
@@ -1513,7 +1513,7 @@ read_config()
         wake_on_wlan=true
         log configured to wake on wireless activity
     else
-	wake_on_wlan=;
+        wake_on_wlan=;
     fi
 
     if yes_or_true "$config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP"
