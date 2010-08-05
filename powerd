@@ -445,20 +445,14 @@ fi
 
 DCON_FREEZE=/sys/devices/platform/dcon/freeze
 DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
-
-
-# experimental driver features -- not present in currently
-# distributed kernels.
 TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
 
 # command fifo for olpc-kbdshim
 USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
 
-
-# we signal ourselves early, so we have time to see if it's
-# really okay to sleep.  units are seconds. 
+# we notify ourselves of user idleness early, so we have time to
+# see if it's really okay to sleep.  units are seconds. 
 BUSYCHECK=5   
-
 
 set -u
 
@@ -526,17 +520,30 @@ fi
 
 if [ -e /dev/fb ]
 then
-    framebuffer=/dev/fb
+    FRAMEBUFFER=/dev/fb
 elif [ -e /dev/fb0 ]
 then
-    framebuffer=/dev/fb0
+    FRAMEBUFFER=/dev/fb0
 else
     log "no framebuffer?"
+    FRAMEBUFFER=;
 fi
+
+# pull the (first) wlan interface name from the output of iwconfig
+# if we find none, wlan may be rfkilled, in which case choose eth0
+WLANIFACE=$(iwconfig 2>/dev/null |
+    sed -n -e 's/^\(eth[0-9]\+\).*/\1/p' | sed 1q)
+: ${WLANIFACE:=eth0}
 
 
 splash()
 {
+    if [ ! "$FRAMEBUFFER" ]
+    then
+        splashpid=;
+        return
+    fi
+
     case $1 in
     confirm)
         args="$CONFIRMSPLASH $SHUTSPLASH"
@@ -549,7 +556,7 @@ splash()
         ;;
     esac
 
-    pnmto565fb -d -f $framebuffer -s 9999999 $args &
+    pnmto565fb -d -f $FRAMEBUFFER -s 9999999 $args &
     splashpid=$!
 }
 
@@ -855,8 +862,8 @@ set_wake_on_wlan()
     # wake-on-lan settings.
 
     case $1 in
-    yes) ethtool -s eth0 wol u ;;
-    no)  ethtool -s eth0 wol d ;;
+    yes) ethtool -s $WLANIFACE wol u ;;
+    no)  ethtool -s $WLANIFACE wol d ;;
     esac
 }
 
@@ -870,7 +877,7 @@ wlan_associated()
     # ad-hoc mode.
 
     unassociated=$(
-        iwconfig eth0 |
+        iwconfig $WLANIFACE |
         sed -n \
             -e '/Mode:Ad-Hoc/d' \
             -e '/radio off\|Tx-Power=off\|[ut][n-][aA]ssociated/p'
