@@ -18,6 +18,10 @@
 #  If this is disabled, the laptop will never automatically shut
 #  down when using external power.  (It may still sleep, however.)
 #
+# config_INITIAL_BRIGHT_LEVEL
+# This sets the the initial brightness of the display, at boot time.
+# The range is 0-15.  The backlight consumes 1 watt at full brightness.
+#
 # config_IDLE_DIM_LEVEL
 #  Brightness level when the screen is automatically dimmed.  Set
 #  this to 15 to prevent dimming.  Set this to 0 to allow the
@@ -90,6 +94,7 @@ config_EBOOK_TIME_BLANK="420"
 config_PLUGGED_TIME_DIM="180"
 config_PLUGGED_TIME_SLEEP="15"
 config_PLUGGED_TIME_BLANK="420"
+config_INITIAL_BRIGHT_LEVEL="12"
 config_IDLE_DIM_LEVEL="5"
 config_MESH_DURING_SUSPEND="no"
 config_WAKE_ON_WLAN="yes"

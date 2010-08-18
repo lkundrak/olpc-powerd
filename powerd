@@ -80,6 +80,11 @@
 # laptop from ever completely shutting down when it has external
 # power.  It may still shut down when using battery power.
 #
+# "config_INITIAL_BRIGHT_LEVEL" specifies the initial brightness
+# setting for the screen.  The range is 0-15.  The scale is
+# linear, and the full-on power consumption of the backlight is
+# 1W, so each level increases power consumption by about 67mW.
+#
 # "config_IDLE_DIM_LEVEL" specifies how far the screen will dim
 # when the dim timer fires.  The range is 0-15.  If set to 15, the
 # screen will never dim.
@@ -493,7 +498,7 @@ set_tracing()
 
 # uncomment for full tracing.  (or, use "powerd-control =tracing-on"
 # to enable at runtime.)
-# set_tracing on
+set_tracing on
 
 yes_or_true()
 {
@@ -1339,6 +1344,13 @@ brightness_ramp()
 backlight()
 {
     case $1 in
+    init)
+	read_brightness tmpbright
+	if [ $tmpbright -gt $config_INITIAL_BRIGHT_LEVEL ]
+	then
+	    brightness_ramp $tmpbright $config_INITIAL_BRIGHT_LEVEL
+	fi
+	;;
     restore)
         if [ "$dimmed" -a "$savebright" ]
         then
@@ -1475,6 +1487,7 @@ set_config_defaults()
     config_PLUGGED_TIME_BLANK=240
 
     config_IDLE_DIM_LEVEL=5
+    config_INITIAL_BRIGHT_LEVEL=15
 
     config_WAKE_ON_WLAN=yes
     config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP=no
@@ -2171,6 +2184,8 @@ fi
 create_inhibit_dir
 
 read_config
+
+backlight init
 
 init_netactivity_tracking
 
