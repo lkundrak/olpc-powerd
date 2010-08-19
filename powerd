@@ -498,7 +498,7 @@ set_tracing()
 
 # uncomment for full tracing.  (or, use "powerd-control =tracing-on"
 # to enable at runtime.)
-set_tracing on
+# set_tracing on
 
 yes_or_true()
 {
@@ -1131,6 +1131,9 @@ snooze()
         esac
 
         reset_idlecounters
+
+        # we did a sync $BUSYCHECK seconds ago, so this should be quick
+        killall -q -0 sync || sync
         event_fifo_lookahead $sleep_type && break
 
         if [ "$sleep_type" = soft ]
@@ -1139,6 +1142,15 @@ snooze()
         fi
 
         sleep_started=$(seconds)
+
+        # the kernel will do a sync, but if it's going to stall
+        # (SD writes can take a looong time) we want the stall to
+        # be at user-level, not in the kernel, to avoid a
+        # user-visible freeze.   we also want data to be flushed
+        # early, so that devices like USB sticks that may still be
+        # emptying buffers after the sync completes can do so before
+        # their power is yanked.
+        sync
 
         # this is it.  here's where we suspend or sleep.
         rtcwake -m mem -a -s $rtctime >/dev/null
@@ -1345,12 +1357,12 @@ backlight()
 {
     case $1 in
     init)
-	read_brightness tmpbright
-	if [ $tmpbright -gt $config_INITIAL_BRIGHT_LEVEL ]
-	then
-	    brightness_ramp $tmpbright $config_INITIAL_BRIGHT_LEVEL
-	fi
-	;;
+        read_brightness tmpbright
+        if [ $tmpbright -gt $config_INITIAL_BRIGHT_LEVEL ]
+        then
+            brightness_ramp $tmpbright $config_INITIAL_BRIGHT_LEVEL
+        fi
+        ;;
     restore)
         if [ "$dimmed" -a "$savebright" ]
         then
@@ -1663,7 +1675,7 @@ set_idletimes()
 
     # this is a pain.  first, we want the timers to be at least a
     # second apart.  in addition, if the timer will trigger a
-    # sleep, we want to have advance it by an extra $BUSYCHECK
+    # sleep, we want to advance it by an extra $BUSYCHECK
     # seconds, so we can do a cpu and network activity check
     # before actually sleeping.  so for that one, the gap needs
     # to be 6 (i.e., $BUSYCHECK + 1) seconds.
