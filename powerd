@@ -1005,7 +1005,8 @@ event_fifo_lookahead()
         : @ s_event-type is $s_event-$type
         case $s_event-$type in
         powerbutton-*|lidopen-hard|lid*-soft|\
-         ebook*-soft|ac-*-soft|useractive-soft)
+         ebook*-soft|ac-*-soft|useractive-soft|\
+         reconfig-*|trace-*)
             if [ ! "$s_tstamp" ] || \
                 [ "$s_tstamp" -ge "$eventcutoff" ]
             then
@@ -1077,25 +1078,16 @@ snooze()
             # draining the event queue.  far simpler to not take AC
             # and LID wakeups at the same time.
 
-            # regardless, take battery_critical events
-            set_wakeupevents battery_critical
+            # we want to wake up periodically to see if we still have
+            # enough juice when discharging.  we used to only enable
+            # this below a certain threshold, but that's too fallible.
+            set_wakeupevents battery
 
-            # obviously if we ignore AC wakeups, we won't do the following
-            # if we're subsequently unplugged.  hopefully the critical
-            # wakeup above will save the day.
-            if [ "$ac" != "online" ]
-            then
-                read_battery
-                if [ "$battery_capacity" -le 20 ]
-                then
-                    set_wakeupevents battery
-                fi
-            fi
             # ohmd uses this:
             #    nm-tool | grep msh0 -A4 | grep Active | awk '{print $2}'\"
             # to determine whether mesh is active before turning off wireless.
             # i guess we could do the same.
-            if [ "$XO" = 1 && ! "$prev_wlan_power" ] && \
+            if [ "$XO" = 1 -a ! "$prev_wlan_power" ] && \
                  ! yes_or_true "$config_MESH_DURING_SUSPEND"
             then
                 prev_wlan_power=$(set_wlan_power 0)
@@ -1864,6 +1856,12 @@ event_loop()
     while :
     do
 
+        # event reporting for AC insertion/removal seems to be
+        # unreliable, and this check is relatively cheap, so do
+        # it regularly.
+        power_check
+
+        # calculate/set new idle timeouts if necessary
         reevaluate
 
         # if we did lookahead on events in snooze(), use the result here
