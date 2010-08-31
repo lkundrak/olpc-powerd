@@ -467,6 +467,42 @@ log()
     echo : @ $(date +'%F %T') $@ >&2
 }
 
+read_hwinfo()
+{
+    read hwvendor < /sys/class/dmi/id/sys_vendor ||
+        hwvendor="n/a"
+    read hwname < /sys/class/dmi/id/product_name ||
+        hwname="n/a"
+    read hwversion < /sys/class/dmi/id/product_version ||
+        hwversion="n/a"
+}
+
+choose_xo_model()
+{
+    read_hwinfo
+
+    case $hwvendor-$hwname-$hwversion in
+    OLPC-XO-1|OLPC-XO-1.5)
+        XO=$hwversion
+        ;;
+    *)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
+        # also check for an olpc-only node in /sys
+        if [ -e /sys/power/wakeup_events/ebook_mode_change ]
+        then
+            XO=1
+        fi
+        ;;
+    esac
+
+    if [ ! "$XO" ]
+    then
+        log Unsupported hardware: vendor "$hwvendor", version "$hwversion"
+        exit 1
+    fi
+}
+        
+choose_xo_model
+
 powerd_version="version unknown"
 test -e $VERSIONFILE && . $VERSIONFILE
 
@@ -475,7 +511,7 @@ tracing=;
 exec 2>>$LOGFILE
 exec 1>&2   # capture stdout, too. (prevents console spew)
 
-log powerd $powerd_version startup at $(date)
+log powerd $powerd_version startup at $(date), on XO-$XO
 
 set_tracing()
 {
@@ -840,24 +876,25 @@ read_wlan_power()
     eval $1=\"$x\"
 }
 
-set_wlan_power()
-{
-    # only on XO-1.  (no echo, but that's okay with the callers)
-    # (on XO-1.5, wlan power is controlled automatically in the driver --
-    # power is turned off if no wake-on-wlan options are set.)
-    test "$XO" != 1 && return
-
-    # very important not to do extra writes to wlan-enabled -- the
-    # node is sort of misnamed.  writing a 0 puts the wlan into reset.
-    # writing a 1 puts it into reset, but immediately releases the
-    # reset.  so a reset is always involved, even if brief.
-    read_wlan_power w
-    if [ "$w" != "$1" ]
-    then
-        echo $1 > $WLAN_ENABLED
-    fi
-    echo $w
-}
+if [ "$XO" = 1 ]
+then
+    # only on XO-1 (on XO-1.5, wlan power is controlled
+    # automatically in the driver -- power is turned off if no
+    # wake-on-wlan options are set.)
+    set_wlan_power()
+    {
+        # very important not to do extra writes to wlan-enabled -- the
+        # node is sort of misnamed.  writing a 0 puts the wlan into reset.
+        # writing a 1 puts it into reset, but immediately releases the
+        # reset.  so a reset is always involved, even if brief.
+        read_wlan_power w
+        if [ "$w" != "$1" ]
+        then
+            echo $1 > $WLAN_ENABLED
+        fi
+        echo $w
+    }
+fi
 
 set_wake_on_wlan()
 {
@@ -2059,40 +2096,6 @@ event_loop()
     done <&6  # from the fifo
 }
 
-read_hwinfo()
-{
-    read hwvendor < /sys/class/dmi/id/sys_vendor ||
-        hwvendor="n/a"
-    read hwname < /sys/class/dmi/id/product_name ||
-        hwname="n/a"
-    read hwversion < /sys/class/dmi/id/product_version ||
-        hwversion="n/a"
-}
-
-choose_xo_model()
-{
-    read_hwinfo
-
-    case $hwvendor-$hwname-$hwversion in
-    OLPC-XO-1|OLPC-XO-1.5)
-        XO=$hwversion
-        ;;
-    *)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
-        # also check for an olpc-only node in /sys
-        if [ -e /sys/power/wakeup_events/ebook_mode_change ]
-        then
-            XO=1
-        fi
-        ;;
-    esac
-
-    if [ ! "$XO" ]
-    then
-        log Unsupported hardware: vendor "$hwvendor", version "$hwversion"
-        exit 1
-    fi
-}
-        
 configure_pwrlog()
 {
     if [ $config_PWRLOG_INTERVAL -gt 30 -a \
@@ -2183,7 +2186,6 @@ powerseqno=0;
 eventcutoff=0;
 dcon_thawed=;
 
-choose_xo_model
 
 log starting
 
