@@ -136,6 +136,15 @@ fi
 exit 0
 
 %changelog
+* Wed Sep  1 2010 Paul Fox <pgf@laptop.org>
+- 27-1
+- fix suspend-inhibit for the camera on XO-1.5 (broken in 26-1)
+- fix no-keypress-wakeup blank-screen suspends
+- make checks for external power more robust
+- be more insistent about sync-before-suspend
+- reduce default brightness to 12 (was 15, full bright)
+- try not to assume wlan is eth0
+
 * Fri Jul 30 2010 Paul Fox <pgf@laptop.org>
 - 26-1
 - inhibit suspend while XO-1 camera in use.
