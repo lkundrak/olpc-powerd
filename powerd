@@ -532,7 +532,7 @@ set_tracing()
     esac
 }
 
-# uncomment for full tracing.  (or, use "powerd-control =tracing-on"
+# uncomment for full tracing.  (or, use "powerd-control =trace-on"
 # to enable at runtime.)
 # set_tracing on
 
