@@ -1599,23 +1599,29 @@ read_config()
 
 }
 
-maybe_battery_shutdown()
+battery_shutdown()
 {
+    splash critical
+    sleep 1
+    do_shutdown "low battery"
+}
 
-    test "$ac" = "online" && return
-
+low_battery()
+{
     case $battery_capacity in
-    [987654321])
+    [23456789])  # in low single digits, check voltage
         read uvolts < $MICROVOLTS
         if [ $uvolts -le 5700000 ]  # EC's idea of critical voltage: 5.7V
         then
-            splash critical
-            sleep 1
-            do_shutdown "low battery"
+	    return 0
         fi
         ;;
+    0|1) # if capacity is really very low, just shutdown
+	return 0
+	;;
     esac
 
+    return 1
 }
 
 read_battery()
@@ -1643,7 +1649,7 @@ power_check()
     if ! plugged_in
     then
         read_battery
-        maybe_battery_shutdown
+        low_battery && battery_shutdown
     fi
 }
 
@@ -2054,7 +2060,7 @@ event_loop()
 
         battery)
             battery_capacity=$arg2
-            maybe_battery_shutdown
+            power_check
             ;;
 
         timer)
