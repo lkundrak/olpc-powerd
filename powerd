@@ -1655,18 +1655,16 @@ battery_shutdown()
 
 low_battery()
 {
-    case $battery_capacity in
-    [23456789])  # in low single digits, check voltage
+    if [ $battery_capacity -le 40 ]
+    then  # 40% or less, check battery voltage
+
+        # if capacity is really very low, just shutdown
+        test $battery_capacity -le 1 && return 0
+
         read uvolts < $MICROVOLTS
-        if [ $uvolts -le 5700000 ]  # EC's idea of critical voltage: 5.7V
-        then
-            return 0
-        fi
-        ;;
-    0|1) # if capacity is really very low, just shutdown
-        return 0
-        ;;
-    esac
+        # voltage less than critical (5.7V)
+        test $uvolts -le 5700000 && return 0
+    fi
 
     return 1
 }
@@ -2102,12 +2100,14 @@ event_loop()
             ;;
 
         ac-online|ac-offline)
-            ac=${event#ac-}
+            # no need -- assigned via power_check, above
+            # ac=${event#ac-}
             ;;
 
         battery)
-            battery_capacity=$arg2
-            power_check
+            # no need to do these here -- done for all events, above
+            # battery_capacity=$arg2
+            # power_check
             ;;
 
         timer)
@@ -2119,7 +2119,6 @@ event_loop()
 
         reconfig)
             read_config
-            power_check
             reevaluate all
             ;;
 
