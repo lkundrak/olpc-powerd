@@ -374,6 +374,26 @@
 # USA.
 #
 
+######
+# 
+# Logging/Tracing/Debug
+# 
+# powerd will always log at least minimal information to syslog,
+# as well as to /var/log/powerd.trace (controlled by $LOGFILE,
+# below).
+#
+# powerd can optionally do diagnostic tracing, and/or full
+# execution tracing.  Choose one of the lines below to get either
+# a trace of important events and wakeups, or a full "sh -x" style
+# execution trace.  to accomplish the same thing while powerd is
+# running, use:  "powerd-control =trace-on", "powerd-control
+# =trace-debug", or "powerd-control =trace-off" (disables both
+# types of output)
+
+# uncomment one:
+#tracing=1
+#debug=1
+
 XO=;
 CONFIGDIR=/etc/powerd
 
@@ -459,13 +479,66 @@ USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
 # see if it's really okay to sleep.  units are seconds. 
 BUSYCHECK=5   
 
+powerd_version="version unknown"
+test -e $VERSIONFILE && . $VERSIONFILE
+
 set -u
+
+# default to off
+: ${debug:=}
+: ${tracing:=}
+
+set_tracing()
+{
+    case $1 in
+    on)
+        tracing=1
+        trace tracing begun
+        ;;
+    debug)
+        set -x
+        debug=1
+        : @ debug begun, $powerd_version
+        ;;
+    off)
+        if [ "$tracing" ]
+        then
+            trace tracing stopped
+            tracing=;
+        fi
+        if [ "$debug" ]
+        then
+            : @ debug stopped
+            set +x
+            debug=;
+        fi
+        ;;
+    *)
+        log unknown tracing control "$1"
+        ;;
+    esac
+}
+
+test "$debug" && set_tracing debug
+test "$tracing" && set_tracing on
 
 log()
 {
     logger -t powerd -p daemon.info -- "$@"
     echo : @ $(date +'%F %T') $@ >&2
 }
+
+trace()
+{
+    if [ "$debug" ]
+    then
+        : @ $(seconds) $@ >&2
+    elif [ "$tracing" ]
+    then
+        echo : @ $(seconds) $@ >&2
+    fi
+}
+
 
 read_hwinfo()
 {
@@ -503,38 +576,12 @@ choose_xo_model()
         
 choose_xo_model
 
-powerd_version="version unknown"
-test -e $VERSIONFILE && . $VERSIONFILE
-
-tracing=;
-# the trace file will collect stderr, regardless of whether tracing is really on
+# the trace file will collect stderr, regardless of whether debug is on
 exec 2>>$LOGFILE
 exec 1>&2   # capture stdout, too. (prevents console spew)
 
 log powerd $powerd_version startup at $(date), on XO-$XO
 
-set_tracing()
-{
-    case $1 in
-    on)
-        set -x
-        tracing=1
-        : @ tracing begun, $powerd_version
-        ;;
-    off)
-        if [ "$tracing" ]
-        then
-            : @ tracing stopped
-            set +x
-            tracing=;
-        fi
-        ;;
-    esac
-}
-
-# uncomment for full tracing.  (or, use "powerd-control =trace-on"
-# to enable at runtime.)
-# set_tracing on
 
 yes_or_true()
 {
@@ -643,7 +690,7 @@ do_shutdown()
 #    # ensure numeric.  if failure, assume we're not busy.
 #    test "$idle" && test $idle -eq $idle >/dev/null || return 1
 #
-#    test $idle -lt $config_CPU_IDLE_LIMIT && : @ cpu busy && return 0
+#    test $idle -lt $config_CPU_IDLE_LIMIT && trace cpu busy && return 0
 #
 #    return 1
 #}
@@ -703,7 +750,7 @@ cpu_or_network_busy()
     idle=$(( (100 * ( idlejifs2 - idlejifs1 ) / ( jiffies2 - jiffies1 ) ) ))
     if [ $idle -lt $config_CPU_IDLE_LIMIT ]
     then
-        : @ cpu busy
+        trace cpu busy
         return 0
     fi
 
@@ -713,7 +760,7 @@ cpu_or_network_busy()
         newnetactivity=$(netactivity_snapshot)
         if [ "$newnetactivity" != "$netactivity" ]
         then
-            : @ network busy
+            trace network busy
             return 0
         fi
     fi
@@ -724,7 +771,7 @@ cpu_or_network_busy()
         # the camera generates about 25 ints/sec
         if [ $(( (new_cafe_activity - cafe_activity) / BUSYCHECK > 20 )) = 1 ]
         then
-            : @ cafe/camera busy
+            trace cafe/camera busy
             return 0
         fi
     fi
@@ -738,14 +785,14 @@ cpu_or_network_busy()
 # and firefox (after playing)
 #audio_busy()
 #{
-#    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && : @ audio busy
+#    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && trace audio busy
 #}
 
 if [ "$XO" = 1.5 ]
 then
     camera_busy()
     {
-        grep -q via-dma /proc/interrupts && : @ camera busy
+        grep -q via-dma /proc/interrupts && trace camera busy
     }
 else
     # XO-1 camera busyness checked via cafe interrupt activity, above
@@ -761,7 +808,7 @@ fi
 #{
 #    egrep -q 'RUNNING|via-dma' \
 #        /proc/asound/card0/pcm0?/sub0/status /proc/interrupts && \
-#            : @ audio or camera busy
+#            trace audio or camera busy
 #}
 
 
@@ -776,7 +823,7 @@ filetimes_busy()
     for touched in $(stat -c '%Y' $touchfiles 2>/dev/null )
     do
         test $(( touched > now - timer )) = 1 && \
-                : @ touchfile busy && return 0
+                trace touchfile busy && return 0
     done
     return 1
 }
@@ -843,7 +890,7 @@ usb_inhibit()
         grep -ixf $usbconf )
 
     # implicit return value
-    test "$gotusb" && : @ got usb $gotusb
+    test "$gotusb" && trace usb busy: $gotusb
 }
 
 
@@ -1050,7 +1097,7 @@ event_fifo_lookahead()
         # if the event we read is "interesting enough" that
         # it would have woken us if it had arrived just a little
         # later, break out.  otherwise discard it.
-        : @ s_event-type is $s_event-$type
+        trace s_event-type is $s_event-$type
         case $s_event-$type in
         powerbutton-*|lidopen-hard|lid*-soft|\
          ebook*-soft|ac-*-soft|useractive-soft|\
@@ -1108,7 +1155,7 @@ snooze()
 
         pwrlog_take_reading suspend
 
-        : @ until-sleep_type is $until-$sleep_type 
+        trace until-sleep_type is $until-$sleep_type 
 
         case $until-$sleep_type in
         until_shutdown-hard)
@@ -1231,14 +1278,14 @@ snooze()
         set -- $wakeupsource
         wakeupsource=$1${2:-}${3:-}
 
-        : @ got wakeup $wakeupsource @ $lastwakeup, \
+        trace got wakeup: $wakeupsource @ $lastwakeup, \
                 slept $(( lastwakeup - sleep_started ))
 
         pwrlog_take_reading resume-$wakeupsource
 
         case $wakeupsource in
         "powerbutton")
-            : @ power button during $until
+            trace power button during $until
             case $until in
             until_shutdown)
                 # this takes care of the "screen blanked but not sleeping"
@@ -1264,7 +1311,7 @@ snooze()
             ;;
 
         "rtcalarm")
-            : @ rtcalarm during $until
+            trace rtcalarm during $until
             case $until in
             until_dim)
                 # we don't get woken on lid close, so check here.
@@ -1305,7 +1352,7 @@ snooze()
             ;;
 
         "acpower")
-            : @ acpower during $until
+            trace acpower during $until
             case $until in
             until_shutdown)
                 # we don't wake on AC, so this shouldn't happen.  if it did: 
@@ -1613,12 +1660,12 @@ low_battery()
         read uvolts < $MICROVOLTS
         if [ $uvolts -le 5700000 ]  # EC's idea of critical voltage: 5.7V
         then
-	    return 0
+            return 0
         fi
         ;;
     0|1) # if capacity is really very low, just shutdown
-	return 0
-	;;
+        return 0
+        ;;
     esac
 
     return 1
@@ -1895,7 +1942,7 @@ event_loop()
 {
     local event tstamp arg2 arg3 more
 
-    : @ starting eventloop
+    trace starting eventloop
 
     set_idletimes
 
@@ -1934,7 +1981,7 @@ event_loop()
         fi
 
         : -------------------------
-        : @ got event $event, $tstamp, $arg2, $arg3, $more.
+        trace got event: $event, $tstamp, $arg2, $arg3, $more.
 
         if [ "$tstamp" -a "$tstamp" != '-' ] && [ "$tstamp" -lt "$eventcutoff" ]
         then
@@ -2020,13 +2067,13 @@ event_loop()
             ;;
 
         useractive)
-            test "$tracing" && : $(seconds)
+            test "$debug" && : $(seconds)
             gotactivity
             backlight restore
             ;;
 
         fake_useractive)
-            test "$tracing" && : $(seconds)
+            test "$debug" && : $(seconds)
             gotactivity
             case "$arg2" in
             wlanpacket|unknown|ectimer)
@@ -2039,18 +2086,18 @@ event_loop()
             ;;
 
         useridle1)
-            test "$tracing" && : $(seconds)
+            test "$debug" && : $(seconds)
             $useridle1_action \
                 $useridle1_next $useridle1_delta $useridle2_delta
             ;;
 
         useridle2)
-            test "$tracing" && : $(seconds)
+            test "$debug" && : $(seconds)
             $useridle2_action $useridle2_next $useridle2_delta ""
             ;;
 
         useridle3)
-            test "$tracing" && : $(seconds)
+            test "$debug" && : $(seconds)
             $useridle3_action none "" ""
             ;;
 
@@ -2067,7 +2114,7 @@ event_loop()
             # olpc-switchd will emit a "timer" event periodically
             # if asked to.  the only purpose is to make sure
             # olpc-pwr-log.sh has a reason to log once in a while.
-            test "$tracing" && : $(seconds)
+            test "$debug" && : $(seconds)
             ;;
 
         reconfig)
@@ -2102,11 +2149,14 @@ event_loop()
             snooze until_shutdown "$shutdowntimer" soft
             ;;
 
-        trace-on)
-            set_tracing on
-            ;;
-        trace-off)
-            set_tracing off
+        #trace-on)
+        #    set_tracing on
+        #    ;;
+        #trace-off)
+        #    set_tracing off
+        #    ;;
+        trace-*)
+            set_tracing ${event##trace-}
             ;;
         esac
 
@@ -2131,7 +2181,7 @@ configure_pwrlog()
         # install a null handler
         pwrlog_take_reading()
         {
-            : @ pwrlog unconfigured, or unavailable
+            trace pwrlog unconfigured, or unavailable
         }
     fi
 }
