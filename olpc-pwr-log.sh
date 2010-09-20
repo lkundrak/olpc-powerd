@@ -279,9 +279,7 @@ pwrlog_wallclock_delay()
 
 pwrlog_logcopy()
 {
-    local size oldfiles log copyall
-
-    copyall="${1:-}"
+    local size oldfiles log
 
     if [ ! -d "$pwr_LOG_DIR" ]
     then
@@ -292,20 +290,16 @@ pwrlog_logcopy()
     # anything to copy?
     test "$(echo /var/log/pwr-*.csv 2>/dev/null)" || return 0
 
-    # copy any likely logs
+    # copy any likely logs out of /var
     cp /var/log/pwr-*.csv $pwr_LOG_DIR || return 0
 
-    # assume that only the most recently written log is still
-    # active, and that others have been preserved
-    if [ "$copyall" ]
-    then
-        oldfiles="$(ls -t /var/log/pwr-*.csv)"
-    else
-        oldfiles="$(ls -t /var/log/pwr-*.csv | sed 1d)"
-    fi
+    # assume that the most recently written log is still active, and
+    # that others have been copied, and can be removed from /var.
+    oldfiles="$(ls -t /var/log/pwr-*.csv | sed 1d)"
     test "$oldfiles" && rm -f $oldfiles
 
-    # keep up to 10M. after that, delete oldest first
+    # limit the size of $pwr_LOG_DIR/, by keeping up to 10M.  after
+    # that, delete oldest first
     size=( $(du -sk $pwr_LOG_DIR) )   # size in 1K blocks
     if (( ${size[0]} > $pwr_MAX_LOGDIR_SIZE ))    # bigger than 10Mb?
     then
