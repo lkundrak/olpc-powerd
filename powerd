@@ -1,5 +1,6 @@
 #!/bin/bash
 #   (search for POSIX, below, for notes on shell compatibility)
+
 #
 # powerd -- power management for the XO
 #
@@ -403,7 +404,7 @@ CONFIGFLAGS=$CONFIGDIR/flags
 
 RUNPARTSDIR=$CONFIGDIR/postresume.d
 
-# logging only used for debug, currently
+# logging only used for debug, currently.  directory must exist.
 LOGFILE=/var/log/powerd.trace
 # LOGFILE=/home/olpc/log/powerd.trace
 
@@ -519,9 +520,6 @@ set_tracing()
     esac
 }
 
-test "$debug" && set_tracing debug
-test "$tracing" && set_tracing on
-
 log()
 {
     logger -t powerd -p daemon.info -- "$@"
@@ -539,6 +537,8 @@ trace()
     fi
 }
 
+test "$debug" && set_tracing debug
+test "$tracing" && set_tracing on
 
 read_hwinfo()
 {
@@ -1099,7 +1099,9 @@ event_fifo_lookahead()
         # later, break out.  otherwise discard it.
         trace s_event-type is $s_event-$type
         case $s_event-$type in
-        powerbutton-*|lidopen-hard|lid*-soft|\
+         powerbutton-*|\
+         fake_powerbutton-*|\
+         lidopen-hard|lid*-soft|\
          ebook*-soft|ac-*-soft|useractive-soft|\
          reconfig-*|trace-*)
             if [ ! "$s_tstamp" ] || \
@@ -1774,7 +1776,7 @@ set_idletimes()
     # to be 6 (i.e., $BUSYCHECK + 1) seconds.
 
     test "$aname1" = "sleep" && d=$BUSYCHECK || d=0
-    test $(( (t1 - d) )) -le 0 && : $(( t1 += (1 + d) ))
+    test $(( (t1 - d) )) -le 0 && : $(( t1 = (1 + d) ))
     test "$aname1" = "sleep" && nt1=$(( t1 - d ))
 
     test "$aname2" = "sleep" && d=$BUSYCHECK || d=0
@@ -1876,15 +1878,28 @@ sleep_action()
     # don't sleep until we're sort of all the way up.
     if dcon is_frozen
     then
+        trace busy: dcon frozen
         reset_idlecounters
         return
     fi
 
     # extend the first wakeup after power or lid sleep to at
     # least 60 seconds to work around slow wlan startup (#9854)
+    # (it would be nice if this went away, someday.)
     : ${holdoff_start:=}
     if [ "$holdoff_start" -a $(($(seconds) - holdoff_start)) -lt 60 ]
     then
+        trace busy: holdoff active
+        reset_idlecounters
+        return
+    fi
+
+    # if we've put up a confirmation splash screen, and the sleep
+    # timer is very short, we may try and sleep while it's still
+    # up.  don't do that.
+    if [ "${splashpid:-}" ]
+    then
+        trace busy: splash active
         reset_idlecounters
         return
     fi
