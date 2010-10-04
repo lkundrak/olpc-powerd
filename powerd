@@ -1,6 +1,5 @@
 #!/bin/bash
 #   (search for POSIX, below, for notes on shell compatibility)
-
 #
 # powerd -- power management for the XO
 #
@@ -387,9 +386,8 @@
 # execution tracing.  Choose one of the lines below to get either
 # a trace of important events and wakeups, or a full "sh -x" style
 # execution trace.  to accomplish the same thing while powerd is
-# running, use:  "powerd-control =trace-on", "powerd-control
-# =trace-debug", or "powerd-control =trace-off" (disables both
-# types of output)
+# running, use:  "powerd-config =trace-on", "powerd-config =trace-debug",
+# or "powerd-config =trace-off" (disables both types of output)
 
 # uncomment one:
 #tracing=1
