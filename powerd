@@ -1975,6 +1975,10 @@ event_loop()
         # it regularly.
         power_check
 
+        # likewise, if you crack open the lid then quickly shut
+        # it, the event is reported properly.  so check frequently.
+        lid_check
+
         # calculate/set new idle timeouts if necessary
         reevaluate
 
