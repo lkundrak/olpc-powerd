@@ -117,6 +117,14 @@
 # application which needs to keep running while the laptop is
 # transported.  The screen will be turned off in any case, of course.
 #
+# "config_WAKE_WHEN_LID_OPENED" will allow simply opening the lid to
+# wake the laptop, which can be convenient.  However, if laptops are
+# stacked on top of one another, or side-by-side like on a bookcase,
+# their lid switches (which are magnetic) may interfere with one
+# another, causing them to wake even though the lids are still closed. 
+# So this setting is off by default -- a power button push will be
+# required to wake the laptop.
+#
 # "config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP" says that if the screen
 # is blank and the laptop has "idle suspended" (i.e., gone to sleep
 # due to inactivity), that a keypress (or touchpad gesture) will wake
@@ -589,6 +597,15 @@ yes_or_true()
     esac
 }
 
+yes_or_true_to_boolean()
+{
+    if yes_or_true "$1"
+    then
+        echo true
+    fi
+    # else echo nothing
+}
+
 # use $SECONDS for timing when possible
 if [ "${SECONDS:-}" ]
 then
@@ -1044,6 +1061,7 @@ set_wakeupevents()
     # events (and ebook on XO-1).
     case $1 in
     all)        set_acpi_wakeupevents EBK enable
+                set_acpi_wakeupevents LID enable
                 test "$WAKE_ON_CLOSE" && echo 1 > $WAKE_ON_CLOSE
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
@@ -1054,6 +1072,13 @@ set_wakeupevents()
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
     none)       set_acpi_wakeupevents EBK disable
+                set_acpi_wakeupevents LID disable
+                test "$WAKE_ON_CLOSE" && echo 0 > $WAKE_ON_CLOSE
+                echo 0 >$WAKEUP_EVENTS/all
+                ;;
+    none_but_lid)
+                set_acpi_wakeupevents LID enable
+                set_acpi_wakeupevents EBK disable
                 test "$WAKE_ON_CLOSE" && echo 0 > $WAKE_ON_CLOSE
                 echo 0 >$WAKEUP_EVENTS/all
                 ;;
@@ -1099,7 +1124,7 @@ event_fifo_lookahead()
         case $s_event-$type in
          powerbutton-*|\
          fake_powerbutton-*|\
-         lidopen-hard|lid*-soft|\
+         lidopen-*|lidclose-soft|\
          ebook*-soft|ac-*-soft|useractive-soft|\
          reconfig-*|trace-*)
             if [ ! "$s_tstamp" ] || \
@@ -1160,12 +1185,18 @@ snooze()
         case $until-$sleep_type in
         until_shutdown-hard)
             cur_sleep_type=hard
-            # if we're waiting for a shutdown, then this is a
-            # pretty sound sleep.  only let the lid wake us up
-            # (we can't actually prevent that), as well as battery
-            # events if we're close to shutdown levels.
 
-            set_wakeupevents none
+            # if we're waiting for a shutdown, then this is a pretty
+            # sound sleep.  allow wakeups from a) the power button,
+            # optionally b) opening the lid, and c) the battery, to
+            # keep track of battery level.
+            if [ "$wake_on_open" ]
+            then
+                set_wakeupevents none_but_lid
+            else
+                set_wakeupevents none
+            fi
+
             # note:  it's tempting to allow AC wakeups here, but in
             # practice a) there's no advantage -- we won't do anything
             # differently if we wake and then go back to sleep, and b) it's
@@ -1377,16 +1408,15 @@ snooze()
             esac
             ;;
 
-        "lid"|"emptysci")
-            # assume "empty sci" comes from lid (kernel bug on XO-1).
-            # in older kernels an rtc wakeup will report "empty
-            # sci" as well.  powerd doesn't support those kernels
-            # very well.
-            am_ebook=;
-            selfinject fake_useractive $lastwakeup "$wakeupsource"
-            touchpad_recalibrate
-            holdoff_start=$lastwakeup
-            break
+        "lid"|"emptysci") # "empty sci" comes from lid (kernel bug on XO-1).
+            if [ "$wake_on_open" ]
+            then
+                am_ebook=;
+                selfinject fake_useractive $lastwakeup "$wakeupsource"
+                touchpad_recalibrate
+                holdoff_start=$lastwakeup
+                break
+            fi
             ;;
 
         battery*)  # all we do is check battery level, and sleep again
@@ -1518,7 +1548,7 @@ lid_closed()
 {
     am_ebook=;
     backlight off
-    if yes_or_true "$config_SLEEP_WHEN_LID_CLOSED"
+    if [ "$sleep_on_close" ]
     then
         invalidate_powertimer
         # hard sleep until it's time to shut down
@@ -1596,6 +1626,7 @@ set_config_defaults()
     config_MAX_SLEEP_BEFORE_SHUTDOWN=3600
     config_ALLOW_SHUTDOWN_WHEN_PLUGGED=yes
     config_SLEEP_WHEN_LID_CLOSED=yes
+    config_WAKE_WHEN_LID_OPENED=no
     config_MESH_DURING_SUSPEND=no
 
     config_CONFIRM_SECONDS=7
@@ -1629,13 +1660,6 @@ read_config()
         log configured to never shutdown while plugged in
     fi
 
-    if yes_or_true "$config_WAKE_ON_WLAN"
-    then
-        wake_on_wlan=true
-        log configured to wake on wireless activity
-    else
-        wake_on_wlan=;
-    fi
 
     if yes_or_true "$config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP"
     then
@@ -1643,6 +1667,15 @@ read_config()
     else
         keypress_sleep=hard
     fi
+
+    wake_on_wlan=$(yes_or_true_to_boolean "$config_WAKE_ON_WLAN")
+
+    sleep_on_close=$(yes_or_true_to_boolean "$config_SLEEP_WHEN_LID_CLOSED")
+
+    wake_on_open=$(yes_or_true_to_boolean "$config_WAKE_WHEN_LID_OPENED")
+    test "$XO" = 1 && wake_on_open=true
+
+
 
 }
 
@@ -2067,10 +2100,13 @@ event_loop()
             ;;
 
         lidopen)
-            touchpad_recalibrate
-            gotactivity
-            am_ebook=;
-            backlight restore
+            if [ "$wake_on_open" ]
+            then
+                touchpad_recalibrate
+                gotactivity
+                am_ebook=;
+                backlight restore
+            fi
             ;;
 
         ebookclose)  # i.e., fully flat in ebook mode
