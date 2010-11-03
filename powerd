@@ -238,12 +238,29 @@
 #   some time to reassociate after wakeup.  We don't really want to
 #   sleep while the user is waiting for that association to happen.
 #
+######
+#
+# Suspend and resume scripts
 #
 # Post-resume scripts can be put in /etc/powerd/postresume.d -- the
-# scripts will be run in lexicographic order.  The scripts are run
-# detached from powerd, so they won't impede its operation -- however,
-# they should be kept as short as possible.
+# scripts will be run in lexicographic order, with "resume" given as
+# the first and only argument.  The scripts are run detached from
+# powerd (i.e.  "in the background"), so they won't impede its
+# operation -- however, they should be kept as short as possible.
 #
+# Similarly, scripts can be run before each suspend by putting them
+# in /etc/powerd/presuspend.d.  Again, they will be run in lexicographic
+# order, with "suspend" as their only argument.  In this case, the
+# scripts must all complete before suspend can continue.
+#
+# NOTE:  these hooks are currently called at the top and bottom of the
+# snooze() function.  It's entirely possible for the system to decide
+# not to suspend (e.g., system busy, suspend inhibited, etc) sometime
+# after the suspend scripts have run.  It's currently also possible
+# that the system will wake and go right back to sleep (e.g.  for a
+# battery level check) without running the resume/suspend hooks.  No
+# guarantees.
+# 
 #
 ######
 #
@@ -408,7 +425,8 @@ VERSIONFILE=$CONFIGDIR/version
 CONFIGFILE=$CONFIGDIR/powerd.conf
 CONFIGFLAGS=$CONFIGDIR/flags
 
-RUNPARTSDIR=$CONFIGDIR/postresume.d
+RESUMEHOOKS=$CONFIGDIR/postresume.d
+SUSPENDHOOKS=$CONFIGDIR/presuspend.d
 
 # logging only used for debug, currently.  directory must exist.
 LOGFILE=/var/log/powerd.trace
@@ -1003,34 +1021,42 @@ wlan_associated()
 
 runparts()
 {
-    rc_action=$1
-    test $rc_action = "resume" || return
+    local rc_action rc_dir rc_script
 
-    rc_dir=$RUNPARTSDIR
+    rc_action=$1
+    case $rc_action in
+    resume) rc_dir=$RESUMEHOOKS ;;
+    suspend) rc_dir=$SUSPENDHOOKS ;;
+    *) return ;;
+    esac
+
     test -d $rc_dir || return
 
     cd $rc_dir
 
-    for s in *[^~]
+    for rc_script in *
     do
-        case $s in
-        '*[^~]') return;;  # s is the literal pattern
+        case $rc_script in
+        *~|'*') continue;;  # skip ~ backup files, and literal '*'
         esac
 
-        if [ -x $s ]; then
-            echo "Running $s $rc_action" >&2
-            ./$s $rc_action || echo "*** $s failed"
-        elif [ -f $s ]; then
-            echo "Skipping $s (disabled, not executable)" >&2
+        if [ -x $rc_script ]; then
+            echo "Running $rc_script $rc_action" >&2
+            ./$rc_script $rc_action || echo "*** $rc_script failed"
+        elif [ -f $rc_script ]; then
+            echo "Skipping $rc_script (disabled, not executable)" >&2
         else
-            if [ -L $s ]; then
-                echo "Removing dangling symlink $s" >&2
-                rm $s
+            if [ -L $rc_script ]; then
+                echo "Removing dangling symlink $rc_script" >&2
+                rm $rc_script
             else
-                echo "Skipping $s (not an executable file)" >&2
+                echo "Skipping $rc_script (not an executable file)" >&2
             fi
         fi
     done
+
+    # switch back to our original directory
+    cd -
 
 }
 
@@ -2104,9 +2130,9 @@ event_loop()
             then
                 touchpad_recalibrate
                 gotactivity
-                am_ebook=;
                 backlight restore
             fi
+            am_ebook=;
             ;;
 
         ebookclose)  # i.e., fully flat in ebook mode
