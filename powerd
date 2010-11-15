@@ -472,23 +472,62 @@ WLAN_ENABLED=/sys/power/wlan-enabled    # XO-1 only
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
 
-if [ -e /sys/power/wake-on-close ]
+if [ -e /sys/power/wake-on-lid ]   # recent XO-1 kernels
 then
-    WAKE_ON_CLOSE=/sys/power/wake-on-close
+    wake_on_lid()
+    {
+        # "never", "open", "close", "always"
+        echo $1 > /sys/power/wake-on-lid
+    }
+
+elif [ -e /sys/power/wake-on-close ]  # XO-1.5 (wake-on-open is via acpi)
+then
+
+    wake_on_lid()
+    {
+        # "never", "open", "close", "always"
+        case "$1" in
+        never)
+            echo 0 > /sys/power/wake-on-close
+            set_acpi_wakeupevents LID disable
+            ;;
+        open)
+            echo 0 > /sys/power/wake-on-close
+            set_acpi_wakeupevents LID enable
+            ;;
+        close)
+            echo 1 > /sys/power/wake-on-close
+            set_acpi_wakeupevents LID disable
+            ;;
+        always)
+            echo 1 > /sys/power/wake-on-close
+            set_acpi_wakeupevents LID enable
+            ;;
+        esac
+    }
 else
-    WAKE_ON_CLOSE=;
+    wake_on_lid()
+    {
+        :
+    }
 fi
 
-if [ -e /proc/acpi/button/lid/LID/state ]
+if [ -e /proc/acpi/button/lid/LID/state ]  # XO-1.5
 then
     LID_STATE=/proc/acpi/button/lid/LID/state 
+elif [ -e /sys/power/lid-state ]  # XO-1
+then
+    LID_STATE=/sys/power/lid-state 
 else
     LID_STATE=;
 fi
 
-if [ -e /proc/acpi/olpc-switch/ebook/EBK/state ]
+if [ -e /proc/acpi/olpc-switch/ebook/EBK/state ]  # XO-1.5
 then
     EBOOK_STATE=/proc/acpi/olpc-switch/ebook/EBK/state 
+elif [ -e /sys/power/ebook-state ]  # XO-1
+then
+    EBOOK_STATE=/sys/power/ebook-state 
 else
     EBOOK_STATE=;
 fi
@@ -1086,9 +1125,8 @@ set_wakeupevents()
     # it's masking SCI events, which also provide battery and EC input
     # events (and ebook on XO-1).
     case $1 in
-    all)        set_acpi_wakeupevents EBK enable
-                set_acpi_wakeupevents LID enable
-                test "$WAKE_ON_CLOSE" && echo 1 > $WAKE_ON_CLOSE
+    all)        wake_on_lid always
+                set_acpi_wakeupevents EBK enable
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
     all_sci)    # we want to unmask all SCI events at the EC when
@@ -1097,15 +1135,13 @@ set_wakeupevents()
                 # this is used when we awake, not when we go to sleep.
                 echo 1 >$WAKEUP_EVENTS/all
                 ;;
-    none)       set_acpi_wakeupevents EBK disable
-                set_acpi_wakeupevents LID disable
-                test "$WAKE_ON_CLOSE" && echo 0 > $WAKE_ON_CLOSE
+    none)       wake_on_lid never
+                set_acpi_wakeupevents EBK disable
                 echo 0 >$WAKEUP_EVENTS/all
                 ;;
     none_but_lid)
-                set_acpi_wakeupevents LID enable
+                wake_on_lid open
                 set_acpi_wakeupevents EBK disable
-                test "$WAKE_ON_CLOSE" && echo 0 > $WAKE_ON_CLOSE
                 echo 0 >$WAKEUP_EVENTS/all
                 ;;
     ac)         echo 1 >$WAKEUP_EVENTS/ac_power
@@ -1172,6 +1208,8 @@ snooze()
     local shutdowntime dimtime blanktime orig_rtctime rtctime
     local sleep_type cur_sleep_type until 
     local wakeupsource prev_wlan_power sleep_started
+
+    trace "snoozing: $@"
 
     prev_wlan_power=;
 
@@ -1301,6 +1339,8 @@ snooze()
         # this is it.  here's where we suspend or sleep.
         rtcwake -m mem -a -s $rtctime >/dev/null
 
+        # we need SCI events, because they do more than just
+        # provide wakeup -- they drive input events as well.
         set_wakeupevents all_sci
 
         # prepare for the default case of simply re-sleeping for
@@ -1699,9 +1739,6 @@ read_config()
     sleep_on_close=$(yes_or_true_to_boolean "$config_SLEEP_WHEN_LID_CLOSED")
 
     wake_on_open=$(yes_or_true_to_boolean "$config_WAKE_WHEN_LID_OPENED")
-    test "$XO" = 1 && wake_on_open=true
-
-
 
 }
 
@@ -2364,7 +2401,6 @@ reevaluate all
 # let user programs control brightness
 chmod a+w $BRIGHTNESS $MONO_MODE
 
-set_acpi_wakeupevents LID enable
 set_acpi_wakeupevents EC enable
 set_wakeupevents all_sci
 
