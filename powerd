@@ -1053,8 +1053,19 @@ set_wake_on_wlan()
     # a resume/suspend cycle
 
     case $1 in
-    yes) ethtool -s $WLANIFACE wol u ;;
-    no)  ethtool -s $WLANIFACE wol d ;;
+    yes)
+	# detect telepathy/salut, and wake on multicast if present.
+	# "netstat -l --inet -n | grep -q ':5298 '"
+	if grep -qi ": 00000000:14B2" /proc/net/tcp
+	then
+	    ethtool -s $WLANIFACE wol um;
+	else
+	    ethtool -s $WLANIFACE wol u;
+	fi
+	;;
+    no)
+	ethtool -s $WLANIFACE wol d
+	;;
     esac
 }
 
