@@ -3,7 +3,7 @@
 
 PACKAGE=olpc-powerd
 PACKAGEDBUS=olpc-powerd-dbus
-VERSION=30
+VERSION=31
 
 
 # don't edit .spec -- edit .spec.tmpl
