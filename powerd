@@ -153,8 +153,9 @@
 #####
 # Power logging
 #
-# powerd can optionally perform detailed power usage logging.  powerd
-# must be restarted for any changes to the following config_PWRLOG_*
+# powerd can optionally perform detailed power usage logging
+# (requires the olpc-pwr-log.sh helper script).  powerd must be
+# restarted for any changes to the following config_PWRLOG_*
 # settings to take effect:
 #
 # "config_PWRLOG_INTERVAL" determines whether, and how often, logging
@@ -176,6 +177,9 @@
 # "config_PWRLOG_LOGDIRSIZE" is the maximum total space alloted for
 # $config_PWRLOG_DIR.  When the directory grows too large, the oldest
 # files are removed until the size is below this threshold.
+#
+# a new power log file may be forced with the command:
+#  powerd-config =new-pwrlog "comment describing reason for a new log"
 #
 #
 ######
