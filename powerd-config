@@ -172,7 +172,7 @@ edit_config()
 
     if [ ! "$readonly" ]
     then
-	# assign results to to the right variables here:
+        # assign results to to the right variables here:
         set -- $(cat $TMP)
         bat_dim=$1
         bat_sleep=$2
@@ -250,22 +250,15 @@ newconfig()
     ln -sf $new $CONFIGFILE && activate_config
 }
 
-o_check_root()
-{
-    if [ "$(whoami)" != root ]
-    then
-        dialog \
-            --backtitle "$backtitle" \
-            --msgbox \
-            "You must be root to run this configuration program" 0 0
-        exit 1
-    fi
-}
-
 check_root()
 {
     am_root=;
     test "$(whoami)" = root && am_root=yes
+}
+
+seconds()
+{
+    date +%s
 }
 
 main()
@@ -274,6 +267,11 @@ main()
     set -u
 
     arg1="${1:-}"
+    other_args=;
+    if [ "$arg1" -a "${2:-}" ]
+    then
+        shift && other_args="$*"
+    fi
 
     case $arg1 in
     -a) # force pseudo-activity by touching the magic file
@@ -308,7 +306,7 @@ main()
             echo $me: problem with $EVENTFIFO >&2
             exit 1
         fi
-        echo ${arg1#=} >$EVENTFIFO
+        echo ${arg1#=} $(seconds) $other_args >$EVENTFIFO
         exit
         ;;
     *)
