@@ -49,6 +49,7 @@ DESKTOP: ${pwr_DESKTOP}
 ECVER: $(< /ofw/ec-name)
 OFWVER: $(< /ofw/openprom/model)
 KERNVER: $(< /proc/version)
+POWERDVER: ${powerd_version:-unknown}
 MODEL: $(< /ofw/model)
 SERNUM: $pwr_SERNUM
 BATTECH: $(< $BATTERY_INFO/technology)
@@ -162,7 +163,7 @@ pwrlog_take_reading()
         new-pwrlog-event|startup)
             newfile=true
             ;;
-        ac*|battery*)
+        ac*|battery*|powerbutton-*)
             ;;
         *-event)  # "soft" events -- rate limit them
             if (( now - ${pwr_LASTLOGTIME:-0} < $pwr_LOG_INTERVAL ))
