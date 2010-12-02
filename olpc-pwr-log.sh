@@ -49,6 +49,7 @@ DESKTOP: ${pwr_DESKTOP}
 ECVER: $(< /ofw/ec-name)
 OFWVER: $(< /ofw/openprom/model)
 KERNVER: $(< /proc/version)
+KERNAPI: 2
 POWERDVER: ${powerd_version:-unknown}
 MODEL: $(< /ofw/model)
 SERNUM: $pwr_SERNUM
