@@ -1129,7 +1129,7 @@ runparts()
     done
 
     # switch back to our original directory
-    cd -
+    cd - >/dev/null
 
 }
 
