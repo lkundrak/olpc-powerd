@@ -567,6 +567,8 @@ set_tracing()
         set -x
         debug=1
         : @ debug begun, $powerd_version
+        cat /proc/version >&2
+        cat /boot/olpc_build >&2
         ;;
     off)
         if [ "$tracing" ]
@@ -667,6 +669,8 @@ exec 2>>$LOGFILE
 exec 1>&2   # capture stdout, too. (prevents console spew)
 
 log powerd $powerd_version startup at $(date), on XO-$XO
+log $(cat /proc/version)
+log olpc build: $(cat /boot/olpc_build)
 
 
 yes_or_true()
@@ -1058,18 +1062,18 @@ set_wake_on_wlan()
 
     case $1 in
     yes)
-	# detect telepathy/salut, and wake on multicast if present.
-	# "netstat -l --inet -n | grep -q ':5298 '"
-	if grep -qi ": 00000000:14B2" /proc/net/tcp
-	then
-	    ethtool -s $WLANIFACE wol um;
-	else
-	    ethtool -s $WLANIFACE wol u;
-	fi
-	;;
+        # detect telepathy/salut, and wake on multicast if present.
+        # "netstat -l --inet -n | grep -q ':5298 '"
+        if grep -qi ": 00000000:14B2" /proc/net/tcp
+        then
+            ethtool -s $WLANIFACE wol um;
+        else
+            ethtool -s $WLANIFACE wol u;
+        fi
+        ;;
     no)
-	ethtool -s $WLANIFACE wol d
-	;;
+        ethtool -s $WLANIFACE wol d
+        ;;
     esac
 }
 
