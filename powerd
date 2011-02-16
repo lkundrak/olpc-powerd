@@ -911,9 +911,13 @@ fi
 #}
 
 
-# see if there's been activity during the recent idle period.
-# checks vty devices and our special touchfile, with one stat.
-touchfiles="/dev/tty1 /dev/tty2 $INHIBIT_BY_TOUCH"
+# see if there's been activity during the recent idle period --
+# check all interesting files with one stat command.
+# vty devices can be (and used to be) included here, i.e.,
+#   touchfiles="/dev/tty1 /dev/tty2 $INHIBIT_BY_TOUCH"
+# but sometimes the console screens can be chatty, and we don't
+# want them to keep us awake.  (#10492)
+touchfiles="$INHIBIT_BY_TOUCH"
 
 filetimes_busy()
 {
