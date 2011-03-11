@@ -43,7 +43,7 @@ pwrlog_write_header()
     cat >$pwr_PWRLOG_LOGFILE <<-EOF
 powerd_log_ver: $pwr_POWERD_LOG_VERSION
 Format: $pwr_POWERD_LOG_FORMAT
-DATE: $(date)
+DATE: $(date "+%F %T %Z")
 COMMENT: $comment
 DESKTOP: ${pwr_DESKTOP}
 ECVER: $(< /ofw/ec-name)
@@ -244,7 +244,7 @@ pwrlog_init()
     pwr_LOGCOPY_MINUTES=30
 
     pwr_POWERD_LOG_VERSION="0.2"
-    pwr_POWERD_LOG_FORMAT="2"
+    pwr_POWERD_LOG_FORMAT="3"
 
     if [ ! "$BATTERY_INFO" ]  # usually set by powerd
     then
