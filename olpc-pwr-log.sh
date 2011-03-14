@@ -43,7 +43,7 @@ pwrlog_write_header()
     cat >$pwr_PWRLOG_LOGFILE <<-EOF
 powerd_log_ver: $pwr_POWERD_LOG_VERSION
 Format: $pwr_POWERD_LOG_FORMAT
-DATE: $(date "+%F %T %Z")
+DATE: $(date "+%F %T %z")
 COMMENT: $comment
 DESKTOP: ${pwr_DESKTOP}
 ECVER: $(< /ofw/ec-name)
