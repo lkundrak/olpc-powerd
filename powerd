@@ -64,7 +64,7 @@
 # value is converted to 999999999 seconds internally, so you may
 # see that in the logs.)
 #
-# Depending on the setting of # "config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP",
+# Depending on the setting of "config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP",
 # when the screen is dark _and_ the laptop is sleeping, it may or
 # may not be in a "deep" sleep -- keystrokes may or may not wake it
 # up.  Likewise, "config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP" controls
@@ -146,7 +146,7 @@
 # means the laptop simply isn't being used.  Laptops being access
 # remotely, however, should probably have this set to "yes".) This
 # setting is conditional on enabling keypress wakeups with
-# config_KEYPRESS_E_FROM_BLANK_IDLE_SLEEP.  If the power button is
+# config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP.  If the power button is
 # used to put the laptop to sleep, this setting will have no effect.
 #
 #
@@ -1476,7 +1476,7 @@ snooze()
             ;;
 
         "wlanpacket")
-            if yes_or_true "$config_WAKE_ON_WLAN"
+            if [ "$wake_on_wlan" ]
             then
                 selfinject fake_useractive $lastwakeup "$wakeupsource"
                 break
