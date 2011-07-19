@@ -2,11 +2,9 @@
 description     "XO experimental power daemon "
 author          "Paul Fox"
 
-start on stopping rc5
+start on stopping rc RUNLEVEL=5
 
-stop on runlevel 0
-stop on runlevel 1
-stop on runlevel 6
+stop on runlevel [016]
 
 console output
 
