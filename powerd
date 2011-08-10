@@ -2210,9 +2210,9 @@ event_loop()
             if [ "$wake_on_open" ]
             then
                 touchpad_recalibrate
-                gotactivity
-                backlight restore
             fi
+            gotactivity
+            backlight restore
             am_ebook=;
             ;;
 
