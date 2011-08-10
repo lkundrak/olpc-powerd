@@ -469,7 +469,13 @@ else
     AC_ONLINE=;
 fi
 BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness  # 0-15
-MONO_MODE=/sys/devices/platform/dcon/output
+
+if [ -e /sys/devices/platform/dcon/monochrome ]
+then
+    MONO_MODE=/sys/devices/platform/dcon/monochrome
+else
+    MONO_MODE=/sys/devices/platform/dcon/output
+fi
 
 WLAN_ENABLED=/sys/power/wlan-enabled    # XO-1 only
 
@@ -611,6 +617,13 @@ test "$tracing" && set_tracing on
 
 read_hwinfo()
 {
+    if [ -x /usr/sbin/olpc-hwinfo ]
+    then
+	hwvendor=OLPC
+	hwname=XO
+	hwversion=$(olpc-hwinfo model)
+	return
+    fi
     read hwvendor < /sys/class/dmi/id/sys_vendor ||
         hwvendor="n/a"
     read hwname < /sys/class/dmi/id/product_name ||
@@ -624,7 +637,7 @@ choose_xo_model()
     read_hwinfo
 
     case $hwvendor-$hwname-$hwversion in
-    OLPC-XO-1|OLPC-XO-1.5)
+    OLPC-XO-1|OLPC-XO-1.5|OLPC-XO-1.75)
         XO=$hwversion
         ;;
     *)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
@@ -887,19 +900,27 @@ cpu_or_network_busy()
 #    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && trace audio busy
 #}
 
-if [ "$XO" = 1.5 ]
-then
-    camera_busy()
-    {
-        grep -q via-dma /proc/interrupts && trace camera busy
-    }
-else
+case "$XO" in
+1)
     # XO-1 camera busyness checked via cafe interrupt activity, above
     camera_busy()
     {
         false
     }
-fi
+    ;;
+1.5)
+    camera_busy()
+    {
+        grep -q via-dma /proc/interrupts && trace camera busy
+    }
+    ;;
+1.75)
+    camera_busy()
+    {
+        false  # for now, at least
+    }
+    ;;
+esac
 
 
 # if using both of the above, combine them into a single grep:
@@ -1143,24 +1164,27 @@ runparts()
 
 set_acpi_wakeupevents()
 {
-    # no acpi events on XO-1
-    test "$XO" = 1 && return
+    # acpi events only on XO-1.5
+    if [ "$XO" = 1.5 ]
+    then
+        # enable --> enabled, disable --> disabled
+        skip=${2}d
 
-    # enable --> enabled, disable --> disabled
-    skip=${2}d
-
-    # fetch the current contents of /proc/acpi/wakeup.  if
-    # we're asked to disable FOO, delete its line if it's
-    # already disabled, else print just FOO if it's enabled,
-    # (and vice versa) and write that back to the file.
-    sed -n -e '/^Device\>/d' \
-            -e "/^$1[[:space:]].*\<$skip\>/d" \
-            -e "s/^\($1\)[[:space:]].*/\1/p" \
-        /proc/acpi/wakeup >/proc/acpi/wakeup
+        # fetch the current contents of /proc/acpi/wakeup.  if
+        # we're asked to disable FOO, delete its line if it's
+        # already disabled, else print just FOO if it's enabled,
+        # (and vice versa) and write that back to the file.
+        sed -n -e '/^Device\>/d' \
+                -e "/^$1[[:space:]].*\<$skip\>/d" \
+                -e "s/^\($1\)[[:space:]].*/\1/p" \
+            /proc/acpi/wakeup >/proc/acpi/wakeup
+    fi
 }
 
 set_wakeupevents()
 {
+    test $XO = 1.75 && return
+
     # this routine was simpler when only the XO-1 was around -- all
     # it dealt with was the nodes in /sys/power/wakeup_events.
     # note that /sys/power/wakeup_events isn't just masking wakeups --
