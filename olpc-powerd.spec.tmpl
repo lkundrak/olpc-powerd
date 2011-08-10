@@ -63,7 +63,7 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/powerd/flags
 %{__install} -p -m 644 powerd.upstart $RPM_BUILD_ROOT%{_sysconfdir}/init/powerd.conf
 %{__install} -p -m 644 pleaseconfirm.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/pleaseconfirm.pgm
 %{__install} -p -m 644 shuttingdown.pgm $RPM_BUILD_ROOT%{_sysconfdir}/powerd/shuttingdown.pgm
-%{__install} -p -m 644 powerd.conf.dist $RPM_BUILD_ROOT%{_sysconfdir}/powerd/powerd.conf
+%{__install} -p -m 643 powerd.conf.dist $RPM_BUILD_ROOT%{_sysconfdir}/powerd/powerd.conf
 %{__install} -p -m 644 version $RPM_BUILD_ROOT%{_sysconfdir}/powerd/version
 %{__install} -p -m 644 olpc-pwr-log.sh $RPM_BUILD_ROOT%{_sysconfdir}/powerd/olpc-pwr-log.sh 
 %{__install} -p -m 644 usb-inhibits $RPM_BUILD_ROOT%{_sysconfdir}/powerd/flags/usb-inhibits
@@ -136,6 +136,10 @@ fi
 exit 0
 
 %changelog
+* Wed Aug 10 2011 Paul Fox <pgf@laptop.org>
+- 34-1
+- fledgling support for 1.75.  no sleep support.
+
 * Wed Feb 16 2011 Paul Fox <pgf@laptop.org>
 - 33-1
 - don't let vty traffic keep us awake
