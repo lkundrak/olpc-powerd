@@ -528,6 +528,9 @@ then
 elif [ -e /sys/power/lid-state ]  # XO-1
 then
     LID_STATE=/sys/power/lid-state 
+elif [ -x /usr/bin/evtest ]  # XO-1.75
+then
+    LID_STATE=use_evtest
 else
     LID_STATE=;
 fi
@@ -538,6 +541,9 @@ then
 elif [ -e /sys/power/ebook-state ]  # XO-1
 then
     EBOOK_STATE=/sys/power/ebook-state 
+elif [ -x /usr/bin/evtest ]  # XO-1.75, and others, with later kernels
+then
+    EBOOK_STATE=use_evtest
 else
     EBOOK_STATE=;
 fi
@@ -619,10 +625,10 @@ read_hwinfo()
 {
     if [ -x /usr/sbin/olpc-hwinfo ]
     then
-	hwvendor=OLPC
-	hwname=XO
-	hwversion=$(olpc-hwinfo model)
-	return
+        hwvendor=OLPC
+        hwname=XO
+        hwversion=$(olpc-hwinfo model)
+        return
     fi
     read hwvendor < /sys/class/dmi/id/sys_vendor ||
         hwvendor="n/a"
@@ -1183,6 +1189,8 @@ set_acpi_wakeupevents()
 
 set_wakeupevents()
 {
+
+# FIXME when 1.75 can sleep
     test $XO = 1.75 && return
 
     # this routine was simpler when only the XO-1 was around -- all
@@ -1690,15 +1698,24 @@ lid_closed()
     fi
 }
 
-read_lidstate()
-{
-    local x
-    read x < $LID_STATE
-    eval $1=\"$x\"
-}
-
-if [ "$LID_STATE" ]
+if [ "$LID_STATE" = use_evtest ]
 then
+    lid_check()
+    {
+        if evtest --query EV_KEY SW_LID
+        then
+           lid_closed
+        fi
+    }
+elif [ "$LID_STATE" ]
+then
+    read_lidstate()
+    {
+        local x
+        read x < $LID_STATE
+        eval $1=\"$x\"
+    }
+
     lid_check()
     {
         read_lidstate lidstate
@@ -1713,15 +1730,26 @@ else
     }
 fi
 
-read_ebookstate()
-{
-    local x
-    read x < $EBOOK_STATE
-    eval $1=\"$x\"
-}
-
-if [ "$EBOOK_STATE" ]
+if [ "$EBOOK_STATE" = use_evtest ]
 then
+    ebook_check()
+    {
+        if evtest --query EV_KEY SW_TABLET_MODE
+        then
+           am_ebook=true
+        else
+           am_ebook=;
+        fi
+    }
+elif [ "$EBOOK_STATE" ]
+then
+    read_ebookstate()
+    {
+        local x
+        read x < $EBOOK_STATE
+        eval $1=\"$x\"
+    }
+
     ebook_check()
     {
         read_ebookstate ebookstate
@@ -1800,6 +1828,16 @@ read_config()
         keypress_sleep=soft
     else
         keypress_sleep=hard
+    fi
+
+# FIXME when 1.75 can sleep
+    if [ "$XO" = 1.75 ]
+    then
+        log suppressing sleep configurations on 1.75
+        config_BATTERY_TIME_SLEEP=0
+        config_EBOOK_TIME_SLEEP=0
+        config_PLUGGED_TIME_SLEEP=0
+        config_SLEEP_WHEN_LID_CLOSED=no
     fi
 
     wake_on_wlan=$(yes_or_true_to_boolean "$config_WAKE_ON_WLAN")
@@ -2190,9 +2228,13 @@ event_loop()
             else
                 if [ $config_CONFIRM_SECONDS = 0 ]
                 then
-                    backlight off
-                    # hard sleep until it's time to shut down
-                    snooze until_shutdown "$shutdowntimer" hard
+# FIXME when 1.75 can sleep
+                    if [ "$XO" != 1.75 ]
+                    then
+                            backlight off
+                            # hard sleep until it's time to shut down
+                            snooze until_shutdown "$shutdowntimer" hard
+                    fi
                 else
                     if [ "$powerseqno" != "$timerseqno" ]
                     then # first press
@@ -2220,10 +2262,14 @@ event_loop()
             ;;
 
         gotosleep)
-            invalidate_powertimer
-            backlight off
-            # hard sleep until it's time to shut down
-            snooze until_shutdown "$shutdowntimer" hard
+# FIXME when 1.75 can sleep
+            if [ "$XO" != 1.75 ]
+            then
+                invalidate_powertimer
+                backlight off
+                # hard sleep until it's time to shut down
+                snooze until_shutdown "$shutdowntimer" hard
+            fi
             ;;
 
         lidclose)
