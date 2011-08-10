@@ -9,6 +9,13 @@
 #  but start with "pwr_".  local variables are all lowercase, and
 #  are declared local.
 
+if [ -d /proc/device-tree ]
+then
+    OFW=/proc/device-tree
+else
+    OFW=/ofw
+fi
+
 pwrlog_read_battery_eeprom()
 {
     local addr count
@@ -46,12 +53,12 @@ Format: $pwr_POWERD_LOG_FORMAT
 DATE: $(date "+%F %T %z")
 COMMENT: $comment
 DESKTOP: ${pwr_DESKTOP}
-ECVER: $(< /ofw/ec-name)
-OFWVER: $(< /ofw/openprom/model)
+ECVER: $(< $OFW/ec-name)
+OFWVER: $(< $OFW/openprom/model)
 KERNVER: $(< /proc/version)
 KERNAPI: 2
 POWERDVER: ${powerd_version:-unknown}
-MODEL: $(< /ofw/model)
+MODEL: $(< $OFW/model)
 SERNUM: $pwr_SERNUM
 BATTECH: $(< $BATTERY_INFO/technology)
 BATMFG: $(< $BATTERY_INFO/manufacturer)
@@ -258,7 +265,7 @@ pwrlog_init()
         pwr_ACR_PROP="accum_current"
     fi
 
-    pwr_SERNUM=$(< /ofw/serial-number )
+    pwr_SERNUM=$(< $OFW/serial-number )
 
 }
 
