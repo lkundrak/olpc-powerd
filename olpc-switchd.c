@@ -494,14 +494,16 @@ data_loop(void)
         FD_ZERO(&inputs);
         FD_SET(pwr_fd, &inputs);
         FD_SET(lid_fd, &inputs);
-        FD_SET(ebk_fd, &inputs);
+        if (ebk_fd >= 0)
+	    FD_SET(ebk_fd, &inputs);
         if (acpwr_fd >= 0)
             FD_SET(acpwr_fd, &inputs);
 
         FD_ZERO(&errors);
         FD_SET(pwr_fd, &errors);
         FD_SET(lid_fd, &errors);
-        FD_SET(ebk_fd, &errors);
+        if (ebk_fd >= 0)
+	    FD_SET(ebk_fd, &errors);
         if (acpwr_fd >= 0)
             FD_SET(acpwr_fd, &errors);
 
@@ -534,7 +536,7 @@ data_loop(void)
                 die("select reports error on power button");
             if (FD_ISSET(lid_fd, &errors))
                 die("select reports error on lid switch");
-            if (FD_ISSET(ebk_fd, &errors))
+            if (ebk_fd >= 0 && FD_ISSET(ebk_fd, &errors))
                 die("select reports error on ebook switch");
             if (acpwr_fd >= 0 && FD_ISSET(acpwr_fd, &errors))
                 die("select reports error on ac power jack");
@@ -543,7 +545,7 @@ data_loop(void)
                 power_button_event();
             if (FD_ISSET(lid_fd, &inputs))
                 lid_event();
-            if (FD_ISSET(ebk_fd, &inputs))
+            if (ebk_fd >= 0 && FD_ISSET(ebk_fd, &inputs))
                 ebook_event();
             if (acpwr_fd >= 0 && FD_ISSET(acpwr_fd, &inputs))
                 acpwr_event();
