@@ -56,7 +56,7 @@ static gboolean ohm_keystore_set_key(OhmKeystore *keystore, const gchar *key,
 									 gint value, GError **error)
 {
 	if (strcmp(key, "display.dcon_freeze") == 0) {
-		powerd_send_event(value == 0 ? "unfreeze_dcon" : "freeze_dcon");
+		powerd_send_event(value == 0 ? "unfreeze_dcon" : "freeze_dcon", NULL);
 	} else {
 		*error = g_error_new(ohm_keystore_error_quark(),
 			OHM_KEYSTORE_ERROR_KEY_MISSING, "Key %s missing", key);

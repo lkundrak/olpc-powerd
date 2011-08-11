@@ -12,7 +12,12 @@ struct OhmKeystore;
 typedef struct OhmKeystore OhmKeystore;
 OhmKeystore *ohm_keystore_new(void);
 
-void powerd_send_event(const char *event);
+int nm_monitor_init(void);
+int wpas_monitor_init(void);
+void nm_suspend_ok(gboolean suspend_ok);
+void wpas_suspend_ok(gboolean suspend_ok);
+
+void powerd_send_event(const char *event, const char *arg);
 
 #endif
 

@@ -1,4 +1,0 @@
-[D-BUS Service]
-Name=org.freedesktop.ohm
-Exec=/usr/libexec/powerd-dbus
-User=root

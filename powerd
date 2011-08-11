@@ -1023,10 +1023,15 @@ usb_inhibit()
     test "$gotusb" && trace usb busy: $gotusb
 }
 
+general_inhibit()
+{
+    trace general inhibit: $no_suspend
+    [ "$no_suspend" -gt 0 ]
+}
 
 laptop_busy()
 {
-    usb_inhibit || cpu_or_network_busy || camera_busy
+    general_inhibit || usb_inhibit || cpu_or_network_busy || camera_busy
 }
 
 if [ -e $TPAD_RECAL ]
@@ -2144,6 +2149,7 @@ sleep_action()
 
 exit_actions()
 {
+    [ -n "$powerd_dbus_pid" ] && kill $powerd_dbus_pid
     pwrlog_take_reading shutdown
     set_wakeupevents none
     unsplash
@@ -2395,6 +2401,14 @@ event_loop()
             snooze until_shutdown "$shutdowntimer" soft
             ;;
 
+        inhibit-suspend)
+            : $(( no_suspend++ ))
+            ;;
+
+        allow-suspend)
+            : $(( no_suspend = (no_suspend > 0) ? no_suspend - 1 : 0 ))
+            ;;
+
         #trace-on)
         #    set_tracing on
         #    ;;
@@ -2500,6 +2514,7 @@ timerseqno=1;
 powerseqno=0;
 eventcutoff=0;
 dcon_thawed=;
+no_suspend=0;
 
 
 log starting
@@ -2537,5 +2552,9 @@ chmod a+w $BRIGHTNESS $MONO_MODE
 set_acpi_wakeupevents EC enable
 set_wakeupevents all_sci
 
+if [ -x /usr/libexec/powerd-dbus ]; then
+    /usr/libexec/powerd-dbus &
+    powerd_dbus_pid=$!
+fi
 
 event_loop

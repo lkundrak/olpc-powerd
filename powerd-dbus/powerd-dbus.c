@@ -15,16 +15,21 @@ DBusGConnection *dbus_conn;
 static DBusGProxy *driver_proxy;
 static GMainLoop *mainloop;
 
-void powerd_send_event(const char *event)
+void powerd_send_event(const char *event, const char *arg)
 {
 	int fd, n;
 	char evtbuf[128];
 
+	g_message("powerd_send_event %s", event);
 	fd = open("/var/run/powerevents", O_RDWR | O_NONBLOCK);
 	if (fd == -1)
 		return;
 
-	n = snprintf(evtbuf, sizeof(evtbuf), "%s %d\n", event, (int)time(0));
+	if (arg)
+		n = snprintf(evtbuf, sizeof(evtbuf), "%s %d %s\n", event, (int)time(0), arg);
+	else
+		n = snprintf(evtbuf, sizeof(evtbuf), "%s %d\n", event, (int)time(0));
+
 	write(fd, evtbuf, n);
 	close(fd);
 }
@@ -54,6 +59,8 @@ int main(void)
 	}
 
 	ohm_keystore_new();
+	wpas_monitor_init();
+	nm_monitor_init();
 
 	g_message("entering main loop");
 	g_main_loop_run(mainloop);
