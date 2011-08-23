@@ -623,7 +623,7 @@ test "$tracing" && set_tracing on
 
 read_hwinfo()
 {
-    if [ -x /usr/sbin/olpc-hwinfo ]
+    if [ -x /usr/bin/olpc-hwinfo ]
     then
         hwvendor=OLPC
         hwname=XO
