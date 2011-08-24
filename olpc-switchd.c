@@ -171,6 +171,9 @@ die(const char *fmt, ...)
 #ifdef commentary
 /*
  pertinent output of "grep ^ /sys/class/input/ * /name"
+ on XO-1.75:
+    /sys/class/input/input1/name:Power Button
+    /sys/class/input/input3/name:OLPC lid switches [ reports ebook too ]
  on XO-1.5:
     /sys/class/input/input0/name:OLPC AC power jack
     /sys/class/input/input1/name:Power Button
@@ -339,11 +342,18 @@ lid_event()
         ev->time.tv_sec, ev->time.tv_usec,
         ev->type, ev->code, ev->value);
 
-    if (ev->type == EV_SW && ev->code == SW_LID) {
-        if (ev->value)
-            send_event("lidclose", round_secs(ev), 0);
-        else
-            send_event("lidopen", round_secs(ev), 0);
+    if (ev->type == EV_SW) {
+	if (ev->code == SW_LID) {
+	    if (ev->value)
+		send_event("lidclose", round_secs(ev), 0);
+	    else
+		send_event("lidopen", round_secs(ev), 0);
+	} else if (ev->code == SW_TABLET_MODE) {
+	    if (ev->value)
+		send_event("ebookclose", round_secs(ev), 0);
+	    else
+		send_event("ebookopen", round_secs(ev), 0);
+	}
     }
 }
 
