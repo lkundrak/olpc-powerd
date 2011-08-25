@@ -1702,10 +1702,12 @@ if [ "$LID_STATE" = use_evtest ]
 then
     lid_check()
     {
-        if evtest --query EV_KEY SW_LID
-        then
-           lid_closed
-        fi
+        test "$lid_device" || return
+
+        evtest --query $lid_device EV_SW SW_LID
+        case $? in
+        10) lid_closed;;
+        esac
     }
 elif [ "$LID_STATE" ]
 then
@@ -1734,12 +1736,13 @@ if [ "$EBOOK_STATE" = use_evtest ]
 then
     ebook_check()
     {
-        if evtest --query EV_KEY SW_TABLET_MODE
-        then
-           am_ebook=true
-        else
-           am_ebook=;
-        fi
+        am_ebook=;
+        test "$ebook_device" || return
+
+        evtest --query $ebook_device EV_SW SW_TABLET_MODE
+        case $? in
+        10) am_ebook=true ;;
+        esac
     }
 elif [ "$EBOOK_STATE" ]
 then
@@ -2167,7 +2170,7 @@ event_loop()
     chmod 600 $EVENTFIFO
     exec 6<> $EVENTFIFO
 
-    lid_check
+    killall -USR1 olpc-switchd
 
     while :
     do
@@ -2272,11 +2275,23 @@ event_loop()
             fi
             ;;
 
+        lidcheck)
+            lid_device=$arg2
+            lid_check
+            ;;
+
+        ebookcheck)
+            ebook_device=$arg2
+            ebook_check
+            ;;
+
         lidclose)
+            lid_device=$arg2
             lid_closed
             ;;
 
         lidopen)
+            lid_device=$arg2
             if [ "$wake_on_open" ]
             then
                 touchpad_recalibrate
@@ -2287,10 +2302,12 @@ event_loop()
             ;;
 
         ebookclose)  # i.e., fully flat in ebook mode
+            ebook_device=$arg2
             am_ebook=true
             ;;
 
         ebookopen)
+            ebook_device=$arg2
             am_ebook=;
             ;;
 
@@ -2474,6 +2491,8 @@ init_netactivity_tracking()
 
 am_ebook=;
 o_ebook=xxx;
+ebook_device=;
+lid_device=;
 dimmed=;
 savebright=;
 last_t_values=;
