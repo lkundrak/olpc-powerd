@@ -71,8 +71,6 @@ int timeout_polls;
 extern char *optarg;
 extern int optind, opterr, optopt;
 
-/* output event fifo */
-int fifo_fd = -1;
 
 /* input event devices */
 int pwr_fd = -1;
@@ -80,7 +78,11 @@ int lid_fd = -1;
 int ebk_fd = -1;
 int acpwr_fd = -1;
 int got_switches = 0;
-#define SEARCH_SWITCHES 10
+
+char lid_device[128];
+char ebk_device[128];
+
+#define SEARCH_SWITCHES 16
 
 int maxfd = -1;  /* for select */
 
@@ -217,18 +219,25 @@ setup_input()
 
         strtolower(name);
 
-        if (strstr(name, "olpc ac power"))
+        if (strstr(name, "olpc ac power")) {
             acpwr_fd = dfd;
-        else if (strstr(name, "olpc pm"))  // XO-1
+        } else if (strstr(name, "olpc pm")) {  // XO-1
             pwr_fd = dfd;
-        else if (strstr(name, "power button"))  // XO-1.5
+        } else if (strstr(name, "power button")) {  // XO-1.5
             pwr_fd = dfd;
-        else if (strstr(name, "lid switch"))
+        } else if (strstr(name, "lid switches")) { // XO-1.75, does ebook too
             lid_fd = dfd;
-        else if (strstr(name, "ebook switch"))
+            strcpy(lid_device, devname);
+            strcpy(ebk_device, devname);
+        } else if (strstr(name, "lid switch")) {
+            lid_fd = dfd;
+            strcpy(lid_device, devname);
+        } else if (strstr(name, "ebook switch")) {
             ebk_fd = dfd;
-        else
+            strcpy(ebk_device, devname);
+        } else {
             continue;
+        }
 
         got_switches++;
         maxfd = MAX(maxfd, dfd);
@@ -286,13 +295,13 @@ send_event(char *evt, int seconds, char *extra)
     char evtbuf[128];
     char *space;
     int n;
+    int fifo_fd;
 
     space = extra ? " " : "";
     if (!extra) extra = "";
     n = snprintf(evtbuf, 128, "%s %d%s%s\n", evt, seconds, space, extra);
 
-    if (fifo_fd < 0)
-        fifo_fd = open(output_fifo, O_WRONLY|O_NONBLOCK);
+    fifo_fd = open(output_fifo, O_WRONLY|O_NONBLOCK);
     if (fifo_fd < 0)
         return;
 
@@ -305,7 +314,6 @@ send_event(char *evt, int seconds, char *extra)
     }
 
     close(fifo_fd);
-    fifo_fd = -1;
 }
 
 long
@@ -343,17 +351,17 @@ lid_event()
         ev->type, ev->code, ev->value);
 
     if (ev->type == EV_SW) {
-	if (ev->code == SW_LID) {
-	    if (ev->value)
-		send_event("lidclose", round_secs(ev), 0);
-	    else
-		send_event("lidopen", round_secs(ev), 0);
-	} else if (ev->code == SW_TABLET_MODE) {
-	    if (ev->value)
-		send_event("ebookclose", round_secs(ev), 0);
-	    else
-		send_event("ebookopen", round_secs(ev), 0);
-	}
+        if (ev->code == SW_LID) {
+            if (ev->value)
+                send_event("lidclose", round_secs(ev), lid_device);
+            else
+                send_event("lidopen", round_secs(ev), lid_device);
+        } else if (ev->code == SW_TABLET_MODE) {
+            if (ev->value)
+                send_event("ebookclose", round_secs(ev), ebk_device);
+            else
+                send_event("ebookopen", round_secs(ev), ebk_device);
+        }
     }
 }
 
@@ -371,9 +379,9 @@ ebook_event()
 
     if (ev->type == EV_SW && ev->code == SW_TABLET_MODE) {
         if (ev->value)
-            send_event("ebookclose", round_secs(ev), 0);
+            send_event("ebookclose", round_secs(ev), ebk_device);
         else
-            send_event("ebookopen", round_secs(ev), 0);
+            send_event("ebookopen", round_secs(ev), ebk_device);
     }
 }
 
@@ -493,6 +501,25 @@ poll_power_sources(void)
 }
 
 void
+sighandler(int sig)
+{
+    die("got signal %d", sig);
+}
+
+void
+sig_send_paths(int sig)
+{
+    send_event("lidcheck", time(0), lid_device);
+    send_event("ebookcheck", time(0), ebk_device);
+}
+
+void
+send_device_paths(void)
+{
+    sig_send_paths(0);
+}
+
+void
 data_loop(void)
 {
     fd_set inputs, errors;
@@ -500,12 +527,14 @@ data_loop(void)
     struct timeval *tvp;
     int r;
 
+    send_device_paths();
+
     while (1) {
         FD_ZERO(&inputs);
         FD_SET(pwr_fd, &inputs);
         FD_SET(lid_fd, &inputs);
         if (ebk_fd >= 0)
-	    FD_SET(ebk_fd, &inputs);
+            FD_SET(ebk_fd, &inputs);
         if (acpwr_fd >= 0)
             FD_SET(acpwr_fd, &inputs);
 
@@ -513,7 +542,7 @@ data_loop(void)
         FD_SET(pwr_fd, &errors);
         FD_SET(lid_fd, &errors);
         if (ebk_fd >= 0)
-	    FD_SET(ebk_fd, &errors);
+            FD_SET(ebk_fd, &errors);
         if (acpwr_fd >= 0)
             FD_SET(acpwr_fd, &errors);
 
@@ -564,12 +593,6 @@ data_loop(void)
                 indicate_activity();
         }
     }
-}
-
-void
-sighandler(int sig)
-{
-    die("got signal %d", sig);
 }
 
 int
@@ -650,7 +673,7 @@ main(int argc, char *argv[])
     signal(SIGINT, sighandler);
     signal(SIGQUIT, sighandler);
     signal(SIGABRT, sighandler);
-    signal(SIGUSR1, sighandler);
+    signal(SIGUSR1, sig_send_paths);
     signal(SIGUSR2, sighandler);
 
     signal(SIGPIPE, SIG_IGN);
