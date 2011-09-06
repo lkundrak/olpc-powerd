@@ -6,6 +6,8 @@ ifdef WPA_SUPPLICANT_0_6
 CFLAGS += -DWPA_SUPPLICANT_0_6
 endif
 
+CFLAGS += -DG_LOG_DOMAIN=\"powerd-dbus\"
+
 all: powerd-dbus
 
 powerd-dbus: ohm-keystore-glue.h ohm-keystore.c network.c nm_monitor.c wpas_monitor.c powerd-dbus.c powerd-dbus.h
