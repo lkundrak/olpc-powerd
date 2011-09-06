@@ -4,6 +4,7 @@
 #include <glib.h>
 #include <nm-client.h>
 #include <nm-device-wifi.h>
+#include "powerd-dbus.h"
 
 static NMClient *client;
 static GHashTable *monitored_devices;
@@ -103,4 +104,5 @@ int nm_monitor_init(void)
 	if (devices)
 		g_ptr_array_foreach((GPtrArray *) devices, (GFunc) examine_device,
 			NULL);
+	return 0;
 }

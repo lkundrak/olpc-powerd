@@ -1,4 +1,5 @@
 #include <glib.h>
+#include "powerd-dbus.h"
 
 /*
  * "suspend OK" state flags.

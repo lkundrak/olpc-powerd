@@ -3,6 +3,8 @@
 #include <errno.h>
 #include <stdio.h>
 
+#include "powerd-dbus.h"
+
 /*
  * Not implemented for wpa_supplicant-0.6.
  * Although "Scanning" signals are emitted to indicate state, there are no

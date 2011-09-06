@@ -19,6 +19,7 @@ void powerd_send_event(const char *event, const char *arg)
 {
 	int fd, n;
 	char evtbuf[128];
+	int ignore;
 
 	g_message("powerd_send_event %s", event);
 	fd = open("/var/run/powerevents", O_RDWR | O_NONBLOCK);
@@ -30,7 +31,7 @@ void powerd_send_event(const char *event, const char *arg)
 	else
 		n = snprintf(evtbuf, sizeof(evtbuf), "%s %d\n", event, (int)time(0));
 
-	write(fd, evtbuf, n);
+	ignore = write(fd, evtbuf, n);
 	close(fd);
 }
 
