@@ -1266,6 +1266,7 @@ event_fifo_lookahead()
          powerbutton-*|\
          fake_powerbutton-*|\
          lidopen-*|lidclose-soft|\
+         inhibit-suspend-soft|\
          ebook*-soft|ac-*-soft|useractive-soft|\
          reconfig-*|trace-*)
             if [ ! "$s_tstamp" ] || \
