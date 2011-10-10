@@ -419,7 +419,7 @@
 # or "powerd-config =trace-off" (disables both types of output)
 
 # uncomment one:
-#tracing=1
+tracing=1
 #debug=1
 
 XO=;
@@ -459,6 +459,12 @@ BATTERY_INFO=/sys/class/power_supply/olpc-battery
 CAPACITY=$BATTERY_INFO/capacity  # percentage
 MICROVOLTS=$BATTERY_INFO/voltage_avg  # microvolts
 
+KBD_WAKE_COUNT=/sys/devices/platform/olpc-kbd.0/power/wakeup_count
+POWER_WAKE_COUNT=/sys/devices/platform/olpc-ec-1.75.0/power/wakeup_count
+RTC_WAKE_COUNT=/sys/devices/platform/mmp-rtc/power/wakeup_count
+
+RTCSYSFS=/sys/class/rtc/rtc0
+
 if [ -d /sys/class/power_supply/olpc-ac ]
 then
     AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1/0
@@ -481,6 +487,8 @@ WLAN_ENABLED=/sys/power/wlan-enabled    # XO-1 only
 
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
+
+OLPC_SWITCH=/sys/power/olpc-switch.0  # XO-1.75 only
 
 if [ -e /sys/power/wake-on-lid ]   # recent XO-1 kernels
 then
@@ -515,8 +523,51 @@ then
             ;;
         esac
     }
+elif [ -d $OLPC_SWITCH ] # XO-1.75
+then
+    wake_on_lid()
+    {
+        case "$1" in
+        never)  # ebook disabled too
+            echo disabled > $OLPC_SWITCH/power/wakeup
+            ;;
+        open)
+            echo enabled > $OLPC_SWITCH/power/wakeup
+            echo 0 > $OLPC_SWITCH/wake-on-close
+            echo 0 > $OLPC_SWITCH/wake-on-ebook
+            ;;
+        always|close)  # can't do just wake-on-close on 1.75
+            echo enabled > $OLPC_SWITCH/power/wakeup
+            echo 1 > $OLPC_SWITCH/wake-on-close
+            echo 1 > $OLPC_SWITCH/wake-on-ebook
+            ;;
+        esac
+
+    }
 else
     wake_on_lid()
+    {
+        :
+    }
+fi
+
+if [ -e /proc/acpi/wakeup ]   # acpi events only on XO-1.5
+then
+    wake_on_ebook()
+    {
+        case "$1" in
+        never)
+            set_acpi_wakeupevents EBK disable
+            ;;
+        always)
+            set_acpi_wakeupevents EBK enable
+            ;;
+        esac
+    }
+else
+    # controlled by EC mask on XO-1
+    # controlled along with lid on 1.75
+    wake_on_ebook()
     {
         :
     }
@@ -618,6 +669,21 @@ trace()
     fi
 }
 
+# use $SECONDS for timing when possible
+if [ "${SECONDS:-}" ]
+then
+    SECONDS=$(date +%s)
+    seconds()
+    {
+        echo $SECONDS
+    }
+else
+    seconds()
+    {
+        date +%s
+    }
+fi
+
 test "$debug" && set_tracing debug
 test "$tracing" && set_tracing on
 
@@ -688,8 +754,8 @@ exec 2>>$LOGFILE
 exec 1>&2   # capture stdout, too. (prevents console spew)
 
 log powerd $powerd_version startup at $(date), on XO-$XO
-log $(cat /proc/version)
-log olpc build: $(cat /boot/olpc_build)
+log $(< /proc/version)
+log olpc build: $(< /boot/olpc_build)
 
 
 yes_or_true()
@@ -708,21 +774,6 @@ yes_or_true_to_boolean()
     fi
     # else echo nothing
 }
-
-# use $SECONDS for timing when possible
-if [ "${SECONDS:-}" ]
-then
-    SECONDS=$(date +%s)
-    seconds()
-    {
-        echo $SECONDS
-    }
-else
-    seconds()
-    {
-        date +%s
-    }
-fi
 
 if [ -e /dev/fb ]
 then
@@ -853,7 +904,7 @@ cpu_or_network_busy()
     # seconds because we arranged to be signalled 5 seconds
     # before actually wanting to suspend.
     start=$(seconds)
-    while :
+    while : BUSYCHECK loop
     do
         event_fifo_lookahead soft && return 0
         test $(($(seconds) - start)) -ge $BUSYCHECK && break
@@ -1153,10 +1204,12 @@ runparts()
         *~|'*') continue;;  # skip ~ backup files, and literal '*'
         esac
 
-        if [ -x $rc_script ]; then
+        if [ -x $rc_script ]
+        then
             echo "Running $rc_script $rc_action" >&2
             ./$rc_script $rc_action || echo "*** $rc_script failed"
-        elif [ -f $rc_script ]; then
+        elif [ -f $rc_script ]
+        then
             echo "Skipping $rc_script (disabled, not executable)" >&2
         else
             if [ -L $rc_script ]; then
@@ -1173,11 +1226,10 @@ runparts()
 
 }
 
-set_acpi_wakeupevents()
-{
-    # acpi events only on XO-1.5
-    if [ "$XO" = 1.5 ]
-    then
+if [ -e /proc/acpi/wakeup ]   # acpi events only on XO-1.5
+then
+    set_acpi_wakeupevents()
+    {
         # enable --> enabled, disable --> disabled
         skip=${2}d
 
@@ -1189,60 +1241,139 @@ set_acpi_wakeupevents()
                 -e "/^$1[[:space:]].*\<$skip\>/d" \
                 -e "s/^\($1\)[[:space:]].*/\1/p" \
             /proc/acpi/wakeup >/proc/acpi/wakeup
-    fi
-}
+    }
+else
+    set_acpi_wakeupevents()
+    {
+        :
+    }
+fi
 
-set_wakeupevents()
-{
+
+if [ $XO != 1.75 ]
+then
+    set_ec_wakeup_mask()
+    {
+        case $1 in
+        enable)
+            echo 1 > $WAKEUP_EVENTS/$2
+            ;;
+        disable)
+            echo 0 > $WAKEUP_EVENTS/$2
+            ;;
+        esac
+    }
+fi
+
+# we only use none, none_but_lid, all, allsci,  battery
 
 # FIXME when 1.75 can sleep
-    test $XO = 1.75 && return
+if [ $XO = 1.75 ]
+then
+    OLPC_KBD=/sys/devices/platform/olpc-kbd.0
+    set_wakeupevents()
+    {
+        case $1 in
+        all)            wake_on_lid always
+                        echo enabled > $OLPC_KBD/power/wakeup
+                        ;;
+        none)           wake_on_lid never
+                        echo disabled > $OLPC_KBD/power/wakeup
+                        ;;
+        none_but_lid)   wake_on_lid open
+                        echo disabled > $OLPC_KBD/power/wakeup
+                        ;;
+        esac
+    }
 
-    # this routine was simpler when only the XO-1 was around -- all
-    # it dealt with was the nodes in /sys/power/wakeup_events.
-    # note that /sys/power/wakeup_events isn't just masking wakeups --
-    # it's masking SCI events, which also provide battery and EC input
-    # events (and ebook on XO-1).
-    case $1 in
-    all)        wake_on_lid always
-                set_acpi_wakeupevents EBK enable
-                echo 1 >$WAKEUP_EVENTS/all
-                ;;
-    all_sci)    # we want to unmask all SCI events at the EC when
-                # we waken after having masked them, but we don't
-                # need to massage the acpi settings, etc.  i.e.,
-                # this is used when we awake, not when we go to sleep.
-                echo 1 >$WAKEUP_EVENTS/all
-                ;;
-    none)       wake_on_lid never
-                set_acpi_wakeupevents EBK disable
-                echo 0 >$WAKEUP_EVENTS/all
-                ;;
-    none_but_lid)
-                wake_on_lid open
-                set_acpi_wakeupevents EBK disable
-                echo 0 >$WAKEUP_EVENTS/all
-                ;;
-    ac)         echo 1 >$WAKEUP_EVENTS/ac_power
-                ;;
-    battery)    echo 1 >$WAKEUP_EVENTS/battery_soc
-                echo 1 >$WAKEUP_EVENTS/battery_state
-                echo 1 >$WAKEUP_EVENTS/battery_error
-                # next one not always present
-                echo 1 >$WAKEUP_EVENTS/battery_critical 2>&1
-                ;;
-    battery_critical)
-                echo 1 >$WAKEUP_EVENTS/battery_critical 2>&1
-                ;;
-    esac
-}
+else
+    set_wakeupevents()
+    {
 
-read_wakeupsource()
-{
-    local x
-    read x < $WAKEUP_SOURCE
-    eval $1=\"$x\"
-}
+        # this routine was simpler when only the XO-1 was around -- all
+        # it dealt with was the nodes in /sys/power/wakeup_events.
+        # note that /sys/power/wakeup_events isn't just masking wakeups --
+        # it's masking SCI events, which also provide battery and EC input
+        # events (and ebook on XO-1).
+        case $1 in
+        all)        wake_on_lid always
+                    wake_on_ebook always
+                    set_ec_wakeup_mask enable all
+                    ;;
+        all_sci)    # we want to unmask all SCI events at the EC when
+                    # we waken after having masked them, but we don't
+                    # need to massage the acpi settings, etc.  i.e.,
+                    # this is used when we awake, not when we go to sleep.
+                    set_ec_wakeup_mask enable all
+                    ;;
+        none)       wake_on_lid never
+                    wake_on_ebook never
+                    set_ec_wakeup_mask disable all
+                    ;;
+        none_but_lid)
+                    wake_on_lid open
+                    wake_on_ebook never
+                    set_ec_wakeup_mask disable all
+                    ;;
+        ac)         set_ec_wakeup_mask enable ac_power
+                    ;;
+        battery)    set_ec_wakeup_mask enable battery_soc
+                    set_ec_wakeup_mask enable battery_state
+                    set_ec_wakeup_mask enable battery_error
+                    # next one not always present in very old kernels
+                    set_ec_wakeup_mask enable battery_critical 2>&1
+                    ;;
+        battery_critical)
+                    set_ec_wakeup_mask enable battery_critical 2>&1
+                    ;;
+        esac
+    }
+fi
+
+if [ $XO = 1.75 ]
+then
+    prepare_for_wakeupsource()
+    {
+        lid_was_closed=$am_closed
+        kbd_wake_count=$(< $KBD_WAKE_COUNT)
+        power_wake_count=$(< $POWER_WAKE_COUNT)
+        rtc_wake_count=$(< $RTC_WAKE_COUNT)
+    }
+
+    get_wakeupsource()
+    {
+        if [ $kbd_wake_count != $(< $KBD_WAKE_COUNT) ]
+        then
+            wakeupsource=keypress
+        elif [ $power_wake_count != $(< $POWER_WAKE_COUNT) ]
+        then
+            wakeupsource=powerbutton
+        elif [ $rtc_wake_count != $(< $RTC_WAKE_COUNT) ]
+        then
+            wakeupsource=rtcalarm
+        elif [ "$lid_was_closed" ] && ! is_lid_closed && [ "$wake_on_open" ]
+        then
+            wakeupsource=lid
+        else
+            wakeupsource=default
+        fi
+    }
+else
+    prepare_for_wakeupsource()
+    {
+        :
+    }
+
+    get_wakeupsource()   # XO-1 and XO-1.5 only
+    {
+        local x
+        read x < $WAKEUP_SOURCE
+
+        # compress out spaces
+        set -- $x
+        wakeupsource=$1${2:-}${3:-}
+    }
+fi
 
 event_fifo_lookahead()
 {
@@ -1319,7 +1450,7 @@ snooze()
 
     rtctime=$orig_rtctime
 
-    while :
+    while : snooze loop
     do
 
         pwrlog_take_reading suspend
@@ -1355,10 +1486,6 @@ snooze()
             # this below a certain threshold, but that's too fallible.
             set_wakeupevents battery
 
-            # ohmd uses this:
-            #    nm-tool | grep msh0 -A4 | grep Active | awk '{print $2}'\"
-            # to determine whether mesh is active before turning off wireless.
-            # i guess we could do the same.
             if [ "$XO" = 1 -a ! "$prev_wlan_power" ] && \
                  ! yes_or_true "$config_MESH_DURING_SUSPEND"
             then
@@ -1398,7 +1525,10 @@ snooze()
 
         # we did a sync $BUSYCHECK seconds ago, so this should be quick
         killall -q -0 sync || sync
-        event_fifo_lookahead $cur_sleep_type && break
+        if event_fifo_lookahead $cur_sleep_type
+        then
+            break
+        fi
 
         if [ "$cur_sleep_type" = soft ]
         then
@@ -1416,8 +1546,10 @@ snooze()
         # their power is yanked.
         sync
 
+        prepare_for_wakeupsource
+
         # this is it.  here's where we suspend or sleep.
-        rtcwake -m mem -a -s $rtctime >/dev/null
+        rtcwake -s$rtctime -mmem
 
         # we need SCI events, because they do more than just
         # provide wakeup -- they drive input events as well.
@@ -1451,11 +1583,7 @@ snooze()
 
         power_check
 
-        read_wakeupsource wakeupsource
-
-        # compress out spaces
-        set -- $wakeupsource
-        wakeupsource=$1${2:-}${3:-}
+        get_wakeupsource
 
         trace got wakeup: $wakeupsource @ $lastwakeup, \
                 slept $(( lastwakeup - sleep_started ))
@@ -1493,8 +1621,6 @@ snooze()
             trace rtcalarm during $until
             case $until in
             until_dim)
-                # we don't get woken on lid close, so check here.
-                # if we can't tell, assume we're still open
                 backlight dim
                 until=until_blank
                 orig_rtctime=$blanktime
@@ -1567,13 +1693,14 @@ snooze()
             fi
             ;;
 
-        battery*)  # all we do is check battery level, and sleep again
+        battery*|default)  # all we do is check battery level, and sleep again
             ;;
 
         *)  # "keypress"|"ebook"|"unknown")
             selfinject fake_useractive $lastwakeup "$wakeupsource"
             break
             ;;
+
         esac
 
         # unless we've broken out of the loop, we're going to sleep
@@ -1610,7 +1737,7 @@ brightness_ramp()
     test $1 -gt $2 && incr=-1
 
     i=$1
-    while :
+    while : dim loop
     do
         : $((i += incr))
         echo $i >$BRIGHTNESS
@@ -1692,9 +1819,10 @@ dcon()
     esac
 }
 
-lid_closed()
+do_lid_closed()
 {
     am_ebook=;
+    am_closed=true;
     backlight off
     if [ "$sleep_on_close" ]
     then
@@ -1706,14 +1834,18 @@ lid_closed()
 
 if [ "$LID_STATE" = use_evtest ]
 then
-    lid_check()
+    is_lid_closed()
     {
         test "$lid_device" || return
 
+        am_closed=;
         evtest --query $lid_device EV_SW SW_LID
-        case $? in
-        10) lid_closed;;
-        esac
+        if [ $? != 10 ]
+        then
+            return 1
+        fi
+        am_closed=true;
+        return 0
     }
 elif [ "$LID_STATE" ]
 then
@@ -1724,19 +1856,32 @@ then
         eval $1=\"$x\"
     }
 
-    lid_check()
+    is_lid_closed()
     {
         read_lidstate lidstate
         case $lidstate in
-        *closed) lid_closed ;;     # check against "state:   closed"
+        *closed)     # checking against "state:   closed"
+            am_closed=true
+            return 0
+            ;;
+        *) 
+            am_closed=;
+            return 1
+            ;;
         esac
     }
 else
-    lid_check()
+    is_lid_closed()
     {
-        :
+        am_closed=;
+        return 1
     }
 fi
+
+lid_check()
+{
+    is_lid_closed && do_lid_closed
+}
 
 if [ "$EBOOK_STATE" = use_evtest ]
 then
@@ -1839,8 +1984,7 @@ read_config()
         keypress_sleep=hard
     fi
 
-# FIXME when 1.75 can sleep
-    if [ "$XO" = 1.75 ]
+    if false && [ "$XO" = 1.75 ]  # FIXME
     then
         log suppressing sleep configurations on 1.75
         config_BATTERY_TIME_SLEEP=0
@@ -2179,7 +2323,7 @@ event_loop()
 
     killall -USR1 olpc-switchd
 
-    while :
+    while : event loop
     do
 
         # event reporting for AC insertion/removal seems to be
@@ -2238,8 +2382,7 @@ event_loop()
             else
                 if [ $config_CONFIRM_SECONDS = 0 ]
                 then
-# FIXME when 1.75 can sleep
-                    if [ "$XO" != 1.75 ]
+                    if true || [ "$XO" != 1.75 ]  # FIXME
                     then
                             backlight off
                             # hard sleep until it's time to shut down
@@ -2272,8 +2415,7 @@ event_loop()
             ;;
 
         gotosleep)
-# FIXME when 1.75 can sleep
-            if [ "$XO" != 1.75 ]
+            if true || [ "$XO" != 1.75 ] # FIXME
             then
                 invalidate_powertimer
                 backlight off
@@ -2294,7 +2436,7 @@ event_loop()
 
         lidclose)
             lid_device=$arg2
-            lid_closed
+            do_lid_closed
             ;;
 
         lidopen)
@@ -2553,9 +2695,12 @@ chmod a+w $BRIGHTNESS $MONO_MODE
 set_acpi_wakeupevents EC enable
 set_wakeupevents all_sci
 
+powerd_dbus_pid=;
 if [ -x /usr/libexec/powerd-dbus ]; then
     /usr/libexec/powerd-dbus &
     powerd_dbus_pid=$!
 fi
+
+is_lid_closed   # sets $am_closed
 
 event_loop
