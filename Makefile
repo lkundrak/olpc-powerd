@@ -5,6 +5,7 @@ PACKAGE=olpc-powerd
 PACKAGEDBUS=olpc-powerd-dbus
 VERSION=36
 
+# CC=arm-linux-gnueabi-gcc
 
 # don't edit .spec -- edit .spec.tmpl
 SPEC=$(PACKAGE).spec
