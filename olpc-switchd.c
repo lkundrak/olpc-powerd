@@ -175,7 +175,8 @@ die(const char *fmt, ...)
  pertinent output of "grep ^ /sys/class/input/ * /name"
  on XO-1.75:
     /sys/class/input/input1/name:Power Button
-    /sys/class/input/input3/name:OLPC lid switches [ reports ebook too ]
+    /sys/class/input/input3/name:OLPC lid switch
+    /sys/class/input/input4/name:OLPC ebook switch
  on XO-1.5:
     /sys/class/input/input0/name:OLPC AC power jack
     /sys/class/input/input1/name:Power Button
@@ -223,9 +224,12 @@ setup_input()
             acpwr_fd = dfd;
         } else if (strstr(name, "olpc pm")) {  // XO-1
             pwr_fd = dfd;
-        } else if (strstr(name, "power button")) {  // XO-1.5
+        } else if (strstr(name, "power button")) {  // XO-1.5, XO-1.75
             pwr_fd = dfd;
         } else if (strstr(name, "lid switches")) { // XO-1.75, does ebook too
+            /* only some kernels reported these on the same switch.
+             * later kernels split them up.
+	     */
             lid_fd = dfd;
             strcpy(lid_device, devname);
             strcpy(ebk_device, devname);
@@ -236,6 +240,7 @@ setup_input()
             ebk_fd = dfd;
             strcpy(ebk_device, devname);
         } else {
+            close(dfd);
             continue;
         }
 
