@@ -560,7 +560,7 @@ data_loop(void)
         }
 
         r = select(maxfd+1, &inputs, NULL, &errors, tvp);
-        if (r < 0)
+        if (r < 0 && errno != EINTR)
             die("select failed");
 
         if (!poll_power_sources() && r == 0 && timeout_polls) {
