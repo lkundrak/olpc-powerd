@@ -59,9 +59,6 @@ int noxmit;
 /* output event fifo */
 char *output_fifo;
 
-/* sysactive path -- touched at most once every 5 seconds for switch activity */
-char *sysactive_path;
-
 /* how often to poll AC and battery state */
 int pollinterval;
 
@@ -116,9 +113,6 @@ usage(void)
         "   '-p N' If set, the presence of external power and the condition\n"
         "        of the battery will be polled every N seconds.\n"
         "   '-t T' If set, will send a 'timer' event every T * N seconds\n"
-        "   '-A <activity_indicator>'  Gives path whose modification time\n"
-        "        will indicate (approximate) recent switch/button activity.\n"
-        "        (Touched at most once every 5 seconds)\n"
         "(olpc-switchd version %d)\n"
         , me, VERSION);
     exit(1);
@@ -265,36 +259,6 @@ setup_input()
     }
 
     return ret;
-}
-
-void
-indicate_activity(void)
-{
-    static time_t lastactivity;
-    time_t now;
-
-    now = time(0);
-
-    if (now - lastactivity < 5)
-        return;
-
-    if (utime(sysactive_path, NULL)) {
-        if (errno == ENOENT) {  /* try to create it */
-            int fd = open(sysactive_path, O_RDWR | O_CREAT,
-                      S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH |
-                      S_IWOTH);
-            if (fd >= 0)
-                close(fd);
-        } else {
-            static int reported = 0;
-            if (!reported) {
-                report("touch of %s failed: %s",
-                    sysactive_path, strerror(errno));
-                reported = 1;
-            }
-        }
-    }
-    lastactivity = now;
 }
 
 void
@@ -664,9 +628,6 @@ data_loop(void)
                 ebook_event();
             if (acpwr_fd >= 0 && FD_ISSET(acpwr_fd, &inputs))
                 acpwr_event();
-
-            if (sysactive_path)
-                indicate_activity();
         }
     }
 }
@@ -682,7 +643,7 @@ main(int argc, char *argv[])
     cp = strrchr(argv[0], '/');
     if (cp) me = cp + 1;
 
-    while ((c = getopt(argc, argv, "fldXop:t:F:A:")) != -1) {
+    while ((c = getopt(argc, argv, "fldXop:t:F:")) != -1) {
         switch (c) {
 
         /* daemon options */
@@ -717,10 +678,6 @@ main(int argc, char *argv[])
 
         case 'F':
             output_fifo = optarg;
-            break;
-
-        case 'A':
-            sysactive_path = optarg;
             break;
 
         default:
