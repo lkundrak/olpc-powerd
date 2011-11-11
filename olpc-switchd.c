@@ -68,6 +68,9 @@ int pollinterval;
 /* how many pollintervals should pass before we send a timer event */
 int timeout_polls;
 
+/* should we also try and read the outdoor light sensor (OLS) */
+int do_poll_ols;
+
 extern char *optarg;
 extern int optind, opterr, optopt;
 
@@ -229,7 +232,7 @@ setup_input()
         } else if (strstr(name, "lid switches")) { // XO-1.75, does ebook too
             /* only some kernels reported these on the same switch.
              * later kernels split them up.
-	     */
+             */
             lid_fd = dfd;
             strcpy(lid_device, devname);
             strcpy(ebk_device, devname);
@@ -472,6 +475,72 @@ read_battery_status(void)
 }
 
 int
+read_ols(void)
+{
+    int fd, r;
+    char buf[11];
+    static int no_ols;
+
+    if (no_ols)
+        return -1;
+
+    fd = open("/sys/devices/platform/olpc-ols.0/power_state", O_RDONLY);
+    if (fd < 0) {
+        if (errno == ENOENT)
+            no_ols = 1;
+        return -1;
+    }
+
+    r = read(fd, buf, 10);
+    close(fd);
+
+    if (r <= 1)
+        return -1;
+
+    buf[r] = '\0';
+
+    sscanf(buf, " %d ", &r);
+
+    dbg(1, "got ols %s returning %d", buf, r);
+
+    return r;
+}
+
+enum {
+    sent_none,
+    sent_dark,
+    sent_bright
+};
+
+#define OLS_BRIGHT_LEVEL 40
+#define OLS_DARK_LEVEL 50
+
+int
+poll_ols(void)    // outdoor light sensor
+{
+    static int sent = sent_none;
+    int olsval;
+
+    if (!do_poll_ols)
+	return 0;
+
+    olsval = read_ols();
+    if (olsval < 0)
+        return 0;
+
+    if (sent != sent_bright && olsval < OLS_BRIGHT_LEVEL) {
+        send_event("ambient-adjust", time(0), "bright");
+        sent = sent_bright;
+    } else if (sent != sent_dark && olsval > OLS_DARK_LEVEL) {
+        send_event("ambient-adjust", time(0), "dark");
+        sent = sent_dark;
+    } else {
+        return 0;
+    }
+    return 1;
+}
+
+int
 poll_power_sources(void)
 {
     int online, capacity;
@@ -563,15 +632,17 @@ data_loop(void)
         if (r < 0 && errno != EINTR)
             die("select failed");
 
-        if (!poll_power_sources() && r == 0 && timeout_polls) {
-            static int tp = 2;
+        if (r == 0 && timeout_polls) {
+            if ((poll_power_sources() + poll_ols()) == 0) {
+                static int tp = 2;
 
-            if (--tp <= 0) {
-                char timeout[16];
-                snprintf(timeout, sizeof(timeout), "%d",
-                    pollinterval * timeout_polls);
-                send_event("timer", time(0), timeout);
-                tp = timeout_polls;
+                if (--tp <= 0) {
+                    char timeout[16];
+                    snprintf(timeout, sizeof(timeout), "%d",
+                        pollinterval * timeout_polls);
+                    send_event("timer", time(0), timeout);
+                    tp = timeout_polls;
+                }
             }
         }
 
@@ -611,7 +682,7 @@ main(int argc, char *argv[])
     cp = strrchr(argv[0], '/');
     if (cp) me = cp + 1;
 
-    while ((c = getopt(argc, argv, "fldXp:t:F:A:")) != -1) {
+    while ((c = getopt(argc, argv, "fldXop:t:F:A:")) != -1) {
         switch (c) {
 
         /* daemon options */
@@ -639,6 +710,10 @@ main(int argc, char *argv[])
             if (*eargp != '\0' || pollinterval <= 0)
                 usage();
             break;
+
+	case 'o':
+	    do_poll_ols = 1;
+	    break;
 
         case 'F':
             output_fifo = optarg;
