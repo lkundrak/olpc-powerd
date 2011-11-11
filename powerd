@@ -1730,6 +1730,8 @@ read_brightness()
 brightness_ramp()
 {
     local i
+
+    trace ramp from $1 to $2
     test $1 = $2 && return
 
     # ramp in either direction
@@ -1749,6 +1751,7 @@ brightness_ramp()
 
 backlight()
 {
+    trace backlight $1
     case $1 in
     init)
         read_brightness tmpbright
@@ -1756,18 +1759,19 @@ backlight()
         then
             brightness_ramp $tmpbright $config_INITIAL_BRIGHT_LEVEL
         fi
+        savebright=$config_INITIAL_BRIGHT_LEVEL
         ;;
     restore)
-        if [ "$dimmed" -a "$savebright" ]
+        if [ "$dimmed" ]
         then
             # could ramp here, but it wastes time while
-            # the user is starting to work again
-            # read_brightness curbright
-            # if [ $curbright -lt $savebright ]
-            # then
-            #     brightness_ramp $curbright $savebright
-            # fi
-            set_brightness $savebright
+            # the user is starting to work again.
+            if [ ! "$ambient_savebright" ]
+            then
+                set_brightness $savebright
+            else
+                ambient_savebright=$savebright
+            fi
             dimmed=;
         fi
         dcon wake
@@ -1775,22 +1779,19 @@ backlight()
     dim)
         if [ ! "${dimmed}" ]
         then
-            read_brightness savebright
-            if [ $savebright -gt $config_IDLE_DIM_LEVEL ]
+            read_brightness curbright
+            savebright=${ambient_savebright:-$curbright}
+            if [ $curbright -gt $config_IDLE_DIM_LEVEL ]
             then
-                brightness_ramp $savebright $config_IDLE_DIM_LEVEL
+                brightness_ramp $curbright $config_IDLE_DIM_LEVEL
             fi
             dimmed=true
         fi
         ;;
     off)
-        # this is all unneeded: sleeping the dcon disables BL.
-        #if [ ! "${dimmed}" ]
-        #then
-        #    read_brightness savebright
-        #    dimmed=true
-        #fi
-        # set_brightness 0
+	# backlight is turned off while dcon sleeps, but
+	# brightness level is retained, and can be changed. 
+	# ambient dimming makes use of this.
         dcon sleep
         ;;
 
@@ -1799,6 +1800,30 @@ backlight()
         read d < $DCON_SLEEP
         test $d = 1
         return
+        ;;
+    esac
+}
+
+ambient_adjust()
+{
+    read_brightness curbright
+    case $1-$ambient in
+    dark-dark|bright-bright)  # redundant event
+        ;;
+    dark-*)  # it's shady -- adjust the backlight up
+        ambient=dark
+        if [ "${dimmed}" -a $config_IDLE_DIM_LEVEL -lt $ambient_savebright ]
+        then
+            brightness_ramp $curbright $config_IDLE_DIM_LEVEL
+        else
+            brightness_ramp $curbright $ambient_savebright
+        fi
+        ambient_savebright=;
+        ;;
+    bright-*)  #  it's sunny --adjust the backlight down
+        ambient=bright
+        ambient_savebright=$curbright
+        brightness_ramp $curbright 0
         ;;
     esac
 }
@@ -2552,6 +2577,10 @@ event_loop()
             : $(( no_suspend = (no_suspend > 0) ? no_suspend - 1 : 0 ))
             ;;
 
+        ambient-adjust)
+            ambient_adjust $arg2
+            ;;
+
         #trace-on)
         #    set_tracing on
         #    ;;
@@ -2652,6 +2681,8 @@ ebook_device=;
 lid_device=;
 dimmed=;
 savebright=;
+ambient_savebright=;
+ambient=;
 last_t_values=;
 timerseqno=1;
 powerseqno=0;
