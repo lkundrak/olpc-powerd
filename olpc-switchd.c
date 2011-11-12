@@ -272,6 +272,7 @@ send_event(char *evt, int seconds, char *extra)
     space = extra ? " " : "";
     if (!extra) extra = "";
     n = snprintf(evtbuf, 128, "%s %d%s%s\n", evt, seconds, space, extra);
+    dbg(1,"evtbuf: %s", evtbuf);
 
     fifo_fd = open(output_fifo, O_WRONLY|O_NONBLOCK);
     if (fifo_fd < 0)
@@ -424,7 +425,7 @@ read_battery_status(void)
 {
     int fd, r;
     static char buf[40];
-    fd = open("/sys/class/power_supply/olpc-battery/capacity", O_RDONLY);
+    fd = open("/sys/class/power_supply/olpc-battery/status", O_RDONLY);
     if (fd < 0)
         return 0;
 
@@ -434,6 +435,10 @@ read_battery_status(void)
         buf[0] = '\0';
     else
         buf[sizeof(buf)-1] = '\0';
+
+    r = strlen(buf);
+    if (buf[r-1] == '\n')
+	buf[r-1] = '\0';
 
     return buf;
 }
@@ -465,7 +470,7 @@ read_ols(void)
 
     sscanf(buf, " %d ", &r);
 
-    dbg(1, "got ols %s returning %d", buf, r);
+    // dbg(1, "got ols %s returning %d", buf, r);
 
     return r;
 }
@@ -510,7 +515,7 @@ poll_power_sources(void)
     int online, capacity;
     static int was_online = -1;
     static int was_capacity = -1;
-    static char was_status[20];
+    static char was_status[40];
     char *status;
     int sent = 0;
 
@@ -527,10 +532,10 @@ poll_power_sources(void)
     capacity = read_battery_capacity();
     status = read_battery_status();
     if (was_capacity != capacity || strcmp(status, was_status) != 0) {
-        char evbuf[32];
+        char evbuf[64];
         was_capacity = capacity;
         strcpy(was_status, status);
-        snprintf(evbuf, 32, "%d", capacity);
+        snprintf(evbuf, 64, "%d %s", capacity, status);
         send_event("battery", time(0), evbuf);
         sent = 1;
     }
