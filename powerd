@@ -1718,7 +1718,7 @@ snooze()
 set_brightness()
 {
     echo $1 >$BRIGHTNESS
-    echo $(( $1 == 0 )) >$MONO_MODE
+    # echo $(( $1 == 0 )) >$MONO_MODE
 }
 
 read_brightness()
@@ -1747,7 +1747,7 @@ brightness_ramp()
         test $i = $2 && break
         sleep .025s
     done
-    echo $(( $i == 0 )) >$MONO_MODE
+    # echo $(( $i == 0 )) >$MONO_MODE
 }
 
 ambient_adjust_init()
