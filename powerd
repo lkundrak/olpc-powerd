@@ -419,7 +419,7 @@
 # or "powerd-config =trace-off" (disables both types of output)
 
 # uncomment one:
-tracing=1
+# tracing=1
 #debug=1
 
 XO=;
@@ -488,7 +488,8 @@ WLAN_ENABLED=/sys/power/wlan-enabled    # XO-1 only
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
 
-OLPC_SWITCH=/sys/power/olpc-switch.0  # XO-1.75 only
+OLPC_SWITCH=/sys/devices/platform/olpc-switch.0  # XO-1.75 only
+OLS_CONTROL=/sys/devices/platform/olpc-ols.0    # XO-1.75 only
 
 if [ -e /sys/power/wake-on-lid ]   # recent XO-1 kernels
 then
@@ -1265,9 +1266,7 @@ then
     }
 fi
 
-# we only use none, none_but_lid, all, allsci,  battery
 
-# FIXME when 1.75 can sleep
 if [ $XO = 1.75 ]
 then
     OLPC_KBD=/sys/devices/platform/olpc-kbd.0
@@ -1295,6 +1294,8 @@ else
         # note that /sys/power/wakeup_events isn't just masking wakeups --
         # it's masking SCI events, which also provide battery and EC input
         # events (and ebook on XO-1).
+
+        # we use only none, none_but_lid, all, allsci,  battery
         case $1 in
         all)        wake_on_lid always
                     wake_on_ebook always
@@ -1749,6 +1750,15 @@ brightness_ramp()
     echo $(( $i == 0 )) >$MONO_MODE
 }
 
+ambient_adjust_init()
+{
+    if [ -d $OLS_CONTROL ]
+    then
+        echo 50 >$OLS_CONTROL/low_lim
+        echo 80 >$OLS_CONTROL/high_lim
+    fi
+}
+
 backlight()
 {
     trace backlight $1
@@ -1760,6 +1770,7 @@ backlight()
             brightness_ramp $tmpbright $config_INITIAL_BRIGHT_LEVEL
         fi
         savebright=$config_INITIAL_BRIGHT_LEVEL
+        ambient_adjust_init
         ;;
     restore)
         if [ "$dimmed" ]
@@ -1789,9 +1800,9 @@ backlight()
         fi
         ;;
     off)
-	# backlight is turned off while dcon sleeps, but
-	# brightness level is retained, and can be changed. 
-	# ambient dimming makes use of this.
+        # backlight is turned off while dcon sleeps, but
+        # brightness level is retained, and can be changed. 
+        # ambient dimming makes use of this.
         dcon sleep
         ;;
 
@@ -2009,7 +2020,7 @@ read_config()
         keypress_sleep=hard
     fi
 
-    if false && [ "$XO" = 1.75 ]  # FIXME
+    if [ "$XO" = 1.75 ]  # FIXME
     then
         log suppressing sleep configurations on 1.75
         config_BATTERY_TIME_SLEEP=0
@@ -2407,7 +2418,7 @@ event_loop()
             else
                 if [ $config_CONFIRM_SECONDS = 0 ]
                 then
-                    if true || [ "$XO" != 1.75 ]  # FIXME
+                    if [ "$XO" != 1.75 ]  # FIXME
                     then
                             backlight off
                             # hard sleep until it's time to shut down
@@ -2440,7 +2451,7 @@ event_loop()
             ;;
 
         gotosleep)
-            if true || [ "$XO" != 1.75 ] # FIXME
+            if [ "$XO" != 1.75 ] # FIXME
             then
                 invalidate_powertimer
                 backlight off
