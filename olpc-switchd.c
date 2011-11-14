@@ -65,9 +65,6 @@ int pollinterval;
 /* how many pollintervals should pass before we send a timer event */
 int timeout_polls;
 
-/* should we also try and read the outdoor light sensor (OLS) */
-int do_poll_ols;
-
 extern char *optarg;
 extern int optind, opterr, optopt;
 
@@ -76,6 +73,7 @@ extern int optind, opterr, optopt;
 int pwr_fd = -1;
 int lid_fd = -1;
 int ebk_fd = -1;
+int ols_fd = -1;
 int acpwr_fd = -1;
 int got_switches = 0;
 
@@ -217,6 +215,8 @@ setup_input()
 
         strtolower(name);
 
+        dbg(3,"devname: %s, name %s\n", devname, name);
+
         if (strstr(name, "olpc ac power")) {
             acpwr_fd = dfd;
         } else if (strstr(name, "olpc pm")) {  // XO-1
@@ -236,10 +236,14 @@ setup_input()
         } else if (strstr(name, "ebook switch")) {
             ebk_fd = dfd;
             strcpy(ebk_device, devname);
+        } else if (strstr(name, "ols notify")) {
+            ols_fd = dfd;
         } else {
             close(dfd);
             continue;
         }
+
+        dbg(3,"name %s good\n", name);
 
         got_switches++;
         maxfd = MAX(maxfd, dfd);
@@ -253,8 +257,7 @@ setup_input()
     else if (lid_fd == -1)
         report("didn't find lid switch");
     else {
-        report("found %s %d switches",
-                (got_switches == 4) ? "all":"just", got_switches);
+        report("found %d switches", got_switches);
         ret = 0;
     }
 
@@ -358,6 +361,29 @@ ebook_event()
     }
 }
 
+// hmmm....
+#define SW_OLS_BRIGHT SW_CAMERA_LENS_COVER
+
+void
+ols_event()
+{
+    struct input_event ev[1];
+
+    if (read(ols_fd, ev, sizeof(ev)) != sizeof(ev))
+        die("bad read from ebook switch");
+
+    dbg(3, "ols: ev sec %d usec %d type %d code %d value %d",
+        ev->time.tv_sec, ev->time.tv_usec,
+        ev->type, ev->code, ev->value);
+
+    if (ev->type == EV_SW && ev->code == SW_OLS_BRIGHT) {
+        if (ev->value)
+            send_event("ambient-adjust", time(0), "bright");
+        else
+            send_event("ambient-adjust", time(0), "dark");
+    }
+}
+
 void
 acpwr_event()
 {
@@ -438,75 +464,9 @@ read_battery_status(void)
 
     r = strlen(buf);
     if (buf[r-1] == '\n')
-	buf[r-1] = '\0';
+        buf[r-1] = '\0';
 
     return buf;
-}
-
-int
-read_ols(void)
-{
-    int fd, r;
-    char buf[11];
-    static int no_ols;
-
-    if (no_ols)
-        return -1;
-
-    fd = open("/sys/devices/platform/olpc-ols.0/power_state", O_RDONLY);
-    if (fd < 0) {
-        if (errno == ENOENT)
-            no_ols = 1;
-        return -1;
-    }
-
-    r = read(fd, buf, 10);
-    close(fd);
-
-    if (r <= 1)
-        return -1;
-
-    buf[r] = '\0';
-
-    sscanf(buf, " %d ", &r);
-
-    // dbg(1, "got ols %s returning %d", buf, r);
-
-    return r;
-}
-
-enum {
-    sent_none,
-    sent_dark,
-    sent_bright
-};
-
-#define OLS_BRIGHT_LEVEL 40
-#define OLS_DARK_LEVEL 50
-
-int
-poll_ols(void)    // outdoor light sensor
-{
-    static int sent = sent_none;
-    int olsval;
-
-    if (!do_poll_ols)
-	return 0;
-
-    olsval = read_ols();
-    if (olsval < 0)
-        return 0;
-
-    if (sent != sent_bright && olsval < OLS_BRIGHT_LEVEL) {
-        send_event("ambient-adjust", time(0), "bright");
-        sent = sent_bright;
-    } else if (sent != sent_dark && olsval > OLS_DARK_LEVEL) {
-        send_event("ambient-adjust", time(0), "dark");
-        sent = sent_dark;
-    } else {
-        return 0;
-    }
-    return 1;
 }
 
 int
@@ -578,6 +538,8 @@ data_loop(void)
         FD_SET(lid_fd, &inputs);
         if (ebk_fd >= 0)
             FD_SET(ebk_fd, &inputs);
+        if (ols_fd >= 0)
+            FD_SET(ols_fd, &inputs);
         if (acpwr_fd >= 0)
             FD_SET(acpwr_fd, &inputs);
 
@@ -586,6 +548,8 @@ data_loop(void)
         FD_SET(lid_fd, &errors);
         if (ebk_fd >= 0)
             FD_SET(ebk_fd, &errors);
+        if (ols_fd >= 0)
+            FD_SET(ols_fd, &errors);
         if (acpwr_fd >= 0)
             FD_SET(acpwr_fd, &errors);
 
@@ -602,7 +566,7 @@ data_loop(void)
             die("select failed");
 
         if (r == 0 && timeout_polls) {
-            if ((poll_power_sources() + poll_ols()) == 0) {
+            if (poll_power_sources() == 0) {
                 static int tp = 2;
 
                 if (--tp <= 0) {
@@ -622,6 +586,8 @@ data_loop(void)
                 die("select reports error on lid switch");
             if (ebk_fd >= 0 && FD_ISSET(ebk_fd, &errors))
                 die("select reports error on ebook switch");
+            if (ols_fd >= 0 && FD_ISSET(ols_fd, &errors))
+                die("select reports error on OLS switch");
             if (acpwr_fd >= 0 && FD_ISSET(acpwr_fd, &errors))
                 die("select reports error on ac power jack");
 
@@ -631,6 +597,8 @@ data_loop(void)
                 lid_event();
             if (ebk_fd >= 0 && FD_ISSET(ebk_fd, &inputs))
                 ebook_event();
+            if (ols_fd >= 0 && FD_ISSET(ols_fd, &inputs))
+                ols_event();
             if (acpwr_fd >= 0 && FD_ISSET(acpwr_fd, &inputs))
                 acpwr_event();
         }
@@ -676,10 +644,6 @@ main(int argc, char *argv[])
             if (*eargp != '\0' || pollinterval <= 0)
                 usage();
             break;
-
-	case 'o':
-	    do_poll_ols = 1;
-	    break;
 
         case 'F':
             output_fifo = optarg;
