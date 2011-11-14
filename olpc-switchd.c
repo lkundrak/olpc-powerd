@@ -59,9 +59,6 @@ int noxmit;
 /* output event fifo */
 char *output_fifo;
 
-/* sysactive path -- touched at most once every 5 seconds for switch activity */
-char *sysactive_path;
-
 /* how often to poll AC and battery state */
 int pollinterval;
 
@@ -76,6 +73,7 @@ extern int optind, opterr, optopt;
 int pwr_fd = -1;
 int lid_fd = -1;
 int ebk_fd = -1;
+int ols_fd = -1;
 int acpwr_fd = -1;
 int got_switches = 0;
 
@@ -113,9 +111,6 @@ usage(void)
         "   '-p N' If set, the presence of external power and the condition\n"
         "        of the battery will be polled every N seconds.\n"
         "   '-t T' If set, will send a 'timer' event every T * N seconds\n"
-        "   '-A <activity_indicator>'  Gives path whose modification time\n"
-        "        will indicate (approximate) recent switch/button activity.\n"
-        "        (Touched at most once every 5 seconds)\n"
         "(olpc-switchd version %d)\n"
         , me, VERSION);
     exit(1);
@@ -220,6 +215,8 @@ setup_input()
 
         strtolower(name);
 
+        dbg(3,"devname: %s, name %s\n", devname, name);
+
         if (strstr(name, "olpc ac power")) {
             acpwr_fd = dfd;
         } else if (strstr(name, "olpc pm")) {  // XO-1
@@ -229,7 +226,7 @@ setup_input()
         } else if (strstr(name, "lid switches")) { // XO-1.75, does ebook too
             /* only some kernels reported these on the same switch.
              * later kernels split them up.
-	     */
+             */
             lid_fd = dfd;
             strcpy(lid_device, devname);
             strcpy(ebk_device, devname);
@@ -239,10 +236,14 @@ setup_input()
         } else if (strstr(name, "ebook switch")) {
             ebk_fd = dfd;
             strcpy(ebk_device, devname);
+        } else if (strstr(name, "ols notify")) {
+            ols_fd = dfd;
         } else {
             close(dfd);
             continue;
         }
+
+        dbg(3,"name %s good\n", name);
 
         got_switches++;
         maxfd = MAX(maxfd, dfd);
@@ -256,42 +257,11 @@ setup_input()
     else if (lid_fd == -1)
         report("didn't find lid switch");
     else {
-        report("found %s %d switches",
-                (got_switches == 4) ? "all":"just", got_switches);
+        report("found %d switches", got_switches);
         ret = 0;
     }
 
     return ret;
-}
-
-void
-indicate_activity(void)
-{
-    static time_t lastactivity;
-    time_t now;
-
-    now = time(0);
-
-    if (now - lastactivity < 5)
-        return;
-
-    if (utime(sysactive_path, NULL)) {
-        if (errno == ENOENT) {  /* try to create it */
-            int fd = open(sysactive_path, O_RDWR | O_CREAT,
-                      S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH |
-                      S_IWOTH);
-            if (fd >= 0)
-                close(fd);
-        } else {
-            static int reported = 0;
-            if (!reported) {
-                report("touch of %s failed: %s",
-                    sysactive_path, strerror(errno));
-                reported = 1;
-            }
-        }
-    }
-    lastactivity = now;
 }
 
 void
@@ -305,6 +275,7 @@ send_event(char *evt, int seconds, char *extra)
     space = extra ? " " : "";
     if (!extra) extra = "";
     n = snprintf(evtbuf, 128, "%s %d%s%s\n", evt, seconds, space, extra);
+    dbg(1,"evtbuf: %s", evtbuf);
 
     fifo_fd = open(output_fifo, O_WRONLY|O_NONBLOCK);
     if (fifo_fd < 0)
@@ -390,6 +361,29 @@ ebook_event()
     }
 }
 
+// hmmm....
+#define SW_OLS_BRIGHT SW_CAMERA_LENS_COVER
+
+void
+ols_event()
+{
+    struct input_event ev[1];
+
+    if (read(ols_fd, ev, sizeof(ev)) != sizeof(ev))
+        die("bad read from ebook switch");
+
+    dbg(3, "ols: ev sec %d usec %d type %d code %d value %d",
+        ev->time.tv_sec, ev->time.tv_usec,
+        ev->type, ev->code, ev->value);
+
+    if (ev->type == EV_SW && ev->code == SW_OLS_BRIGHT) {
+        if (ev->value)
+            send_event("ambient-adjust", time(0), "bright");
+        else
+            send_event("ambient-adjust", time(0), "dark");
+    }
+}
+
 void
 acpwr_event()
 {
@@ -457,7 +451,7 @@ read_battery_status(void)
 {
     int fd, r;
     static char buf[40];
-    fd = open("/sys/class/power_supply/olpc-battery/capacity", O_RDONLY);
+    fd = open("/sys/class/power_supply/olpc-battery/status", O_RDONLY);
     if (fd < 0)
         return 0;
 
@@ -468,6 +462,10 @@ read_battery_status(void)
     else
         buf[sizeof(buf)-1] = '\0';
 
+    r = strlen(buf);
+    if (buf[r-1] == '\n')
+        buf[r-1] = '\0';
+
     return buf;
 }
 
@@ -477,7 +475,7 @@ poll_power_sources(void)
     int online, capacity;
     static int was_online = -1;
     static int was_capacity = -1;
-    static char was_status[20];
+    static char was_status[40];
     char *status;
     int sent = 0;
 
@@ -494,10 +492,10 @@ poll_power_sources(void)
     capacity = read_battery_capacity();
     status = read_battery_status();
     if (was_capacity != capacity || strcmp(status, was_status) != 0) {
-        char evbuf[32];
+        char evbuf[64];
         was_capacity = capacity;
         strcpy(was_status, status);
-        snprintf(evbuf, 32, "%d", capacity);
+        snprintf(evbuf, 64, "%d %s", capacity, status);
         send_event("battery", time(0), evbuf);
         sent = 1;
     }
@@ -540,6 +538,8 @@ data_loop(void)
         FD_SET(lid_fd, &inputs);
         if (ebk_fd >= 0)
             FD_SET(ebk_fd, &inputs);
+        if (ols_fd >= 0)
+            FD_SET(ols_fd, &inputs);
         if (acpwr_fd >= 0)
             FD_SET(acpwr_fd, &inputs);
 
@@ -548,6 +548,8 @@ data_loop(void)
         FD_SET(lid_fd, &errors);
         if (ebk_fd >= 0)
             FD_SET(ebk_fd, &errors);
+        if (ols_fd >= 0)
+            FD_SET(ols_fd, &errors);
         if (acpwr_fd >= 0)
             FD_SET(acpwr_fd, &errors);
 
@@ -563,15 +565,17 @@ data_loop(void)
         if (r < 0 && errno != EINTR)
             die("select failed");
 
-        if (!poll_power_sources() && r == 0 && timeout_polls) {
-            static int tp = 2;
+        if (r == 0 && timeout_polls) {
+            if (poll_power_sources() == 0) {
+                static int tp = 2;
 
-            if (--tp <= 0) {
-                char timeout[16];
-                snprintf(timeout, sizeof(timeout), "%d",
-                    pollinterval * timeout_polls);
-                send_event("timer", time(0), timeout);
-                tp = timeout_polls;
+                if (--tp <= 0) {
+                    char timeout[16];
+                    snprintf(timeout, sizeof(timeout), "%d",
+                        pollinterval * timeout_polls);
+                    send_event("timer", time(0), timeout);
+                    tp = timeout_polls;
+                }
             }
         }
 
@@ -582,6 +586,8 @@ data_loop(void)
                 die("select reports error on lid switch");
             if (ebk_fd >= 0 && FD_ISSET(ebk_fd, &errors))
                 die("select reports error on ebook switch");
+            if (ols_fd >= 0 && FD_ISSET(ols_fd, &errors))
+                die("select reports error on OLS switch");
             if (acpwr_fd >= 0 && FD_ISSET(acpwr_fd, &errors))
                 die("select reports error on ac power jack");
 
@@ -591,11 +597,10 @@ data_loop(void)
                 lid_event();
             if (ebk_fd >= 0 && FD_ISSET(ebk_fd, &inputs))
                 ebook_event();
+            if (ols_fd >= 0 && FD_ISSET(ols_fd, &inputs))
+                ols_event();
             if (acpwr_fd >= 0 && FD_ISSET(acpwr_fd, &inputs))
                 acpwr_event();
-
-            if (sysactive_path)
-                indicate_activity();
         }
     }
 }
@@ -611,7 +616,7 @@ main(int argc, char *argv[])
     cp = strrchr(argv[0], '/');
     if (cp) me = cp + 1;
 
-    while ((c = getopt(argc, argv, "fldXp:t:F:A:")) != -1) {
+    while ((c = getopt(argc, argv, "fldXop:t:F:")) != -1) {
         switch (c) {
 
         /* daemon options */
@@ -642,10 +647,6 @@ main(int argc, char *argv[])
 
         case 'F':
             output_fifo = optarg;
-            break;
-
-        case 'A':
-            sysactive_path = optarg;
             break;
 
         default:
