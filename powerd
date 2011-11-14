@@ -445,6 +445,13 @@ BATTSHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
 
 EVENTFIFO=/var/run/powerevents
 
+# command fifo for olpc-kbdshim
+USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
+
+# we notify ourselves of user idleness early, so we have time to
+# see if it's really okay to sleep.  units are seconds. 
+BUSYCHECK=5   
+
 # note re: battery capacity:
 # i'd use /sys/.../capacity_level here, but we won't get
 # "critical" -- the EC and kernel can only currently indicate
@@ -459,11 +466,28 @@ BATTERY_INFO=/sys/class/power_supply/olpc-battery
 CAPACITY=$BATTERY_INFO/capacity  # percentage
 MICROVOLTS=$BATTERY_INFO/voltage_avg  # microvolts
 
+# dcon display control -- all models
+DCON_FREEZE=/sys/devices/platform/dcon/freeze
+DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
+
+# laptops with ALPS touchpads
+TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
+
+# XO-1 only
+WLAN_ENABLED=/sys/power/wlan-enabled
+
+# XO-1 and XO-1.5
+WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
+WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
+
+# XO-1.75 only
+OLPC_SWITCH=/sys/devices/platform/olpc-switch.0
+OLS_CONTROL=/sys/devices/platform/olpc-ols.0
 KBD_WAKE_COUNT=/sys/devices/platform/olpc-kbd.0/power/wakeup_count
 POWER_WAKE_COUNT=/sys/devices/platform/olpc-ec-1.75.0/power/wakeup_count
 RTC_WAKE_COUNT=/sys/devices/platform/mmp-rtc/power/wakeup_count
-
 RTCSYSFS=/sys/class/rtc/rtc0
+
 
 if [ -d /sys/class/power_supply/olpc-ac ]
 then
@@ -482,14 +506,6 @@ then
 else
     MONO_MODE=/sys/devices/platform/dcon/output
 fi
-
-WLAN_ENABLED=/sys/power/wlan-enabled    # XO-1 only
-
-WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
-WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
-
-OLPC_SWITCH=/sys/devices/platform/olpc-switch.0  # XO-1.75 only
-OLS_CONTROL=/sys/devices/platform/olpc-ols.0    # XO-1.75 only
 
 if [ -e /sys/power/wake-on-lid ]   # recent XO-1 kernels
 then
@@ -599,17 +615,6 @@ then
 else
     EBOOK_STATE=;
 fi
-
-DCON_FREEZE=/sys/devices/platform/dcon/freeze
-DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
-TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
-
-# command fifo for olpc-kbdshim
-USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
-
-# we notify ourselves of user idleness early, so we have time to
-# see if it's really okay to sleep.  units are seconds. 
-BUSYCHECK=5   
 
 powerd_version="version unknown"
 test -e $VERSIONFILE && . $VERSIONFILE
@@ -2020,7 +2025,7 @@ read_config()
         keypress_sleep=hard
     fi
 
-    if [ "$XO" = 1.75 ]  # FIXME
+    if [ "$prevent_sleep" ]
     then
         log suppressing sleep configurations on 1.75
         config_BATTERY_TIME_SLEEP=0
@@ -2418,7 +2423,7 @@ event_loop()
             else
                 if [ $config_CONFIRM_SECONDS = 0 ]
                 then
-                    if [ "$XO" != 1.75 ]  # FIXME
+                    if [ ! "$prevent_sleep" ]
                     then
                             backlight off
                             # hard sleep until it's time to shut down
@@ -2451,7 +2456,7 @@ event_loop()
             ;;
 
         gotosleep)
-            if [ "$XO" != 1.75 ] # FIXME
+            if [ ! "$prevent_sleep" ]
             then
                 invalidate_powertimer
                 backlight off
@@ -2685,7 +2690,8 @@ init_netactivity_tracking()
 
 }
 
-
+# powerd runs "set -u".  variables that aren't initialized
+# naturally are set here.
 am_ebook=;
 o_ebook=xxx;
 ebook_device=;
@@ -2700,6 +2706,7 @@ powerseqno=0;
 eventcutoff=0;
 dcon_thawed=;
 no_suspend=0;
+prevent_sleep=;
 
 
 log starting
@@ -2744,5 +2751,10 @@ if [ -x /usr/libexec/powerd-dbus ]; then
 fi
 
 is_lid_closed   # sets $am_closed
+
+if [ "$XO" = 1.75 ]  # FIXME
+then
+    prevent_sleep=true
+fi
 
 event_loop
