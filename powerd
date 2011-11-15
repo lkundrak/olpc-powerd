@@ -2757,9 +2757,9 @@ fi
 
 is_lid_closed   # sets $am_closed
 
-if [ "$XO" = 1.75 ]  # FIXME
-then
-    prevent_sleep=true
-fi
+#if [ "$XO" = 1.75 ]  # FIXME
+#then
+#    prevent_sleep=true
+#fi
 
 event_loop
