@@ -79,6 +79,7 @@ int got_switches = 0;
 
 char lid_device[128];
 char ebk_device[128];
+char ols_device[128];
 
 #define SEARCH_SWITCHES 16
 
@@ -238,6 +239,7 @@ setup_input()
             strcpy(ebk_device, devname);
         } else if (strstr(name, "ols notify")) {
             ols_fd = dfd;
+            strcpy(ols_device, devname);
         } else {
             close(dfd);
             continue;
@@ -378,9 +380,9 @@ ols_event()
 
     if (ev->type == EV_SW && ev->code == SW_OLS_BRIGHT) {
         if (ev->value)
-            send_event("ambient-adjust", time(0), "bright");
+            send_event("ambient-bright", round_secs(ev), ols_device);
         else
-            send_event("ambient-adjust", time(0), "dark");
+            send_event("ambient-dark", round_secs(ev), ols_device);
     }
 }
 
@@ -514,6 +516,7 @@ sig_send_paths(int sig)
 {
     send_event("lidcheck", time(0), lid_device);
     send_event("ebookcheck", time(0), ebk_device);
+    send_event("ambientcheck", time(0), ols_device);
 }
 
 void
