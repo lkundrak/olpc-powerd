@@ -2676,12 +2676,12 @@ event_loop()
             ;;
 
         ambient-bright)
-            ols_device=$arg3
+            ols_device=$arg2
             ambient_adjust bright
             ;;
 
         ambient-dark)
-            ols_device=$arg3
+            ols_device=$arg2
             ambient_adjust dark
             ;;
 
