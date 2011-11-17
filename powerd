@@ -1863,6 +1863,8 @@ then
         dark-*)  # it's shady -- adjust the backlight up
             ambient=dark
 
+            test "$ambient_savebright" || return
+
             # adjust to either full or dimmed, depending on where we started
             if [ "${dimmed}" -a $config_IDLE_DIM_LEVEL -lt $ambient_savebright ]
             then
