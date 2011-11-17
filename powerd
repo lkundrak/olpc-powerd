@@ -1369,6 +1369,16 @@ then
             wakeupsource=default
         fi
     }
+
+    grab_global_wake_count()
+    {
+        global_wake_count=$(< /sys/power/wakeup_count)
+    }
+
+    check_global_wake_count()
+    {
+        echo $global_wake_count > /sys/power/wakeup_count
+    }
 else
     prepare_for_wakeupsource()
     {
@@ -1384,6 +1394,17 @@ else
         set -- $x
         wakeupsource=$1${2:-}${3:-}
     }
+
+    grab_global_wake_count()
+    {
+        :
+    }
+
+    check_global_wake_count()
+    {
+        :
+    }
+
 fi
 
 event_fifo_lookahead()
@@ -1534,32 +1555,41 @@ snooze()
 
         reset_idlecounters
 
-        # we did a sync $BUSYCHECK seconds ago, so this should be quick
-        killall -q -0 sync || sync
-        if event_fifo_lookahead $cur_sleep_type
-        then
-            break
-        fi
-
-        if [ "$cur_sleep_type" = soft ]
-        then
-            inhibited_by_files && break
-        fi
-
-        sleep_started=$(seconds)
-
-        # the kernel will do a sync, but if it's going to stall
-        # (SD writes can take a looong time) we want the stall to
-        # be at user-level, not in the kernel, to avoid a
-        # user-visible freeze.   we also want data to be flushed
-        # early, so that devices like USB sticks that may still be
-        # emptying buffers after the sync completes can do so before
-        # their power is yanked.
-        sync
-
         ambient_force
 
-        prepare_for_wakeupsource
+        while :
+        do
+            grab_global_wake_count
+
+            # we did a sync $BUSYCHECK seconds ago, so this should be quick
+            killall -q -0 sync || sync
+            if event_fifo_lookahead $cur_sleep_type
+            then
+                break 2
+            fi
+
+            if [ "$cur_sleep_type" = soft ]
+            then
+                inhibited_by_files && break 2
+            fi
+
+            # the kernel will do a sync, but if it's going to stall
+            # (SD writes can take a looong time) we want the stall to
+            # be at user-level, not in the kernel, to avoid a
+            # user-visible freeze.   we also want data to be flushed
+            # early, so that devices like USB sticks that may still be
+            # emptying buffers after the sync completes can do so before
+            # their power is yanked.
+            sync
+
+            prepare_for_wakeupsource
+
+            sleep_started=$(seconds)
+
+            check_global_wake_count && break
+
+            trace looping on global_wake_count $global_wake_count 
+        done
 
         # this is it.  here's where we suspend or sleep.
         rtcwake -s$rtctime -mmem
