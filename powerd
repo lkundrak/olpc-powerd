@@ -1799,10 +1799,7 @@ backlight()
     case $1 in
     init)
         read_brightness tmpbright
-        if [ $tmpbright -gt $config_INITIAL_BRIGHT_LEVEL ]
-        then
-            brightness_ramp $tmpbright $config_INITIAL_BRIGHT_LEVEL
-        fi
+        brightness_ramp $tmpbright $config_INITIAL_BRIGHT_LEVEL
         savebright=$config_INITIAL_BRIGHT_LEVEL
         ambient_adjust_init
         ;;
