@@ -486,8 +486,14 @@ OLS_CONTROL=/sys/devices/platform/olpc-ols.0
 KBD_WAKE_COUNT=/sys/devices/platform/olpc-kbd.0/power/wakeup_count
 POWER_WAKE_COUNT=/sys/devices/platform/olpc-ec-1.75.0/power/wakeup_count
 RTC_WAKE_COUNT=/sys/devices/platform/mmp-rtc/power/wakeup_count
-RTCSYSFS=/sys/class/rtc/rtc0
 
+# XO-1.75 has two RTC clocks, but only one of them has alarm capabilities.
+# the /dev/rtcalarm symlink makes this explicit (though the default rtc0
+# would probably be correct in any case -- it's the one internal to the SoC.
+# (rtcwake can't use the symlink directly, because it parses it
+# to find /sys nodes)
+rtca=$(readlink -f /dev/rtcalarm)
+rtcdevice=${rtca:-/dev/rtc0}
 
 if [ -d /sys/class/power_supply/olpc-ac ]
 then
@@ -1592,7 +1598,7 @@ snooze()
         done
 
         # this is it.  here's where we suspend or sleep.
-        rtcwake -s$rtctime -mmem
+        rtcwake -s$rtctime -mmem -d $rtcdevice
 
         # we need SCI events, because they do more than just
         # provide wakeup -- they drive input events as well.
