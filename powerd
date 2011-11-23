@@ -452,9 +452,8 @@ SUSPENDHOOKS=$CONFIGDIR/presuspend.d
 LOGFILE=/var/log/powerd.trace
 # LOGFILE=/home/olpc/log/powerd.trace
 
-# where the inhibit files live
-INHIBITDIR=/var/run/powerd-inhibit-suspend
-INHIBIT_BY_TOUCH=$INHIBITDIR/.fake_activity
+INHIBITDIR_PREFIX=/var/run/powerd-inhibit
+INHIBIT_BY_TOUCH=$INHIBITDIR_PREFIX-suspend/.fake_activity
 
 # the splash screen images
 CONFIRMSPLASH=$DATADIR/pleaseconfirm.pgm
@@ -1177,38 +1176,68 @@ filetimes_busy()
     return 1
 }
 
+# return success if a live pid file is present to prevent
+# the suspend or screen action indicated by $1
 inhibit_files_present()
 {
+    action=$1
 
     # check the persistent inhibit flag first
-    if [ -e $CONFIGFLAGS/inhibit-suspend ]
+    if [ -e $CONFIGFLAGS/inhibit-$action ]
     then
-        trace found $CONFIGFLAGS/inhibit-suspend
+        trace found $CONFIGFLAGS/inhibit-$action
         return 0
     fi
 
-    inhibit_ret=1
-
     # check for pid files.  remove any non-pid files
-    for f in $(ls $INHIBITDIR )
+    for f in $INHIBITDIR_PREFIX-$action/*
     do
-        if kill -0 $f 2>/dev/null
-        then
-            inhibit_ret=0
-            trace found $f
-            break
-        fi
-        rm -f $INHIBITDIR/$f
+        case $f in
+        *[0-9]) # verify we're not looking at the literal foo-*/* pattern
+            if kill -0 ${f##*/} 2>/dev/null
+            then
+                trace found $f
+                return 0
+            fi
+            rm -f $f
+            ;;
+        esac
     done
 
-    return $inhibit_ret
+    return 1
+}
+
+# return success if removal of a stale pid file may have caused
+# a change in our behavior.  (i.e., if there are two inhibitors,
+# and one goes stale and is removed, nothing has really changed.
+reap_inhibitors()
+{
+    local f
+
+    # check for and remove dead pid files
+    for d in $INHIBITDIR_PREFIX-*
+    do
+        stale=;
+        live=;
+        for f in $d/*
+        do
+            case $f in
+            *[0-9]) # reject the literal 'foo/*' pattern
+                kill -0 ${f##*/} 2>/dev/null || rm -f $f
+                ;;
+            esac
+        done
+    done
 }
 
 create_inhibit_dir()
 {
     # most inhibit-like flags go in /var/run, and aren't persistent
-    mkdir -p $INHIBITDIR
-    chmod a+rwt $INHIBITDIR
+    for x in suspend dim
+    do
+        mkdir -p $INHIBITDIR_PREFIX-$x
+        chmod a+rwt $INHIBITDIR_PREFIX-$x
+    done
     touch $INHIBIT_BY_TOUCH
     chmod a+w $INHIBIT_BY_TOUCH
 
@@ -1223,7 +1252,7 @@ create_inhibit_dir()
 # "busyness", so it's separated out.
 inhibited_by_files()
 {
-    inhibit_files_present || filetimes_busy $t1
+    inhibit_files_present suspend || filetimes_busy $t1
 }
 
 usb_inhibit()
@@ -2384,7 +2413,6 @@ read_config()
         log configured to never shutdown while plugged in
     fi
 
-
     if yes_or_true "$config_KEYPRESS_WAKE_FROM_BLANK_IDLE_SLEEP"
     then
         keypress_sleep=soft
@@ -2490,22 +2518,42 @@ reset_idlecounters()
 set_idletimes()
 {
     local dt st bt nt1 nt2 nt3 d
+    local BTS ETS PTS
+    local BTB ETB PTB
+    local BTD ETD PTD
 
+    # see if there are inhibit files which cause us to override the
+    # configured timers -- i.e., set them to infinity.
+    #
+    if inhibit_files_present suspend
+    then
+        BTS=0; ETS=0; PTS=0
+    fi
+
+    if inhibit_files_present dim
+    then
+        BTB=0; ETB=0; PTB=0
+        BTD=0; ETD=0; PTD=0
+    fi
+
+    # 
+    # then, choose the right set of timers -- online, ebook, or battery
+    #
     if [ "$ac" = "online" ]
     then
-        dt=$config_PLUGGED_TIME_DIM
-        st=$config_PLUGGED_TIME_SLEEP
-        bt=$config_PLUGGED_TIME_BLANK
+        dt=${PTD:-$config_PLUGGED_TIME_DIM}
+        st=${PTS:-$config_PLUGGED_TIME_SLEEP}
+        bt=${PTB:-$config_PLUGGED_TIME_BLANK}
     else
         if [ "$am_ebook" ]
         then
-            dt=$config_EBOOK_TIME_DIM
-            st=$config_EBOOK_TIME_SLEEP
-            bt=$config_EBOOK_TIME_BLANK
+            dt=${ETD:-$config_EBOOK_TIME_DIM}
+            st=${ETS:-$config_EBOOK_TIME_SLEEP}
+            bt=${ETB:-$config_EBOOK_TIME_BLANK}
         else
-            dt=$config_BATTERY_TIME_DIM
-            st=$config_BATTERY_TIME_SLEEP
-            bt=$config_BATTERY_TIME_BLANK
+            dt=${BTD:-$config_BATTERY_TIME_DIM}
+            st=${BTS:-$config_BATTERY_TIME_SLEEP}
+            bt=${BTB:-$config_BATTERY_TIME_BLANK}
         fi
     fi
 
@@ -2639,11 +2687,13 @@ gotactivity()
 
 dim_action()
 {
+    reap_inhibitors
     backlight is_off || backlight dim
 }
 
 blank_action()
 {
+    reap_inhibitors
     backlight off
 }
 
@@ -2652,6 +2702,8 @@ sleep_action()
     nextaction=$1
     delta1=$2
     delta2=$3
+
+    reap_inhibitors
 
     # if we're still booting, the dcon may still be frozen.
     # don't sleep until we're sort of all the way up.
@@ -2679,16 +2731,6 @@ sleep_action()
     if [ "${splashpid:-}" ]
     then
         trace busy: splash active
-        reset_idlecounters
-        return
-    fi
-
-    # we'll check the files again later, just before sleeping.
-    # checking now keeps from doing extra work, and checking
-    # later narrows the race condition (laptop_busy() takes many
-    # seconds)
-    if inhibited_by_files
-    then
         reset_idlecounters
         return
     fi
@@ -2721,14 +2763,24 @@ sleep_action()
 exit_actions()
 {
     [ -n "$powerd_dbus_pid" ] && kill $powerd_dbus_pid
+    [ -n "$inotify_pid" ] && kill $inotify_pid
     pwrlog_take_reading shutdown
     set_wakeupevents none
     unsplash
     dcon thaw
     dcon wake
     rm -f $EVENTFIFO
-    rm -rf $INHIBITDIR
+    rm -rf $INHIBITDIR_PREFIX-*
     exit
+}
+
+create_event_fifo()
+{
+    # recreate to flush, and to make sure it's a fifo
+    rm -f $EVENTFIFO
+    mkfifo $EVENTFIFO
+    chmod 600 $EVENTFIFO
+    exec 6<> $EVENTFIFO
 }
 
 event_loop()
@@ -2741,12 +2793,6 @@ event_loop()
 
     unsplash
 
-    # recreate to flush, and to make sure it's a fifo
-    rm -f $EVENTFIFO
-    mkfifo $EVENTFIFO
-    chmod 600 $EVENTFIFO
-    exec 6<> $EVENTFIFO
-
     killall -USR1 olpc-switchd
 
     while : event loop
@@ -2758,7 +2804,7 @@ event_loop()
         power_check
 
         # likewise, if you crack open the lid then quickly shut
-        # it, the event is reported properly.  so check frequently.
+        # it, the event isn't reported properly.  so check frequently.
         lid_check
 
         # calculate/set new idle timeouts if necessary
@@ -2942,6 +2988,11 @@ event_loop()
             # if asked to.  the only purpose is to make sure
             # power-logger has a reason to log once in a while.
             test "$debug" && : $(seconds)
+            reap_inhibitors
+            ;;
+
+        check_inhibits)
+            reevaluate all
             ;;
 
         reconfig)
@@ -3055,7 +3106,6 @@ eventcutoff=0;
 dcon_thawed=;
 no_suspend=0;
 prevent_sleep=;
-powerd_dbus_pid=;
 
 
 log starting
@@ -3071,6 +3121,7 @@ then
 fi
 
 create_inhibit_dir
+reap_inhibitors
 
 read_config
 
@@ -3098,10 +3149,24 @@ test "$no_brightness" || chmod a+w $BRIGHTNESS
 set_acpi_wakeupevents EC enable
 set_wakeupevents all_sci
 
+create_event_fifo
+
+powerd_dbus_pid=;
 if [ -x $LIBEXECDIR/powerd-dbus ]
 then
     $LIBEXECDIR/powerd-dbus &
+
     powerd_dbus_pid=$!
+fi
+
+inotify_pid=;
+if [ -x /usr/bin/inotifywait ]
+then
+    inotifywait -m --timefmt '%s' --format 'check_inhibits %T %w%f %e' \
+        -e CREATE -e DELETE -e MOVE \
+        $INHIBITDIR_PREFIX-* $CONFIGFLAGS > $EVENTFIFO &
+
+    inotify_pid=$!
 fi
 
 is_lid_closed   # sets $am_closed
