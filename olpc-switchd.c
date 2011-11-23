@@ -277,7 +277,7 @@ send_event(char *evt, int seconds, char *extra)
     space = extra ? " " : "";
     if (!extra) extra = "";
     n = snprintf(evtbuf, 128, "%s %d%s%s\n", evt, seconds, space, extra);
-    dbg(1,"evtbuf: %s", evtbuf);
+    dbg(1,"evtbuf: '%s'", evtbuf);
 
     fifo_fd = open(output_fifo, O_WRONLY|O_NONBLOCK);
     if (fifo_fd < 0)
@@ -287,8 +287,6 @@ send_event(char *evt, int seconds, char *extra)
         if (errno != EPIPE)
             die("fifo write failed");
         dbg(1, "got write signal");
-    } else {
-        dbg(1, "sending %s", evtbuf);
     }
 
     close(fifo_fd);
@@ -462,10 +460,6 @@ read_battery_status(void)
     if (r < 1)
         buf[0] = '\0';
     else
-        buf[sizeof(buf)-1] = '\0';
-
-    r = strlen(buf);
-    if (buf[r-1] == '\n')
         buf[r-1] = '\0';
 
     return buf;
