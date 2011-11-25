@@ -420,7 +420,7 @@
 
 # uncomment one:
 # tracing=1
-#debug=1
+# debug=1
 
 XO=;
 CONFIGDIR=/etc/powerd
@@ -511,6 +511,12 @@ then
     MONO_MODE=/sys/devices/platform/dcon/monochrome
 else
     MONO_MODE=/sys/devices/platform/dcon/output
+fi
+
+have_olpc_brightness=;
+if [ -x /usr/bin/olpc-brightness ]
+then
+    have_olpc_brightness=true
 fi
 
 if [ -e /sys/power/wake-on-lid ]   # recent XO-1 kernels
@@ -1764,10 +1770,18 @@ snooze()
     runparts resume &
 }
 
+am_mono()
+{
+    test $(< $MONO_MODE) = 1
+}
+
 set_brightness()
 {
     echo $1 >$BRIGHTNESS
-    # echo $(( $1 == 0 )) >$MONO_MODE
+    if [ $1 != 0 -a "$have_olpc_brightness" ] && am_mono
+    then
+	 olpc-brightness maybe_color
+    fi
 }
 
 read_brightness()
@@ -1788,6 +1802,11 @@ brightness_ramp()
     incr=1
     test $1 -gt $2 && incr=-1
 
+    if [ $2 != 0 -a "$have_olpc_brightness" ] && am_mono
+    then
+	 olpc-brightness maybe_color
+    fi
+
     i=$1
     while : dim loop
     do
@@ -1796,7 +1815,6 @@ brightness_ramp()
         test $i = $2 && break
         sleep .025s
     done
-    # echo $(( $i == 0 )) >$MONO_MODE
 }
 
 backlight()
