@@ -1900,7 +1900,7 @@ then
             then
                 target=$config_IDLE_DIM_LEVEL
             else
-                target=${ambient_savebright:-savebright}
+                target=${ambient_savebright:-$savebright}
             fi
 
             # and in either case, don't dim -- could happen if the user
