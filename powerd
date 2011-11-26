@@ -1,23 +1,22 @@
 #!/bin/bash
 #   (search for POSIX, below, for notes on shell compatibility)
 #
-# powerd -- power management for the XO
+# powerd -- power management for the XO familiy of laptops
 #
-# This daemon is a more transparent and flexible (if somewhat
-# incompatible) replacement for ohmd on the XO.  powerd is
-# independent of X, dbus, and hald, and so might be attractive to
-# very lightweight software distributions.
+# This daemon manages the aggressive suspend and wakeup policies
+# for the OLPC laptops.
 #
-# In addition to "standard" XO/ohmd functionality, powerd adds:
+# powerd provides:
 # -- a power button splash screen (allowing cancel, suspend, or shutdown).
 # -- the ability to run arbitrary scripts after a resume.
 # -- configurable timeouts until screen dim and sleep, and configurable
 #    dim level.
 # -- screen dimming and blanking after laptop has slept
 # -- shutdown after laptop has slept
-# -- low battery shutdown (only when not sleeping)
+# -- low battery shutdown
 # -- different power management behavior when on wall power vs. battery.
 # -- different behavior when in ebook mode
+# -- automatic backlight quench, based on input from ambient light sensor
 # -- ease of customization, given that its written in shell.
 # -- integrated power logging, to assist in analyzing XO power usage
 #
@@ -293,8 +292,9 @@
 #       ps2event
 #       wlan
 #       lid
-#   When the system wakes from sleep, /sys/power/wakeup-source
-#   reports the cause.
+#   When the system wakes from sleep, on 2.6.35 and earlier kernels,
+#   /sys/power/wakeup-source reports the cause.  On later 3.0 and later
+#   kernels, the source is deduced from per-source counters.
 #
 # - User activity/idleness:
 #   powerd expects user activity and user idle events to be delivered via
@@ -365,18 +365,21 @@
 # - POSIX shell
 #
 #   The intention is that powerd be runnable with most any modern
-#   shell.  No bash-specific features were used, unless by accident.
-#   One possible exception:  in order to implement a non-blocking
-#   read of the event fifo, I had to use "read -t 1" (in
-#   event_fifo_lookahead()).  Most newer shells implement this, but
-#   it's not POSIX.  (The Debian "dash" shell does not, the "ash"
-#   shell in busybox works fine.) If run with a shell that doesn't
-#   support "-t", the only failure will be the possibility of lost
-#   wakeups:  hitting a key just as the system wakes just to dim
-#   the screen may not prevent the subsequent sleep.
+#   shell -- however, a few bash-specific features have crept in. 
+#   Specifically:  a) I couldn't resist using $(< file) instead of
+#   $(cat file) -- that's fixable with a simple search and replace,
+#   and b) in order to implement a non-blocking read of the event
+#   fifo, I had to use "read -t 1" (in event_fifo_lookahead()). 
+#   Most newer shells implement this, but it's not POSIX.  (The
+#   Debian "dash" shell does not, the "ash" shell in busybox works
+#   fine.) If run with a shell that doesn't support "-t", the only
+#   failure will be the possibility of lost wakeups:  hitting a key
+#   just as the system wakes just to dim the screen may not prevent
+#   the subsequent sleep.
 #
-#   Another exception is the (optional) inclusion of olpc-pwr-log.sh,
-#   which is heavily dependent on non-POSIX features.
+#   Another exception is the (optional) inclusion of
+#   olpc-pwr-log.sh, which is heavily dependent on non-POSIX
+#   features.
 #
 #
 ######
@@ -385,7 +388,7 @@
 #
 # -----------------------------------------------
 #
-# Copyright (C) 2009,2010, Paul G Fox
+# Copyright (C) 2009,2010,2012, Paul G Fox
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License as
@@ -436,16 +439,19 @@ SUSPENDHOOKS=$CONFIGDIR/presuspend.d
 LOGFILE=/var/log/powerd.trace
 # LOGFILE=/home/olpc/log/powerd.trace
 
+# where the inhibit files live
 INHIBITDIR=/var/run/powerd-inhibit-suspend
 INHIBIT_BY_TOUCH=$INHIBITDIR/.fake_activity
 
+# the splash screen images
 CONFIRMSPLASH=$CONFIGDIR/pleaseconfirm.pgm
 SHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
 BATTSHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
 
+# our incoming event fifo
 EVENTFIFO=/var/run/powerevents
 
-# command fifo for olpc-kbdshim
+# command fifo for controlling olpc-kbdshim
 USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
 
 # we notify ourselves of user idleness early, so we have time to
@@ -470,7 +476,7 @@ MICROVOLTS=$BATTERY_INFO/voltage_avg  # microvolts
 DCON_FREEZE=/sys/devices/platform/dcon/freeze
 DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
 
-# laptops with ALPS touchpads
+# only on laptops with the original ALPS touchpads
 TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
 
 # XO-1 only
@@ -864,30 +870,6 @@ do_shutdown()
     sleep 9999999
 }
 
-#
-# both cpu_busy and network_busy integrated below, since they
-# both need a time span over which to work.
-#cpu_busy()
-#{
-#    # pull the cpu idle percentage (over one second) out of the
-#    # 15th field of vmstat output.  (this metric borrowed from ohmd.)
-#    field='\([[:space:]]\+[[:digit:]]\+\)'
-#    idle=$(vmstat 1 2  | sed -n "\$s/$field\{15\}.*/\1/p")
-#
-#    # ensure numeric.  if failure, assume we're not busy.
-#    test "$idle" && test $idle -eq $idle >/dev/null || return 1
-#
-#    test $idle -lt $config_CPU_IDLE_LIMIT && trace cpu busy && return 0
-#
-#    return 1
-#}
-#
-#network_busy()
-#{
-#    # TBD
-#    return 1
-#}
-
 cafe_activity_snapshot()
 {
     # print the current count of CAFE interrupts
@@ -895,7 +877,6 @@ cafe_activity_snapshot()
         '/ 11:.*cafe-ccic/s/ *11: *\([[:digit:]]\+\).*/\1/p' \
             /proc/interrupts
 }
-
 
 cpu_or_network_busy()
 {
@@ -1235,7 +1216,8 @@ runparts()
         then
             echo "Skipping $rc_script (disabled, not executable)" >&2
         else
-            if [ -L $rc_script ]; then
+            if [ -L $rc_script ]
+            then
                 echo "Removing dangling symlink $rc_script" >&2
                 rm $rc_script
             else
@@ -1273,22 +1255,6 @@ else
 fi
 
 
-if [ $XO != 1.75 ]
-then
-    set_ec_wakeup_mask()
-    {
-        case $1 in
-        enable)
-            echo 1 > $WAKEUP_EVENTS/$2
-            ;;
-        disable)
-            echo 0 > $WAKEUP_EVENTS/$2
-            ;;
-        esac
-    }
-fi
-
-
 if [ $XO = 1.75 ]
 then
     OLPC_KBD=/sys/devices/platform/olpc-kbd.0
@@ -1308,6 +1274,18 @@ then
     }
 
 else
+    set_ec_wakeup_mask()
+    {
+        case $1 in
+        enable)
+            echo 1 > $WAKEUP_EVENTS/$2
+            ;;
+        disable)
+            echo 0 > $WAKEUP_EVENTS/$2
+            ;;
+        esac
+    }
+
     set_wakeupevents()
     {
 
@@ -1353,8 +1331,50 @@ else
     }
 fi
 
-if [ $XO = 1.75 ]
+if [ $XO != 1.75 ]
 then
+    # on XO-1/XO-1.5 kernels up through at least 2.6.35, wakeups
+    # set a field in the kernel that tells the reason for the
+    # wakeup.  while convenient, clearly if two wakeups happen at
+    # nearly the same time, the information might not be quite
+    # what we need to know, and we can be vulnerable to races if
+    # we go to sleep again without noticing the more important
+    # source.
+    prepare_for_wakeupsource()
+    {
+        :
+    }
+
+    get_wakeupsource()   # XO-1 and XO-1.5 only
+    {
+        local x
+        read x < $WAKEUP_SOURCE
+
+        # compress out spaces
+        set -- $x
+        wakeupsource=$1${2:-}${3:-}
+    }
+
+    grab_global_wake_count()
+    {
+        :
+    }
+
+    check_global_wake_count()
+    {
+        :
+    }
+
+else
+    # XO-1.75, running a 3.0 kernel, doesn't get told a specific
+    # wakeup source, but does get counters on most of the
+    # possible wakeup generators.  (some counters are missing
+    # (e.g., battery wakeups, light sensor wakeups) because we
+    # don't care about them currently, and the drivers aren't
+    # instrumented properly.)
+    # those counters are used to find the most important source, and
+    # to deal with that first.
+
     prepare_for_wakeupsource()
     {
         lid_was_closed=$am_closed
@@ -1391,32 +1411,6 @@ then
     {
         echo $global_wake_count > /sys/power/wakeup_count
     }
-else
-    prepare_for_wakeupsource()
-    {
-        :
-    }
-
-    get_wakeupsource()   # XO-1 and XO-1.5 only
-    {
-        local x
-        read x < $WAKEUP_SOURCE
-
-        # compress out spaces
-        set -- $x
-        wakeupsource=$1${2:-}${3:-}
-    }
-
-    grab_global_wake_count()
-    {
-        :
-    }
-
-    check_global_wake_count()
-    {
-        :
-    }
-
 fi
 
 event_fifo_lookahead()
@@ -1569,6 +1563,12 @@ snooze()
 
         ambient_force
 
+        # this loop accomplishes nothing interesting on 2.6.35 and earlier
+        # kernels -- there's no global wakeup counter.  on 3.0 and later,
+        # that counter helps make sure we deal with recent wakeup events
+        # (i.e., those that have arrived but we might not have noticed)
+        # properly.  see: http://lwn.net/Articles/393314/ and/or
+        # http://lkml.indiana.edu/hypermail/linux/kernel/1006.3/00777.html
         while :
         do
             grab_global_wake_count
@@ -1598,6 +1598,7 @@ snooze()
 
             sleep_started=$(seconds)
 
+            # always breaks out on 2.6.35 and earlier
             check_global_wake_count && break
 
             trace looping on global_wake_count $global_wake_count 
@@ -1772,7 +1773,7 @@ snooze()
 
 am_mono()
 {
-    test $(< $MONO_MODE) = 1
+    test "$(< $MONO_MODE)" = 1
 }
 
 set_brightness()
@@ -1780,7 +1781,7 @@ set_brightness()
     echo $1 >$BRIGHTNESS
     if [ $1 != 0 -a "$have_olpc_brightness" ] && am_mono
     then
-	 olpc-brightness maybe_color
+        olpc-brightness maybe_color
     fi
 }
 
@@ -1804,7 +1805,7 @@ brightness_ramp()
 
     if [ $2 != 0 -a "$have_olpc_brightness" ] && am_mono
     then
-	 olpc-brightness maybe_color
+        olpc-brightness maybe_color
     fi
 
     i=$1
@@ -1872,6 +1873,11 @@ backlight()
 
 if [ -d $OLS_CONTROL ]
 then
+    # the light sensor input device acts as a virtual "switch",
+    # which turns on when it's bright out, and off when it gets
+    # "dark", where the "dark" and "bright" thresholds are set
+    # to where the backlight is needed or not.
+
     ambient_adjust_init()
     {
         echo 50 >$OLS_CONTROL/low_lim
@@ -1913,6 +1919,9 @@ then
         esac
     }
 
+# we're currently reusing one of the pre-defined switch types.  if
+# this light sensor solution is permanent, we'll want to define a
+# new type.  (affects the kernel driver and olpc-switchd, as well.)
 SW_BRIGHT_SUN=SW_CAMERA_LENS_COVER
     ambient_force()
     {
@@ -2857,7 +2866,8 @@ set_acpi_wakeupevents EC enable
 set_wakeupevents all_sci
 
 powerd_dbus_pid=;
-if [ -x /usr/libexec/powerd-dbus ]; then
+if [ -x /usr/libexec/powerd-dbus ]
+then
     /usr/libexec/powerd-dbus &
     powerd_dbus_pid=$!
 fi

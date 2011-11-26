@@ -70,11 +70,11 @@ extern int optind, opterr, optopt;
 
 
 /* input event devices */
-int pwr_fd = -1;
-int lid_fd = -1;
-int ebk_fd = -1;
-int ols_fd = -1;
-int acpwr_fd = -1;
+int pwr_fd = -1;		// power button
+int lid_fd = -1;		// lid switch
+int ebk_fd = -1;		// ebook switch
+int ols_fd = -1;		// outdoor light sensor
+int acpwr_fd = -1;		// AC power jack insertion
 int got_switches = 0;
 
 char lid_device[128];
@@ -505,6 +505,14 @@ sighandler(int sig)
     die("got signal %d", sig);
 }
 
+/*
+ * powerd needs to know the names of the devices we're monitoring
+ * for some inputs, since it may need to use evtest to poll those
+ * inputs in some circumstances.  in case powerd starts first, we send
+ * the paths when we start (from the top of data_loop()).  in case
+ * we start first, powerd requests them with a SIGUSR1 when it
+ * starts.
+ */
 void
 sig_send_paths(int sig)
 {
