@@ -182,6 +182,17 @@
 #
 #
 ######
+# Ambient light sensor
+#
+# "config_AMBIENT_BRIGHT" and "config_AMBIENT_NORMAL" set the
+# hysteresis limits for the light sensor (on XO-1.75).  Smaller sensor
+# readings imply brighter light, so the BRIGHT limit should be lower
+# than the NORMAL limit.  The backlight will be turned off at the
+# BRIGHT limit, and turned back on at the NORMAL limit.  Setting
+# either limit to 0 will disable light sensor events.
+#
+#
+######
 #
 # Inhibiting sleep
 #
@@ -1875,13 +1886,13 @@ if [ -d $OLS_CONTROL ]
 then
     # the light sensor input device acts as a virtual "switch",
     # which turns on when it's bright out, and off when it gets
-    # "dark", where the "dark" and "bright" thresholds are set
-    # to where the backlight is needed or not.
+    # "dark" (i.e., the backlight makes a difference).  the
+    # low_lim and high_lim values set the hysteresis range.
 
     ambient_adjust_init()
     {
-        echo 50 >$OLS_CONTROL/low_lim
-        echo 80 >$OLS_CONTROL/high_lim
+        echo $config_AMBIENT_BRIGHT >$OLS_CONTROL/low_lim
+        echo $config_AMBIENT_NORMAL >$OLS_CONTROL/high_lim
     }
 
     ambient_adjust()
@@ -2102,6 +2113,9 @@ set_config_defaults()
     config_PWRLOG_DIR=/home/olpc/power-logs
     config_PWRLOG_LOGSIZE=50            # Kbytes
     config_PWRLOG_LOGDIRSIZE=1000       # Kbytes
+
+    config_AMBIENT_BRIGHT=50	# low OLS sensor trigger level, for sunshine
+    config_AMBIENT_NORMAL=80	# high trigger level, for shade or indoors
 }
 
 read_config()
