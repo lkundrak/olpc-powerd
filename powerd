@@ -1386,6 +1386,9 @@ else
     # those counters are used to find the most important source, and
     # to deal with that first.
 
+    # note!  these counters return nothing at all if the corresponding
+    # wakeup events aren't enabled.  so be prepared for nulls.
+
     prepare_for_wakeupsource()
     {
         lid_was_closed=$am_closed
@@ -1396,13 +1399,13 @@ else
 
     get_wakeupsource()
     {
-        if [ $kbd_wake_count != $(< $KBD_WAKE_COUNT) ]
+        if [ "$kbd_wake_count" != "$(< $KBD_WAKE_COUNT)" ]
         then
             wakeupsource=keypress
-        elif [ $power_wake_count != $(< $POWER_WAKE_COUNT) ]
+        elif [ "$power_wake_count" != "$(< $POWER_WAKE_COUNT)" ]
         then
             wakeupsource=powerbutton
-        elif [ $rtc_wake_count != $(< $RTC_WAKE_COUNT) ]
+        elif [ "$rtc_wake_count" != "$(< $RTC_WAKE_COUNT)" ]
         then
             wakeupsource=rtcalarm
         elif [ "$lid_was_closed" ] && ! is_lid_closed && [ "$wake_on_open" ]
@@ -2114,8 +2117,8 @@ set_config_defaults()
     config_PWRLOG_LOGSIZE=50            # Kbytes
     config_PWRLOG_LOGDIRSIZE=1000       # Kbytes
 
-    config_AMBIENT_BRIGHT=50	# low OLS sensor trigger level, for sunshine
-    config_AMBIENT_NORMAL=80	# high trigger level, for shade or indoors
+    config_AMBIENT_BRIGHT=50    # low OLS sensor trigger level, for sunshine
+    config_AMBIENT_NORMAL=80    # high trigger level, for shade or indoors
 }
 
 read_config()
