@@ -528,7 +528,7 @@ RTC_WAKE_COUNT=/sys/devices/platform/mmp-rtc/power/wakeup_count
 # would probably be correct in any case -- it's the one internal to the SoC.
 # (rtcwake can't use the symlink directly, because it parses it
 # to find /sys nodes)
-rtca=$(readlink -f /dev/rtcalarm)
+rtca=$(readlink -e /dev/rtcalarm)
 rtcdevice=${rtca:-/dev/rtc0}
 
 no_ac=;
