@@ -70,11 +70,11 @@ extern int optind, opterr, optopt;
 
 
 /* input event devices */
-int pwr_fd = -1;		// power button
-int lid_fd = -1;		// lid switch
-int ebk_fd = -1;		// ebook switch
-int ols_fd = -1;		// outdoor light sensor
-int acpwr_fd = -1;		// AC power jack insertion
+int pwr_fd = -1;                // power button
+int lid_fd = -1;                // lid switch
+int ebk_fd = -1;                // ebook switch
+int ols_fd = -1;                // outdoor light sensor
+int acpwr_fd = -1;              // AC power jack insertion
 int got_switches = 0;
 
 char lid_device[128];
@@ -414,13 +414,13 @@ read_ac_online(void)
     char buf[4];
     fd = open("/sys/class/power_supply/olpc-ac/online", O_RDONLY);
     if (fd < 0)
-        return 0;
+        return -1;
 
     r = read(fd, buf, 1);
     close(fd);
 
     if (r != 1 || (buf[0] != '0' && buf[0] != '1')) {
-        return 0;
+        return -1;
     }
 
     return buf[0] - '0';
@@ -433,12 +433,12 @@ read_battery_capacity(void)
     char buf[4];
     fd = open("/sys/class/power_supply/olpc-battery/capacity", O_RDONLY);
     if (fd < 0)
-        return 0;
+        return -1;
 
     r = read(fd, buf, 2);
     close(fd);
     if (r < 1 || (buf[0] < '0' || buf[0] > '9')) {
-        return 0;
+        return -1;
     }
 
     buf[3] = '\0';
@@ -452,8 +452,10 @@ read_battery_status(void)
     int fd, r;
     static char buf[40];
     fd = open("/sys/class/power_supply/olpc-battery/status", O_RDONLY);
-    if (fd < 0)
-        return 0;
+    if (fd < 0) {
+        buf[0] = '\0';
+        return buf;
+    }
 
     r = read(fd, buf, sizeof(buf));
     close(fd);
@@ -478,7 +480,12 @@ poll_power_sources(void)
     /* if we don't have an AC jack input device, poll it here */
     if (acpwr_fd < 0) {
         online = read_ac_online();
-        if (was_online != online) {
+        if (online == -1) {
+	    static int ac_reported;
+            if (!ac_reported)
+		report("can't get AC jack state");
+	    ac_reported = 1;
+        } else if (was_online != online) {
             send_event(online ? "ac-online" : "ac-offline", time(0), 0);
             was_online = online;
             sent = 1;
@@ -487,7 +494,12 @@ poll_power_sources(void)
 
     capacity = read_battery_capacity();
     status = read_battery_status();
-    if (was_capacity != capacity || strcmp(status, was_status) != 0) {
+    if (capacity == -1 || !status[0] ) {
+	static int battery_reported;
+	if (!battery_reported)
+            report("can't get battery data");
+	battery_reported = 1;
+    } else if (was_capacity != capacity || strcmp(status, was_status) != 0) {
         char evbuf[64];
         was_capacity = capacity;
         strcpy(was_status, status);
