@@ -480,12 +480,31 @@ BUSYCHECK=5
 # however, we can't get woken for that.  so we fudge, and use
 # a combination.
 BATTERY_INFO=/sys/class/power_supply/olpc-battery
-CAPACITY=$BATTERY_INFO/capacity  # percentage
-MICROVOLTS=$BATTERY_INFO/voltage_avg  # microvolts
+if [ -d $BATTERY_INFO ]
+then
+    CAPACITY=$BATTERY_INFO/capacity  # percentage
+    MICROVOLTS=$BATTERY_INFO/voltage_avg  # microvolts
+    no_battery=;
+else
+    no_battery=true
+fi
 
-# dcon display control -- all models
-DCON_FREEZE=/sys/devices/platform/dcon/freeze
-DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
+# dcon display control -- almost always present
+if [ -d /sys/devices/platform/dcon ]
+then
+    DCON_FREEZE=/sys/devices/platform/dcon/freeze
+    DCON_SLEEP=/sys/class/backlight/dcon-bl/device/sleep
+    BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness  # 0-15
+    if [ -e /sys/devices/platform/dcon/monochrome ]
+    then
+        MONO_MODE=/sys/devices/platform/dcon/monochrome
+    else
+        MONO_MODE=/sys/devices/platform/dcon/output
+    fi
+    no_dcon=;
+else
+    no_dcon=true
+fi
 
 # only on laptops with the original ALPS touchpads
 TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
@@ -512,6 +531,7 @@ RTC_WAKE_COUNT=/sys/devices/platform/mmp-rtc/power/wakeup_count
 rtca=$(readlink -f /dev/rtcalarm)
 rtcdevice=${rtca:-/dev/rtc0}
 
+no_ac=;
 if [ -d /sys/class/power_supply/olpc-ac ]
 then
     AC_ONLINE=/sys/class/power_supply/olpc-ac/online  # 1/0
@@ -520,14 +540,8 @@ then
     AC_ONLINE=/sys/class/power_supply/AC/online  # 1/0
 else
     AC_ONLINE=;
-fi
-BRIGHTNESS=/sys/class/backlight/dcon-bl/brightness  # 0-15
-
-if [ -e /sys/devices/platform/dcon/monochrome ]
-then
-    MONO_MODE=/sys/devices/platform/dcon/monochrome
-else
-    MONO_MODE=/sys/devices/platform/dcon/output
+    ac=online
+    no_ac=true
 fi
 
 have_olpc_brightness=;
@@ -1834,6 +1848,8 @@ brightness_ramp()
 
 backlight()
 {
+    test "$no_dcon" && return
+
     trace backlight $1
     case $1 in
     init)
@@ -1900,6 +1916,8 @@ then
 
     ambient_adjust()
     {
+        test "$no_dcon" && return
+
         read_brightness curbright
         case $1-$ambient in
         dark-dark|bright-bright)  # redundant event
@@ -1966,6 +1984,8 @@ fi
 
 dcon()
 {
+    test "$no_dcon" && return
+
     case $1 in
     freeze) echo 1 > $DCON_FREEZE ;;
     thaw)   echo 0 > $DCON_FREEZE ;;
@@ -2174,6 +2194,8 @@ battery_shutdown()
 
 low_battery()
 {
+    test "$no_battery" && return 0  # no driver, assume battery ok
+
     if [ $battery_capacity -le 40 ]
     then  # 40% or less, check battery voltage
 
@@ -2195,7 +2217,11 @@ read_battery()
 
 plugged_in()
 {
-    test "$AC_ONLINE" || return 1
+    if [ ! "$AC_ONLINE" ]
+    then   # no driver, assume plugged in
+        ac="online"
+        return 0
+    fi
 
     read on_ac < $AC_ONLINE
     if [ "$on_ac" = 1 ]
@@ -2210,6 +2236,9 @@ plugged_in()
 
 power_check()
 {
+    test "$no_ac" && return
+    test "$no_battery" && return
+
     if ! plugged_in
     then
         read_battery
@@ -2752,7 +2781,8 @@ event_loop()
 configure_pwrlog()
 {
     if [ $config_PWRLOG_INTERVAL -gt 30 -a \
-            -s $CONFIGDIR/olpc-pwr-log.sh ]
+            -s $CONFIGDIR/olpc-pwr-log.sh \
+            -a -z "$no_battery" ]
     then
         pwrlog_inside_powerd=yes
 
@@ -2845,9 +2875,14 @@ eventcutoff=0;
 dcon_thawed=;
 no_suspend=0;
 prevent_sleep=;
+powerd_dbus_pid=;
 
 
 log starting
+
+test "$no_ac" && log "no AC (external power) presence driver found"
+test "$no_battery" && log "no battery driver found"
+test "$no_dcon" && log "no DCON driver found"
 
 set_config_defaults
 if [ -r $CONFIGFILE ]
@@ -2877,12 +2912,11 @@ ebook_check
 reevaluate all
 
 # let user programs control brightness
-chmod a+w $BRIGHTNESS $MONO_MODE
+test "$no_dcon" || chmod a+w $BRIGHTNESS $MONO_MODE
 
 set_acpi_wakeupevents EC enable
 set_wakeupevents all_sci
 
-powerd_dbus_pid=;
 if [ -x /usr/libexec/powerd-dbus ]
 then
     /usr/libexec/powerd-dbus &
