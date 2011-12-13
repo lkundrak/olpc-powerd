@@ -48,9 +48,8 @@
 #include <linux/vt.h>
 #include <linux/fb.h>
 
-#define FB_WIDTH 1200
-#define FB_HEIGHT 900
-#define FB_SIZE_B (FB_WIDTH * FB_HEIGHT)
+#define MAX_FB_WIDTH 1200
+#define MAX_FB_HEIGHT 900
 
 char *prog;
 extern char *optarg;
@@ -297,7 +296,7 @@ expand_8grey_to_argb32(unsigned char *sp)
 }
 
 void
-showimage(char *name, void *v_fb_map, int fb_bpp)
+showimage(char *name, void *v_fb_map, int fb_bpp, int w, int h)
 {
     FILE *fp = 0;
     int fd;
@@ -306,8 +305,6 @@ showimage(char *name, void *v_fb_map, int fb_bpp)
     int top = 1;
     int pixel;
     unsigned char buf[256];
-    int h = FB_HEIGHT;
-    int w = FB_WIDTH;
     int topfillrows, leftfillcols;
     int bottomfillrows, rightfillcols;
     unsigned short *sfb_map = v_fb_map;
@@ -494,7 +491,7 @@ main(int argc, char *argv[])
         exit(1);
     }
 
-    if (vinfo.xres != FB_WIDTH || vinfo.yres != FB_HEIGHT) {
+    if (vinfo.xres > MAX_FB_WIDTH || vinfo.yres > MAX_FB_HEIGHT) {
         fprintf(stderr, "Unsupported res: %dx%d\n", vinfo.xres, vinfo.yres);
         exit(1);
     }
@@ -502,13 +499,13 @@ main(int argc, char *argv[])
     dcon_freeze();
     atexit(dcon_thaw);
 
-    fb_map = mmap(NULL, FB_SIZE_B * fb_bpp,
+    fb_map = mmap(NULL, vinfo.xres * vinfo.yres * fb_bpp,
                          PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
     vt_setup();
 
     while (optind < argc) {
         dcon_freeze();
-        showimage(argv[optind++], fb_map, fb_bpp);
+        showimage(argv[optind++], fb_map, fb_bpp, vinfo.xres, vinfo.yres);
         dcon_thaw();
 
         if (!sigsetjmp(nxt_jmpbuf, 1) && sleeptime) {
