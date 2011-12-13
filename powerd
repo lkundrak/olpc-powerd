@@ -1539,7 +1539,7 @@ snooze()
 
     local shutdowntime dimtime blanktime orig_rtctime rtctime
     local sleep_type cur_sleep_type until 
-    local wakeupsource prev_wlan_power sleep_started
+    local prev_wlan_power sleep_started
 
     trace "snoozing: $@"
 
