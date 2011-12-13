@@ -256,8 +256,6 @@ setup_input()
     ret = -1;
     if (pwr_fd == -1)
         report("didn't find power button");
-    else if (lid_fd == -1)
-        report("didn't find lid switch");
     else {
         report("found %d switches", got_switches);
         ret = 0;
@@ -481,10 +479,10 @@ poll_power_sources(void)
     if (acpwr_fd < 0) {
         online = read_ac_online();
         if (online == -1) {
-	    static int ac_reported;
+            static int ac_reported;
             if (!ac_reported)
-		report("can't get AC jack state");
-	    ac_reported = 1;
+                report("can't get AC jack state");
+            ac_reported = 1;
         } else if (was_online != online) {
             send_event(online ? "ac-online" : "ac-offline", time(0), 0);
             was_online = online;
@@ -495,10 +493,10 @@ poll_power_sources(void)
     capacity = read_battery_capacity();
     status = read_battery_status();
     if (capacity == -1 || !status[0] ) {
-	static int battery_reported;
-	if (!battery_reported)
+        static int battery_reported;
+        if (!battery_reported)
             report("can't get battery data");
-	battery_reported = 1;
+        battery_reported = 1;
     } else if (was_capacity != capacity || strcmp(status, was_status) != 0) {
         char evbuf[64];
         was_capacity = capacity;
@@ -552,7 +550,8 @@ data_loop(void)
     while (1) {
         FD_ZERO(&inputs);
         FD_SET(pwr_fd, &inputs);
-        FD_SET(lid_fd, &inputs);
+        if (lid_fd >= 0)
+            FD_SET(lid_fd, &inputs);
         if (ebk_fd >= 0)
             FD_SET(ebk_fd, &inputs);
         if (ols_fd >= 0)
@@ -562,7 +561,8 @@ data_loop(void)
 
         FD_ZERO(&errors);
         FD_SET(pwr_fd, &errors);
-        FD_SET(lid_fd, &errors);
+        if (lid_fd >= 0)
+            FD_SET(lid_fd, &errors);
         if (ebk_fd >= 0)
             FD_SET(ebk_fd, &errors);
         if (ols_fd >= 0)
@@ -599,7 +599,7 @@ data_loop(void)
         if (r > 0) {
             if (FD_ISSET(pwr_fd, &errors))
                 die("select reports error on power button");
-            if (FD_ISSET(lid_fd, &errors))
+            if (lid_fd >= 0 && FD_ISSET(lid_fd, &errors))
                 die("select reports error on lid switch");
             if (ebk_fd >= 0 && FD_ISSET(ebk_fd, &errors))
                 die("select reports error on ebook switch");
@@ -610,7 +610,7 @@ data_loop(void)
 
             if (FD_ISSET(pwr_fd, &inputs))
                 power_button_event();
-            if (FD_ISSET(lid_fd, &inputs))
+            if (lid_fd >= 0 && FD_ISSET(lid_fd, &inputs))
                 lid_event();
             if (ebk_fd >= 0 && FD_ISSET(ebk_fd, &inputs))
                 ebook_event();
