@@ -502,9 +502,24 @@ then
         MONO_MODE=/sys/devices/platform/dcon/output
     fi
     no_dcon=;
+    no_brightness=;
 else
     no_dcon=true
+    no_brightness=true;
 fi
+
+# try for another backlight device
+if [ "$no_brightness" -a -d /sys/class/backlight ]
+then # choose the first
+    BACKLIGHT=$(ls /sys/class/backlight | sed 1q )
+    if [ "$BACKLIGHT" ]
+    then
+        # assume levels of 0-15 for now -- use max_brightness later
+        BRIGHTNESS=/sys/class/backlight/$BACKLIGHT/brightness
+        no_brightness=;
+    fi
+fi
+
 
 # only on laptops with the original ALPS touchpads
 TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
@@ -516,12 +531,34 @@ WLAN_ENABLED=/sys/power/wlan-enabled
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
 
-# XO-1.75 only
+# XO-1.75 and/or XO-3
 OLPC_SWITCH=/sys/devices/platform/olpc-switch.0
 OLS_CONTROL=/sys/devices/platform/olpc-ols.0
-KBD_WAKE_COUNT=/sys/devices/platform/olpc-kbd.0/power/wakeup_count
 POWER_WAKE_COUNT=/sys/devices/platform/olpc-ec-1.75.0/power/wakeup_count
 RTC_WAKE_COUNT=/sys/devices/platform/mmp-rtc/power/wakeup_count
+
+OLPC_KBD_POWER=/sys/devices/platform/olpc-kbd.0/power
+if [ -d $OLPC_KBD_POWER ]
+then
+    KBD_WAKE_COUNT=$OLPC_KBD_POWER/wakeup_count
+else
+    OLPC_KBD_POWER=;
+    KBD_WAKE_COUNT=/dev/null
+fi
+
+OLPC_TSCREEN_POWER=/sys/devices/platform/eeti_ts.0/power
+if [ ! -d $OLPC_TSCREEN_POWER ]
+then
+    OLPC_TSCREEN_POWER=/sys/devices/platform/raydium_ts.0/power
+fi
+if [ -d $OLPC_TSCREEN_POWER ]
+then
+    TSCREEN_WAKE_COUNT=$OLPC_TSCREEN_POWER/wakeup_count
+else
+    OLPC_TSCREEN_POWER=;
+    TSCREEN_WAKE_COUNT=/dev/null
+fi
+
 
 # XO-1.75 has two RTC clocks, but only one of them has alarm capabilities.
 # the /dev/rtcalarm symlink makes this explicit (though the default rtc0
@@ -604,7 +641,7 @@ then
         esac
 
     }
-else
+else  # XO-3
     wake_on_lid()
     {
         :
@@ -627,6 +664,7 @@ then
 else
     # controlled by EC mask on XO-1
     # controlled along with lid on 1.75
+    # immaterial on XO-3
     wake_on_ebook()
     {
         :
@@ -639,7 +677,7 @@ then
 elif [ -e /sys/power/lid-state ]  # XO-1
 then
     LID_STATE=/sys/power/lid-state 
-elif [ -x /usr/bin/evtest ]  # XO-1.75
+elif [ -x /usr/bin/evtest ]  # XO-1.75, and others, with later kernels
 then
     LID_STATE=use_evtest
 else
@@ -758,7 +796,7 @@ choose_xo_model()
     read_hwinfo
 
     case $hwvendor-$hwname-$hwversion in
-    OLPC-XO-1|OLPC-XO-1.5|OLPC-XO-1.75)
+    OLPC-XO-1|OLPC-XO-1.5|OLPC-XO-1.75|OLPC-XO-3)
         XO=$hwversion
         ;;
     *)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
@@ -995,7 +1033,7 @@ case "$XO" in
         grep -q via-dma /proc/interrupts && trace camera busy
     }
     ;;
-1.75)
+1.75|3)
     camera_busy()
     {
         false  # for now, at least
@@ -1280,25 +1318,34 @@ else
 fi
 
 
-if [ $XO = 1.75 ]
-then
-    OLPC_KBD=/sys/devices/platform/olpc-kbd.0
+case $XO in
+1.75|3)
     set_wakeupevents()
     {
         case $1 in
         all)            wake_on_lid always
-                        echo enabled > $OLPC_KBD/power/wakeup
+                        test "$OLPC_KBD_POWER" && \
+                            echo enabled > $OLPC_KBD_POWER/wakeup
+                        test "$OLPC_TSCREEN_POWER" && \
+                            echo enabled > $OLPC_TSCREEN_POWER/wakeup
                         ;;
         none)           wake_on_lid never
-                        echo disabled > $OLPC_KBD/power/wakeup
+                        test "$OLPC_KBD_POWER" && \
+                            echo disabled > $OLPC_KBD_POWER/wakeup
+                        test "$OLPC_TSCREEN_POWER" && \
+                            echo disabled > $OLPC_TSCREEN_POWER/wakeup
                         ;;
         none_but_lid)   wake_on_lid open
-                        echo disabled > $OLPC_KBD/power/wakeup
+                        test "$OLPC_KBD_POWER" && \
+                            echo disabled > $OLPC_KBD_POWER/wakeup
+                        test "$OLPC_TSCREEN_POWER" && \
+                            echo disabled > $OLPC_TSCREEN_POWER/wakeup
                         ;;
         esac
     }
+    ;;
 
-else
+1.5|1)
     set_ec_wakeup_mask()
     {
         case $1 in
@@ -1354,9 +1401,10 @@ else
                     ;;
         esac
     }
-fi
+    ;;
+esac
 
-if [ $XO != 1.75 ]
+if [ -e $WAKEUP_SOURCE ]
 then
     # on XO-1/XO-1.5 kernels up through at least 2.6.35, wakeups
     # set a field in the kernel that tells the reason for the
@@ -1407,6 +1455,7 @@ else
     {
         lid_was_closed=$am_closed
         kbd_wake_count=$(< $KBD_WAKE_COUNT)
+        tscreen_wake_count=$(< $TSCREEN_WAKE_COUNT)
         power_wake_count=$(< $POWER_WAKE_COUNT)
         rtc_wake_count=$(< $RTC_WAKE_COUNT)
     }
@@ -1414,6 +1463,9 @@ else
     get_wakeupsource()
     {
         if [ "$kbd_wake_count" != "$(< $KBD_WAKE_COUNT)" ]
+        then
+            wakeupsource=keypress
+        elif [ "$tscreen_wake_count" != "$(< $TSCREEN_WAKE_COUNT)" ]
         then
             wakeupsource=keypress
         elif [ "$power_wake_count" != "$(< $POWER_WAKE_COUNT)" ]
@@ -1799,25 +1851,43 @@ snooze()
     runparts resume &
 }
 
-am_mono()
-{
-    test "$(< $MONO_MODE)" = 1
-}
+if [ "$no_dcon" ]
+then
+    am_mono()
+    {
+        return 1
+    }
+else
+    am_mono()
+    {
+        test "$(< $MONO_MODE)" = 1
+    }
+fi
 
 set_brightness()
 {
-    echo $1 >$BRIGHTNESS
-    if [ $1 != 0 -a "$have_olpc_brightness" ] && am_mono
+    if [ "$non_dcon_blanked" ]
     then
-        olpc-brightness maybe_color
+        non_dcon_save_bright=$1  # just remember the change
+    else
+        echo $1 >$BRIGHTNESS
+        if [ $1 != 0 -a "$have_olpc_brightness" ] && am_mono
+        then
+            olpc-brightness maybe_color
+        fi
     fi
 }
 
 read_brightness()
 {
-    local x
-    read x < $BRIGHTNESS
-    eval $1=\"$x\"
+    if [ "$non_dcon_blanked" ]
+    then
+        eval $1=\"$non_dcon_save_bright\"
+    else
+        local x
+        read x < $BRIGHTNESS
+        eval $1=\"$x\"
+    fi
 }
 
 brightness_ramp()
@@ -1826,6 +1896,12 @@ brightness_ramp()
 
     trace ramp from $1 to $2
     test $1 = $2 && return
+
+    if [ "$non_dcon_blanked" ]
+    then
+        non_dcon_save_bright=$2
+        return
+    fi
 
     # ramp in either direction
     incr=1
@@ -1848,7 +1924,7 @@ brightness_ramp()
 
 backlight()
 {
-    test "$no_dcon" && return
+    test "$no_brightness" && return
 
     trace backlight $1
     case $1 in
@@ -1871,7 +1947,17 @@ backlight()
             fi
             dimmed=;
         fi
-        dcon wake
+        if [ "$no_dcon" ]
+        then
+            if [ "$non_dcon_blanked" ]
+            then
+                non_dcon_blanked=;
+                set_brightness $non_dcon_save_bright
+            # else do nothing
+            fi
+        else
+            dcon wake
+        fi
         ;;
     dim)
         if [ ! "${dimmed}" ]
@@ -1889,14 +1975,27 @@ backlight()
         # backlight is turned off while dcon sleeps, but
         # brightness level is retained, and can be changed. 
         # ambient dimming makes use of this.
-        dcon sleep
+        if [ "$no_dcon" ]
+        then
+            read_brightness non_dcon_save_bright
+            set_brightness 0
+            non_dcon_blanked=true;
+        else
+            dcon sleep
+        fi
         ;;
 
     is_off)
-        local d
-        read d < $DCON_SLEEP
-        test $d = 1
-        return
+        if [ "$no_dcon" ]
+        then
+            test "$non_dcon_blanked"
+            return
+        else
+            local d
+            read d < $DCON_SLEEP
+            test $d = 1
+            return
+        fi
         ;;
     esac
 }
@@ -1916,7 +2015,7 @@ then
 
     ambient_adjust()
     {
-        test "$no_dcon" && return
+        test "$no_brightness" && return
 
         read_brightness curbright
         case $1-$ambient in
@@ -1984,7 +2083,7 @@ fi
 
 dcon()
 {
-    test "$no_dcon" && return
+    test "$no_dcon" && return 1
 
     case $1 in
     freeze) echo 1 > $DCON_FREEZE ;;
@@ -2861,11 +2960,14 @@ init_netactivity_tracking()
 # powerd runs "set -u".  variables that aren't initialized
 # naturally are set here.
 am_ebook=;
+am_closed=;
 o_ebook=xxx;
 ebook_device=;
 lid_device=;
 dimmed=;
 savebright=;
+non_dcon_blanked=;
+non_dcon_save_bright=;
 ambient_savebright=;
 ambient=;
 last_t_values=;
@@ -2912,7 +3014,8 @@ ebook_check
 reevaluate all
 
 # let user programs control brightness
-test "$no_dcon" || chmod a+w $BRIGHTNESS $MONO_MODE
+test "$no_dcon" || chmod a+w $MONO_MODE
+test "$no_brightness" || chmod a+w $BRIGHTNESS
 
 set_acpi_wakeupevents EC enable
 set_wakeupevents all_sci
