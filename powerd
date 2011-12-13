@@ -796,6 +796,9 @@ choose_xo_model()
     read_hwinfo
 
     case $hwvendor-$hwname-$hwversion in
+    OLPC-XO-)   # FIXME!!!
+        XO=3
+        ;;
     OLPC-XO-1|OLPC-XO-1.5|OLPC-XO-1.75|OLPC-XO-3)
         XO=$hwversion
         ;;
