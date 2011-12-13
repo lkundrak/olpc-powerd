@@ -1547,7 +1547,7 @@ snooze()
 
     runparts suspend
 
-    # we only use rtc alarms to either a) turn of the screen when
+    # we only use rtc alarms to either a) turn off the screen when
     # we've been sleeping for a while, or b) shutdown after we've been
     # sleeping for a while.  if we do a), we'll do b) next.
     until=$1   # "until_dim", "until_blank", or "until_shutdown"
