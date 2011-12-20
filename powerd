@@ -546,14 +546,15 @@ else
     KBD_WAKE_COUNT=/dev/null
 fi
 
-OLPC_TSCREEN_POWER=/sys/devices/platform/eeti_ts.0/power
-if [ ! -d $OLPC_TSCREEN_POWER ]
+# choose the first eligible touchscreen device (should be only one)
+OLPC_TSCREEN=$(egrep -l 'raydium_ts|eeti_ts' \
+                /sys/devices/platform/pxa2xx-i2c*/i2c-*/*/name |
+        	    sed -n -e 's/name$//p' -e '1q')
+
+if [ "$OLPC_TSCREEN" -a -d "$OLPC_TSCREEN/power" ]
 then
-    OLPC_TSCREEN_POWER=/sys/devices/platform/raydium_ts.0/power
-fi
-if [ -d $OLPC_TSCREEN_POWER ]
-then
-    TSCREEN_WAKE_COUNT=$OLPC_TSCREEN_POWER/wakeup_count
+    OLPC_TSCREEN_POWER=OLPC_TSCREEN/power
+    TSCREEN_WAKE_COUNT=$OLPC_TSCREEN/power/wakeup_count
 else
     OLPC_TSCREEN_POWER=;
     TSCREEN_WAKE_COUNT=/dev/null
