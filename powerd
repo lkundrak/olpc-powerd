@@ -553,7 +553,7 @@ OLPC_TSCREEN=$(egrep -l 'raydium_ts|eeti_ts' \
 
 if [ "$OLPC_TSCREEN" -a -d "$OLPC_TSCREEN/power" ]
 then
-    OLPC_TSCREEN_POWER=OLPC_TSCREEN/power
+    OLPC_TSCREEN_POWER=$OLPC_TSCREEN/power
     TSCREEN_WAKE_COUNT=$OLPC_TSCREEN/power/wakeup_count
 else
     OLPC_TSCREEN_POWER=;
