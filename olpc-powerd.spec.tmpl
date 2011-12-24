@@ -136,12 +136,14 @@ fi
 exit 0
 
 %changelog
-* Tue Dec 20 2011 Paul Fox <pgf@laptop.org>
-- 41-1
+* Tue Dec 24 2011 Paul Fox <pgf@laptop.org>
+- 42-1
 - keep olpc-switchd and powerd from respawning due to missing drivers:
-     AC, battery, DCON, lid and ebook switches
+     AC, battery, DCON, lid and ebook switches.  also defend against
+     transient errors when accessing AC and battery.
 - support for XO-3 -- no DCON, different backlight control, different display.
 - working touchscreen support
+- (no version 41 was released)
 
 * Tue Nov 29 2011 Paul Fox <pgf@laptop.org>
 - 40-1
