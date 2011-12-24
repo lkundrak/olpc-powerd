@@ -549,7 +549,7 @@ fi
 # choose the first eligible touchscreen device (should be only one)
 OLPC_TSCREEN=$(egrep -l 'raydium_ts|eeti_ts' \
                 /sys/devices/platform/pxa2xx-i2c*/i2c-*/*/name |
-        	    sed -n -e 's/name$//p' -e '1q')
+                    sed -n -e 's/name$//p' -e '1q')
 
 if [ "$OLPC_TSCREEN" -a -d "$OLPC_TSCREEN/power" ]
 then
@@ -2315,26 +2315,32 @@ low_battery()
 
 read_battery()
 {
-    read battery_capacity < $CAPACITY || battery_capacity=0
+    read battery_capacity < $CAPACITY || battery_capacity=;
+    if [ ! "$battery_capacity" ]
+    then
+        log failed to read battery capacity, assuming full charge
+        battery_capacity=100
+    fi
 }
 
 plugged_in()
 {
-    if [ ! "$AC_ONLINE" ]
-    then   # no driver, assume plugged in
+    read on_ac < $AC_ONLINE || on_ac=;
+    case $on_ac in
+    "")
+        log "failed to read external power status, assuming plugged in"
         ac="online"
         return 0
-    fi
-
-    read on_ac < $AC_ONLINE
-    if [ "$on_ac" = 1 ]
-    then
+        ;;
+    1)
         ac="online"
         return 0
-    else
+        ;;
+    0)
         ac="offline"
         return 1
-    fi
+        ;;
+    esac
 }
 
 power_check()
