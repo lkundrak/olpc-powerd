@@ -527,37 +527,77 @@ TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
 # XO-1 only
 WLAN_ENABLED=/sys/power/wlan-enabled
 
-# XO-1 and XO-1.5
+# legacy XO-1 and XO-1.5
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # contains name of last wakeup source.
 
 # XO-1.75 and/or XO-3
 OLPC_SWITCH=/sys/devices/platform/olpc-switch.0
 OLS_CONTROL=/sys/devices/platform/olpc-ols.0
-POWER_WAKE_COUNT=/sys/devices/platform/olpc-ec-1.75.0/power/wakeup_count
-RTC_WAKE_COUNT=/sys/devices/platform/mmp-rtc/power/wakeup_count
 
-OLPC_KBD_POWER=/sys/devices/platform/olpc-kbd.0/power
-if [ -d $OLPC_KBD_POWER ]
+POWER_WAKE_COUNT=/sys/devices/platform/olpc-ec-1.75.0/power/wakeup_count # 1.75
+if [ ! -e $POWER_WAKE_COUNT ]
 then
-    KBD_WAKE_COUNT=$OLPC_KBD_POWER/wakeup_count
-else
-    OLPC_KBD_POWER=;
-    KBD_WAKE_COUNT=/dev/null
+    POWER_WAKE_COUNT=/some/pwrbutton/path/on/1.5-and-1
+    if [ ! -e $POWER_WAKE_COUNT ]
+    then
+        POWER_WAKE_COUNT=/dev/null
+    fi
 fi
 
-# choose the first eligible touchscreen device (should be only one)
-OLPC_TSCREEN=$(egrep -l 'raydium_ts|eeti_ts' \
-                /sys/devices/platform/pxa2xx-i2c*/i2c-*/*/name |
-                    sed -n -e 's/name$//p' -e '1q')
-
-if [ "$OLPC_TSCREEN" -a -d "$OLPC_TSCREEN/power" ]
+RTC_WAKE_COUNT=/sys/devices/platform/mmp-rtc/power/wakeup_count  # 1.75
+if [ ! -e $RTC_WAKE_COUNT ]
 then
-    OLPC_TSCREEN_POWER=$OLPC_TSCREEN/power
-    TSCREEN_WAKE_COUNT=$OLPC_TSCREEN/power/wakeup_count
-else
-    OLPC_TSCREEN_POWER=;
-    TSCREEN_WAKE_COUNT=/dev/null
+    RTC_WAKE_COUNT=/some/rtc/path/on/1.5-and-1
+    if [ ! -e $RTC_WAKE_COUNT ]
+    then
+        RTC_WAKE_COUNT=/dev/null
+    fi
+fi
+
+KBD_POWER=/sys/devices/platform/olpc-kbd.0/power
+if [ -d $KBD_POWER ]
+then # on 1.75, keyboard/touchpad both appear under olpc-kbd.0
+    KBD_WAKE_COUNT=$KBD_POWER/wakeup_count
+    TPAD_POWER=;
+    TPAD_WAKE_COUNT=/dev/null
+else # on 1 and 1.5, they're separate, on two serio devices
+
+    TPAD_POWER=;
+    TPAD_WAKE_COUNT=/dev/null
+    KBD_POWER=;
+    KBD_WAKE_COUNT=/dev/null
+
+    if KBD_PATH=$(grep -l 'AT Translated Set 2 keyboard' \
+            /sys/devices/platform/i8042/serio*/input/input*/name)
+    then
+        KBD_PATH=${KBD_PATH%/input/input*/name}
+        KBD_POWER=$KBD_PATH/power
+        KBD_WAKE_COUNT=$KBD_POWER/wakeup_count
+    fi
+
+    if TPAD_PATH=$(egrep -li 'touchpad|fssp' \
+            /sys/devices/platform/i8042/serio*/input/input*/name)
+    then
+        TPAD_PATH=${TPAD_PATH%/input/input*/name}
+        TPAD_POWER=$TPAD_PATH/power
+        TPAD_WAKE_COUNT=$TPAD_POWER/wakeup_count
+    fi
+fi
+
+TSCREEN_POWER=;
+TSCREEN_WAKE_COUNT=/dev/null
+# choose the first eligible touchscreen device (should be only one, if any)
+if TSCREEN=$(egrep -l 'raydium_ts|eeti_ts' \
+                /sys/devices/platform/pxa2xx-i2c*/i2c-*/*/name)
+then
+    TSCREEN=${TSCREEN%/name}
+
+    if [ "$TSCREEN" -a -d "$TSCREEN/power" ]
+    then
+        TSCREEN_POWER=$TSCREEN/power
+        TSCREEN_WAKE_COUNT=$TSCREEN/power/wakeup_count
+    fi
 fi
 
 
@@ -1322,34 +1362,9 @@ else
 fi
 
 
-case $XO in
-1.75|3)
-    set_wakeupevents()
-    {
-        case $1 in
-        all)            wake_on_lid always
-                        test "$OLPC_KBD_POWER" && \
-                            echo enabled > $OLPC_KBD_POWER/wakeup
-                        test "$OLPC_TSCREEN_POWER" && \
-                            echo enabled > $OLPC_TSCREEN_POWER/wakeup
-                        ;;
-        none)           wake_on_lid never
-                        test "$OLPC_KBD_POWER" && \
-                            echo disabled > $OLPC_KBD_POWER/wakeup
-                        test "$OLPC_TSCREEN_POWER" && \
-                            echo disabled > $OLPC_TSCREEN_POWER/wakeup
-                        ;;
-        none_but_lid)   wake_on_lid open
-                        test "$OLPC_KBD_POWER" && \
-                            echo disabled > $OLPC_KBD_POWER/wakeup
-                        test "$OLPC_TSCREEN_POWER" && \
-                            echo disabled > $OLPC_TSCREEN_POWER/wakeup
-                        ;;
-        esac
-    }
-    ;;
+if [ -e $WAKEUP_EVENTS ]
+then  # OLPC legacy:  /sys/power/wakeup_events/*
 
-1.5|1)
     set_ec_wakeup_mask()
     {
         case $1 in
@@ -1405,8 +1420,39 @@ case $XO in
                     ;;
         esac
     }
-    ;;
-esac
+
+else # kernel 3.0 and later:  individual .../power/wakeup controls
+
+    set_wakeupevents()
+    {
+        case $1 in
+        all)            wake_on_lid always
+                        test "$KBD_POWER" && \
+                            echo enabled > $KBD_POWER/wakeup
+                        test "$TPAD_POWER" && \
+                            echo enabled > $TPAD_POWER/wakeup
+                        test "$TSCREEN_POWER" && \
+                            echo enabled > $TSCREEN_POWER/wakeup
+                        ;;
+        none)           wake_on_lid never
+                        test "$KBD_POWER" && \
+                            echo disabled > $KBD_POWER/wakeup
+                        test "$TPAD_POWER" && \
+                            echo disabled > $TPAD_POWER/wakeup
+                        test "$TSCREEN_POWER" && \
+                            echo disabled > $TSCREEN_POWER/wakeup
+                        ;;
+        none_but_lid)   wake_on_lid open
+                        test "$KBD_POWER" && \
+                            echo disabled > $KBD_POWER/wakeup
+                        test "$TPAD_POWER" && \
+                            echo disabled > $TPAD_POWER/wakeup
+                        test "$TSCREEN_POWER" && \
+                            echo disabled > $TSCREEN_POWER/wakeup
+                        ;;
+        esac
+    }
+fi
 
 if [ -e $WAKEUP_SOURCE ]
 then
@@ -1459,6 +1505,7 @@ else
     {
         lid_was_closed=$am_closed
         kbd_wake_count=$(< $KBD_WAKE_COUNT)
+        tpad_wake_count=$(< $TPAD_WAKE_COUNT)
         tscreen_wake_count=$(< $TSCREEN_WAKE_COUNT)
         power_wake_count=$(< $POWER_WAKE_COUNT)
         rtc_wake_count=$(< $RTC_WAKE_COUNT)
@@ -1467,6 +1514,9 @@ else
     get_wakeupsource()
     {
         if [ "$kbd_wake_count" != "$(< $KBD_WAKE_COUNT)" ]
+        then
+            wakeupsource=keypress
+        elif [ "$tpad_wake_count" != "$(< $TPAD_WAKE_COUNT)" ]
         then
             wakeupsource=keypress
         elif [ "$tscreen_wake_count" != "$(< $TSCREEN_WAKE_COUNT)" ]
