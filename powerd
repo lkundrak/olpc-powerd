@@ -1213,18 +1213,19 @@ else
     }
 fi
 
-read_wlan_power()
-{
-    local x
-    read x < $WLAN_ENABLED
-    eval $1=\"$x\"
-}
-
 if [ "$XO" = 1 ]
 then
-    # only on XO-1 (on XO-1.5, wlan power is controlled
-    # automatically in the driver -- power is turned off if no
-    # wake-on-wlan options are set.)
+    # only on XO-1 (on XO-1.5/1.75/3, wlan power is controlled
+    # automatically -- power is turned off if no wake-on-wlan
+    # options are set.)
+
+    read_wlan_power()
+    {
+        local x
+        read x < $WLAN_ENABLED
+        eval $1=\"$x\"
+    }
+
     set_wlan_power()
     {
         # very important not to do extra writes to wlan-enabled -- the
