@@ -2331,6 +2331,9 @@ read_config()
         config_SLEEP_WHEN_LID_CLOSED=no
     fi
 
+    # force w-o-l off, because later we skip turning it off if it
+    # shouldn't be on according to current config. 
+    set_wake_on_wlan no
     wake_on_wlan=$(yes_or_true_to_boolean "$config_WAKE_ON_WLAN")
 
     sleep_on_close=$(yes_or_true_to_boolean "$config_SLEEP_WHEN_LID_CLOSED")
