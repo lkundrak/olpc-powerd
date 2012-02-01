@@ -1533,7 +1533,7 @@ else
         then
             wakeupsource=lid
         else
-            wakeupsource=default
+            wakeupsource=unknown
         fi
     }
 
@@ -1885,7 +1885,7 @@ snooze()
             fi
             ;;
 
-        battery*|default)  # all we do is check battery level, and sleep again
+        battery*)  # all we do is check battery level, and sleep again
             ;;
 
         *)  # "keypress"|"ebook"|"unknown")
