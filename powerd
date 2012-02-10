@@ -593,7 +593,7 @@ if TSCREEN=$(egrep -l 'raydium_ts|eeti_ts' \
 then
     TSCREEN=${TSCREEN%/name}
 
-    if [ "$TSCREEN" -a -e "$TSCREEN/power/wakeup_count" ]
+    if [ "$TSCREEN" -a -d "$TSCREEN/power" ]
     then
         TSCREEN_POWER=$TSCREEN/power
         TSCREEN_WAKE_COUNT=$TSCREEN/power/wakeup_count
