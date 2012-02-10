@@ -593,7 +593,7 @@ if TSCREEN=$(egrep -l 'raydium_ts|eeti_ts' \
 then
     TSCREEN=${TSCREEN%/name}
 
-    if [ "$TSCREEN" -a -d "$TSCREEN/power" ]
+    if [ "$TSCREEN" -a -e "$TSCREEN/power/wakeup_count" ]
     then
         TSCREEN_POWER=$TSCREEN/power
         TSCREEN_WAKE_COUNT=$TSCREEN/power/wakeup_count
@@ -977,13 +977,43 @@ do_shutdown()
     sleep 9999999
 }
 
-cafe_activity_snapshot()
-{
-    # print the current count of CAFE interrupts
-    sed -n \
-        '/ 11:.*cafe-ccic/s/ *11: *\([[:digit:]]\+\).*/\1/p' \
-            /proc/interrupts
-}
+if [ $XO = 1 ]
+then
+    camera_activity_snapshot()
+    {
+        # print the current count of CAFE interrupts
+        sed -n \
+            '/ 11:.*cafe-ccic/s/ *11: *\([[:digit:]]\+\).*/\1/p' \
+                /proc/interrupts
+    }
+elif grep -q mmp-camera /proc/interrupts   # XO-1.75 and XO-3
+then
+    camera_activity_snapshot()
+    {
+        # print the current count of mmp-camera interrupts
+        sed -n \
+            '/ 42:.*mmp-camera/s/ *42: *\([[:digit:]]\+\).*/\1/p' \
+                /proc/interrupts
+    }
+else
+    # the XO-1.5 driver only acquires the interrupt handler when
+    # active, so we fake out the counts to make it look like the
+    # other platforms.
+    camera_activity_snapshot()
+    {
+        if [ $1 = "start" ]
+        then
+            echo 1
+        else # "end"
+            if grep -q via-dma /proc/interrupts
+            then
+                echo 10000      # make it like we got lots of interrupts
+            else
+                echo 1
+            fi
+        fi
+    }
+fi
 
 cpu_or_network_busy()
 {
@@ -998,12 +1028,7 @@ cpu_or_network_busy()
         netactivity=$(netactivity_snapshot)
     fi
 
-    # check CAFE interrupts on XO-1.  this includes SD activity,
-    # but it will have to do.
-    if [ "$XO" = 1 ]
-    then
-        cafe_activity=$(cafe_activity_snapshot)
-    fi
+    camera_activity=$(camera_activity_snapshot start)
 
     # wait a while ($BUSYCHECK, or 5 seconds, currently), and
     # check for events while doing so.  we can wait this 5
@@ -1040,15 +1065,14 @@ cpu_or_network_busy()
         fi
     fi
 
-    if [ "$XO" = 1 ]
+    new_camera_activity=$(camera_activity_snapshot end)
+    # the ov7670 camera generates about 25 or 30 ints/sec.  the siv120d does
+    # variable frame rates, depending on light level -- i've seen
+    # as low as 10 ints/sec.  so we set the threshold to 2/sec.
+    if [ $(( (new_camera_activity - camera_activity) > BUSYCHECK * 2 )) = 1 ]
     then
-        new_cafe_activity=$(cafe_activity_snapshot)
-        # the camera generates about 25 ints/sec
-        if [ $(( (new_cafe_activity - cafe_activity) / BUSYCHECK > 20 )) = 1 ]
-        then
-            trace cafe/camera busy
-            return 0
-        fi
+        trace camera busy
+        return 0
     fi
 
     return 1
@@ -1061,37 +1085,6 @@ cpu_or_network_busy()
 #audio_busy()
 #{
 #    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && trace audio busy
-#}
-
-case "$XO" in
-1)
-    # XO-1 camera busyness checked via cafe interrupt activity, above
-    camera_busy()
-    {
-        false
-    }
-    ;;
-1.5)
-    camera_busy()
-    {
-        grep -q via-dma /proc/interrupts && trace camera busy
-    }
-    ;;
-1.75|3)
-    camera_busy()
-    {
-        false  # for now, at least
-    }
-    ;;
-esac
-
-
-# if using both of the above, combine them into a single grep:
-#audio_or_camera_busy()
-#{
-#    egrep -q 'RUNNING|via-dma' \
-#        /proc/asound/card0/pcm0?/sub0/status /proc/interrupts && \
-#            trace audio or camera busy
 #}
 
 
@@ -1193,7 +1186,7 @@ general_inhibit()
 
 laptop_busy()
 {
-    general_inhibit || usb_inhibit || cpu_or_network_busy || camera_busy
+    general_inhibit || usb_inhibit || cpu_or_network_busy
 }
 
 if [ -e $TPAD_RECAL ]
