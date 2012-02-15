@@ -1236,22 +1236,6 @@ fi
 
 set_wake_on_wlan()
 {
-    # note:  ethtool settings aren't remembered after a resume,
-    # i.e., they're essentially a "one-shot" configuration.  the
-    # good news is that this means we never have to clear
-    # wake-on-lan settings.
-
-    # note 2:  on some resume/suspend cycles, when we wake and go
-    # right back to sleep immediately (for battery checks, for
-    # example) the wireless device won't be ready by the time we
-    # get here.  a spurious (?) error ("Cannot get current
-    # wake-on-lan settings:  no such device, not setting wol")
-    # will result.
-
-    # note 3:  combining notes 1 and 2, i think there may be a
-    # bug here:  we may lose our wol settings as a result of such
-    # a resume/suspend cycle
-
     case $1 in
     yes)
         # detect telepathy/salut, and wake on multicast if present.
