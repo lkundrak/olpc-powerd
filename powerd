@@ -1485,6 +1485,7 @@ else
         kbd_wake_count=$(< $KBD_WAKE_COUNT)
         tpad_wake_count=$(< $TPAD_WAKE_COUNT)
         tscreen_wake_count=$(< $TSCREEN_WAKE_COUNT)
+        ols_wake_count=$(< $OLS_WAKE_COUNT)
         power_wake_count=$(< $POWER_WAKE_COUNT)
         rtc_wake_count=$(< $RTC_WAKE_COUNT)
     }
@@ -1500,6 +1501,9 @@ else
         elif [ "$tscreen_wake_count" != "$(< $TSCREEN_WAKE_COUNT)" ]
         then
             wakeupsource=keypress
+        elif [ "$ols_wake_count" != "$(< $OLS_WAKE_COUNT)" ]
+        then
+            wakeupsource=ambientlight
         elif [ "$power_wake_count" != "$(< $POWER_WAKE_COUNT)" ]
         then
             wakeupsource=powerbutton
@@ -1673,8 +1677,6 @@ snooze()
 
         reset_idlecounters
 
-        ambient_force
-
         # this loop accomplishes nothing interesting on 2.6.35 and earlier
         # kernels -- there's no global wakeup counter.  on 3.0 and later,
         # that counter helps make sure we deal with recent wakeup events
@@ -1684,6 +1686,8 @@ snooze()
         while :
         do
             grab_global_wake_count
+
+            ambient_force
 
             # we did a sync $BUSYCHECK seconds ago, so this should be quick
             killall -q -0 sync || sync
@@ -1862,7 +1866,8 @@ snooze()
             fi
             ;;
 
-        battery*)  # all we do is check battery level, and sleep again
+        ambientlight|battery*)
+            # all we do is loop around and sleep again
             ;;
 
         *)  # "keypress"|"ebook"|"unknown")
@@ -2034,6 +2039,8 @@ backlight()
 
 if [ -d $OLS_CONTROL ]
 then
+    OLS_WAKE_COUNT=$OLS_CONTROL/power/wakeup_count
+
     # the light sensor input device acts as a virtual "switch",
     # which turns on when it's bright out, and off when it gets
     # "dark" (i.e., the backlight makes a difference).  the
@@ -2099,6 +2106,8 @@ SW_BRIGHT_SUN=SW_CAMERA_LENS_COVER
         ambient_adjust $level
     }
 else
+    OLS_WAKE_COUNT=/dev/null
+
     ambient_adjust_init()
     {
         :
