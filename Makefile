@@ -3,7 +3,7 @@
 
 PACKAGE=olpc-powerd
 PACKAGEDBUS=olpc-powerd-dbus
-VERSION=44
+VERSION=45
 
 # CC=arm-linux-gnueabi-gcc
 
