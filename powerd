@@ -1492,7 +1492,13 @@ else
 
     get_wakeupsource()
     {
-        if [ "$kbd_wake_count" != "$(< $KBD_WAKE_COUNT)" ]
+        if [ "$power_wake_count" != "$(< $POWER_WAKE_COUNT)" ]
+        then
+            wakeupsource=powerbutton
+        elif [ "$lid_was_closed" ] && ! is_lid_closed && [ "$wake_on_open" ]
+        then
+            wakeupsource=lid
+        elif [ "$kbd_wake_count" != "$(< $KBD_WAKE_COUNT)" ]
         then
             wakeupsource=keypress
         elif [ "$tpad_wake_count" != "$(< $TPAD_WAKE_COUNT)" ]
@@ -1504,15 +1510,9 @@ else
         elif [ "$ols_wake_count" != "$(< $OLS_WAKE_COUNT)" ]
         then
             wakeupsource=ambientlight
-        elif [ "$power_wake_count" != "$(< $POWER_WAKE_COUNT)" ]
-        then
-            wakeupsource=powerbutton
         elif [ "$rtc_wake_count" != "$(< $RTC_WAKE_COUNT)" ]
         then
             wakeupsource=rtcalarm
-        elif [ "$lid_was_closed" ] && ! is_lid_closed && [ "$wake_on_open" ]
-        then
-            wakeupsource=lid
         else
             wakeupsource=unknown
         fi
