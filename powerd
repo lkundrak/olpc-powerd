@@ -992,6 +992,30 @@ else
     }
 fi
 
+
+check_network_activity()
+{
+    test "$monitor_network_activity" || return 1
+
+    case $1 in
+    start)
+	# take initial network stats
+	netactivity=$(netactivity_snapshot)
+	;;
+    finish)
+        # second network stats -- any network activity?
+        newnetactivity=$(netactivity_snapshot)
+        if [ "$newnetactivity" != "$netactivity" ]
+        then
+            trace network busy
+            return 0
+        fi
+	;;
+    esac
+
+    return 1
+}
+
 cpu_or_network_busy()
 {
     # initial cpu stats -- search for /proc/stat in  "man 5 proc"
@@ -999,11 +1023,7 @@ cpu_or_network_busy()
     jiffies1=$(( procstat1[1] + procstat1[2] + procstat1[3] + procstat1[4] ))
     idlejifs1=${procstat1[4]}
 
-    # take initial network stats
-    if  [ "$monitor_network_activity" ]
-    then
-        netactivity=$(netactivity_snapshot)
-    fi
+    check_network_activity start
 
     camera_activity=$(camera_activity_snapshot start)
 
@@ -1031,16 +1051,7 @@ cpu_or_network_busy()
         return 0
     fi
 
-    if [ "$monitor_network_activity" ]
-    then
-        # second network stats -- any network activity?
-        newnetactivity=$(netactivity_snapshot)
-        if [ "$newnetactivity" != "$netactivity" ]
-        then
-            trace network busy
-            return 0
-        fi
-    fi
+    check_network_activity finish && return 0
 
     new_camera_activity=$(camera_activity_snapshot end)
     # the ov7670 camera generates about 25 or 30 ints/sec.  the siv120d does
