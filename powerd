@@ -999,18 +999,19 @@ check_network_activity()
 
     case $1 in
     start)
-	# take initial network stats
-	netactivity=$(netactivity_snapshot)
-	;;
+        # take initial network stats
+        netactivity=$(netactivity_snapshot)
+        ;;
     finish)
         # second network stats -- any network activity?
         newnetactivity=$(netactivity_snapshot)
         if [ "$newnetactivity" != "$netactivity" ]
         then
             trace network busy
+            netactivity="$newnetactivity"
             return 0
         fi
-	;;
+        ;;
     esac
 
     return 1
@@ -1656,6 +1657,7 @@ snooze()
 
             if [ "$wake_on_wlan" ]
             then
+
                 # wake on wlan if we're only waiting for dim or
                 # blank.  else we're already blank, so w-o-l if we've
                 # been asked to and we're currently associated with
@@ -1694,6 +1696,9 @@ snooze()
             if [ "$cur_sleep_type" = soft ]
             then
                 inhibited_by_files && break 2
+
+                # recheck network packets.
+                check_network_activity finish && break
             fi
 
             # the kernel will do a sync, but if it's going to stall
@@ -1707,13 +1712,13 @@ snooze()
 
             prepare_for_wakeupsource
 
-            sleep_started=$(seconds)
-
             # always breaks out on 2.6.35 and earlier
             check_global_wake_count && break
 
             trace looping on global_wake_count $global_wake_count 
         done
+
+        sleep_started=$(seconds)
 
         # this is it.  here's where we suspend or sleep.
         rtcwake -s$rtctime -mmem -d $rtcdevice
@@ -1778,11 +1783,9 @@ snooze()
             ;;
 
         "wlanpacket")
-            if [ "$wake_on_wlan" ]
-            then
-                selfinject fake_useractive $lastwakeup "$wakeupsource"
-                break
-            fi
+            # just loop.  if it's traffic we're interested in
+            # staying awake for, we'll catch it just before we sleep
+            # again.
             ;;
 
         "rtcalarm")
@@ -1865,9 +1868,12 @@ snooze()
             # all we do is loop around and sleep again
             ;;
 
-        *)  # "keypress"|"ebook"|"unknown")
+        keypress)
             selfinject fake_useractive $lastwakeup "$wakeupsource"
             break
+            ;;
+
+        *)  # "ebook"|"unknown")  # just loop and sleep
             ;;
 
         esac
