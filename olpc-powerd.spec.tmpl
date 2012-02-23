@@ -10,7 +10,7 @@ URL: http://dev.laptop.org/git/users/pgf/powerd/tree/powerd
 Source0: __TARBALL__
 BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 BuildRequires: kernel-headers
-Requires: olpc-kbdshim, upstart, ethtool, evtest
+Requires: olpc-kbdshim, upstart, ethtool, evtest, inotify-tools
 
 # these are all for the manipulation of ohmd -- powerd doesn't need them.
 Requires(post): chkconfig
