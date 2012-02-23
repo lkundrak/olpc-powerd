@@ -1661,6 +1661,7 @@ event_fifo_lookahead()
          fake_powerbutton-*|\
          lidopen-*|lidclose-soft|\
          inhibit-suspend-soft|\
+         check_inhibits-soft|\
          ebook*-soft|ac-*-soft|useractive-soft|\
          reconfig-*|trace-*)
             if [ ! "$s_tstamp" ] || \
@@ -2992,6 +2993,10 @@ event_loop()
             ;;
 
         check_inhibits)
+            if [ "$arg2" = $CONFIGFILE ]
+            then
+                read_config
+            fi
             reevaluate all
             ;;
 
@@ -3163,8 +3168,8 @@ inotify_pid=;
 if [ -x /usr/bin/inotifywait ]
 then
     inotifywait -m --timefmt '%s' --format 'check_inhibits %T %w%f %e' \
-        -e CREATE -e DELETE -e MOVE \
-        $INHIBITDIR_PREFIX-* $CONFIGFLAGS > $EVENTFIFO &
+        -e CLOSE_WRITE -e DELETE -e MOVE \
+        $INHIBITDIR_PREFIX-* $CONFIGFLAGS $CONFIGFILE > $EVENTFIFO &
 
     inotify_pid=$!
 fi
