@@ -16,8 +16,9 @@ typedef struct DeviceHandle {
 
 static void check_device_state(NMDevice *device, DeviceHandle *handle, gboolean *suspend_ok)
 {
-	if (handle->state >= NM_DEVICE_STATE_PREPARE && handle->state < NM_DEVICE_STATE_ACTIVATED) {
-		g_message("device %p state %d inhibits suspend",
+	if (handle->state >= NM_DEVICE_STATE_PREPARE &&
+		handle->state < NM_DEVICE_STATE_ACTIVATED) {
+		g_message("%d: device %p state %d inhibits suspend", (int)time(0),
 			device, handle->state);
 		*suspend_ok = FALSE;
 	}
@@ -34,7 +35,7 @@ static void evaluate_devices(void)
 static void device_state_changed(NMDevice *device, GParamSpec *pspec, DeviceHandle *handle)
 {
 	handle->state = nm_device_get_state(device);
-	g_message("Device %p state changed: %d", device, handle->state);
+	g_message("%d: Device %p state changed: %d", (int)time(0), device, handle->state);
 	evaluate_devices();
 }
 
@@ -45,18 +46,19 @@ static void monitor_device(NMDevice *device)
 	if (g_hash_table_lookup(monitored_devices, device))
 		return; /* paranoia */
 
-	g_message("Monitoring wifi device %p", device);
+	g_message("%d: Monitoring wifi device %p", (int)time(0), device);
 	handle = g_new(DeviceHandle, 1);
 	handle->signal_handler = g_signal_connect(device, "notify::state",
 		(GCallback) device_state_changed, handle);
 	handle->state = nm_device_get_state(device);
+
 	g_hash_table_insert(monitored_devices, device, handle);
 	evaluate_devices();
 }
 
 static void device_added_cb(NMClient *client, NMDevice *device, gpointer user_data)
 {
-	g_message("NM device-added: %s", nm_device_get_iface(device));
+	g_message("%d: NM device-added: %s", (int)time(0), nm_device_get_iface(device));
 	if (NM_IS_DEVICE_WIFI(device))
 		monitor_device(device);
 }
@@ -65,7 +67,7 @@ static void device_removed_cb(NMClient *client, NMDevice *device, gpointer user_
 {
 	DeviceHandle *handle;
 
-	g_message("NM device-removed: %s", nm_device_get_iface(device));
+	g_message("%d: NM device-removed: %s", (int)time(0), nm_device_get_iface(device));
 	if (!NM_IS_DEVICE_WIFI(device))
 		return;
 
@@ -73,7 +75,7 @@ static void device_removed_cb(NMClient *client, NMDevice *device, gpointer user_
 	if (!handle)
 		return;
 
-	g_message("Disconnecting from wifi device %p", device);
+	g_message("%d: Disconnecting from wifi device %p", (int)time(0), device);
 	g_signal_handler_disconnect(device, handle->signal_handler);
 	g_hash_table_remove(monitored_devices, device);
 	g_free(handle);
@@ -83,7 +85,7 @@ static void device_removed_cb(NMClient *client, NMDevice *device, gpointer user_
 
 static void examine_device(NMDevice *device, gpointer unused)
 {
-	g_message("Examine device: %s", nm_device_get_iface(device));
+	g_message("%d: Examine device: %s", (int)time(0), nm_device_get_iface(device));
 	if (NM_IS_DEVICE_WIFI(device))
 		monitor_device(device);
 }
