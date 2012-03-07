@@ -1527,8 +1527,9 @@ fi
 
 event_fifo_lookahead()
 {
-    local type
+    local type amb_adj
     type=$1
+    amb_adj=;
 
     # in some cases in snooze() we wake just to perform
     # a short action or status check, and then we sleep again
@@ -1544,6 +1545,10 @@ event_fifo_lookahead()
         # later, break out.  otherwise discard it.
         trace s_event-type is $s_event-$type
         case $s_event-$type in
+
+         ambient-bright-*) amb_adj=bright ;;
+         ambient-dark-*) amb_adj=dark ;;
+
          powerbutton-*|\
          fake_powerbutton-*|\
          lidopen-*|lidclose-soft|\
@@ -1553,12 +1558,14 @@ event_fifo_lookahead()
             if [ ! "$s_tstamp" ] || \
                 [ "$s_tstamp" -ge "$eventcutoff" ]
             then
+                test "$amb_adj" && ambient_adjust $amb_adj
                 return 0
             fi
             ;;
         esac
     done <&6  # from the fifo
 
+    test "$amb_adj" && ambient_adjust $amb_adj
     return 1
 
 }
@@ -1686,7 +1693,7 @@ snooze()
 
             ambient_force
 
-            # we did a sync $BUSYCHECK seconds ago, so this should be quick
+            # we did a sync, $BUSYCHECK seconds ago, so this should be quick
             killall -q -0 sync || sync
             if event_fifo_lookahead $cur_sleep_type
             then
