@@ -954,44 +954,120 @@ do_shutdown()
     sleep 9999999
 }
 
-if [ $XO = 1 ]
+if [ $XO != 1.5 ]
 then
-    camera_activity_snapshot()
+    if [ $XO = 1 ]
+    then
+        camera_interrupts()
+        {
+            # print the current count of CAFE interrupts
+            sed -n \
+                '/ 11:.*cafe-ccic/s/ *11: *\([[:digit:]]\+\).*/\1/p' \
+                    /proc/interrupts
+        }
+    elif grep -q mmp-camera /proc/interrupts   # XO-1.75 and XO-3
+    then
+        camera_interrupts()
+        {
+            # print the current count of mmp-camera interrupts
+            sed -n \
+                '/ 42:.*mmp-camera/s/ *42: *\([[:digit:]]\+\).*/\1/p' \
+                    /proc/interrupts
+        }
+    fi
+
+    check_camera_activity()
     {
-        # print the current count of CAFE interrupts
-        sed -n \
-            '/ 11:.*cafe-ccic/s/ *11: *\([[:digit:]]\+\).*/\1/p' \
-                /proc/interrupts
+        case $1 in
+        start)
+            camera_ints=$(camera_interrupts start)
+            ;;
+
+        finish)
+            new_camera_ints=$(camera_interrupts end)
+
+            # the ov7670 camera generates about 25 or 30 ints/sec. 
+            # the siv120d does variable frame rates, depending on
+            # light level -- i've seen as low as 10 ints/sec.  so we
+            # set the threshold to 2/sec.
+            if [ $(( (new_camera_ints - camera_ints) > BUSYCHECK * 2 )) = 1 ]
+            then
+                trace camera busy
+                return 0
+            fi
+            ;;
+        esac
+
+        return 1
     }
-elif grep -q mmp-camera /proc/interrupts   # XO-1.75 and XO-3
-then
-    camera_activity_snapshot()
-    {
-        # print the current count of mmp-camera interrupts
-        sed -n \
-            '/ 42:.*mmp-camera/s/ *42: *\([[:digit:]]\+\).*/\1/p' \
-                /proc/interrupts
-    }
+
 else
     # the XO-1.5 driver only acquires the interrupt handler when
-    # active, so we fake out the counts to make it look like the
-    # other platforms.
-    camera_activity_snapshot()
+    # active, so we only need the "final" check -- no comparisons required.
+    check_camera_activity()
     {
-        if [ $1 = "start" ]
-        then
-            echo 1
-        else # "end"
-            if grep -q via-dma /proc/interrupts
-            then
-                echo 10000      # make it like we got lots of interrupts
-            else
-                echo 1
-            fi
-        fi
+        test $1 = "finish" && \
+            grep -q via-dma /proc/interrupts && \
+            trace camera busy
     }
 fi
 
+
+netactivity_snapshot()
+{
+    iptables --list netactivity --verbose --exact --numeric
+}
+
+init_netactivity_tracking()
+{
+    local iface oface
+
+    monitor_network_activity=;
+
+    if ! yes_or_true "$config_MONITOR_NETWORK_ACTIVITY" || \
+        ! test -x /sbin/iptables
+    then
+        return
+    fi
+    monitor_network_activity=true
+
+    iface="! --in-interface lo"
+    oface="! --out-interface lo"
+
+    # this initialization may interfere with other future
+    # uses of iptables.  but for now it's the right thing.
+    iptables --flush INPUT
+    iptables --policy INPUT ACCEPT
+    iptables --flush OUTPUT
+    iptables --policy OUTPUT ACCEPT
+
+
+    iptables --flush netactivity        2>/dev/null
+    iptables --delete-chain netactivity 2>/dev/null
+    iptables --new-chain netactivity  # (re)create the chain
+
+    # count incoming pings
+    iptables --insert INPUT -p icmp $iface -j netactivity
+
+    # count incoming, already-connected tcp
+    iptables --insert INPUT -p tcp ! --syn $iface -j netactivity
+
+    # count outgoing already-connected tcp
+    # redundant with next rule
+    #iptables --insert OUTPUT -p tcp ! --syn $oface -j netactivity
+
+    # count all outgoing packets _except_ mdns
+    iptables --insert OUTPUT -p tcp ! --dport mdns $oface -j netactivity
+    iptables --insert OUTPUT -p udp ! --dport mdns $oface -j netactivity
+
+    ## count all incoming packets _except_ mdns
+    #iptables --insert INPUT -p tcp ! --dport mdns $iface -j netactivity
+    #iptables --insert INPUT -p udp ! --dport mdns $iface -j netactivity
+
+    # this is the null "rule" that aggregates the above counts,
+    iptables --insert netactivity 
+
+}
 
 check_network_activity()
 {
@@ -1017,60 +1093,62 @@ check_network_activity()
     return 1
 }
 
+check_cpu_activity()
+{
+    # monitor cpu stats -- search for /proc/stat in  "man 5 proc"
+    case $1 in
+    start)
+        stat1=( $(< /proc/stat) )
+        jifs1=$(( stat1[1] + stat1[2] + stat1[3] + stat1[4] ))
+        idlejifs1=${stat1[4]}
+        ;;
+
+    finish)
+        stat2=( $(< /proc/stat) )
+        jifs2=$(( stat2[1] + stat2[2] + stat2[3] + stat2[4] ))
+        idlejifs2=${stat2[4]}
+
+        # what fraction of total elapsed jiffies were idle jiffies?
+        idle=$(( (100 * ( idlejifs2 - idlejifs1 ) / ( jifs2 - jifs1 ) ) ))
+        if [ $idle -lt $config_CPU_IDLE_LIMIT ]
+        then
+            trace cpu busy
+            return 0
+        fi
+        ;;
+    esac
+
+    return 1
+}
+
 cpu_or_network_busy()
 {
-    # initial cpu stats -- search for /proc/stat in  "man 5 proc"
-    procstat1=( $(< /proc/stat) )
-    jiffies1=$(( procstat1[1] + procstat1[2] + procstat1[3] + procstat1[4] ))
-    idlejifs1=${procstat1[4]}
-
+    check_cpu_activity start
     check_network_activity start
-
-    camera_activity=$(camera_activity_snapshot start)
+    check_camera_activity start
 
     # wait a while ($BUSYCHECK, or 5 seconds, currently), and
-    # check for events while doing so.  we can wait this 5
-    # seconds because we arranged to be signalled 5 seconds
+    # check for events while doing so.  we can afford this extra
+    # wait seconds because we arranged to be signalled 5 seconds
     # before actually wanting to suspend.
     start=$(seconds)
     while : BUSYCHECK loop
     do
         event_fifo_lookahead soft && return 0
-        test $(($(seconds) - start)) -ge $BUSYCHECK && break
+        test $(( $(seconds) - start )) -ge $BUSYCHECK && break
     done
 
-    # second cpu stats
-    procstat2=( $(< /proc/stat) )
-    jiffies2=$(( procstat2[1] + procstat2[2] + procstat2[3] + procstat2[4] ))
-    idlejifs2=${procstat2[4]}
-
-    # what fraction of total elapsed jiffies were idle jiffies?
-    idle=$(( (100 * ( idlejifs2 - idlejifs1 ) / ( jiffies2 - jiffies1 ) ) ))
-    if [ $idle -lt $config_CPU_IDLE_LIMIT ]
-    then
-        trace cpu busy
-        return 0
-    fi
-
+    check_cpu_activity finish && return 0
     check_network_activity finish && return 0
-
-    new_camera_activity=$(camera_activity_snapshot end)
-    # the ov7670 camera generates about 25 or 30 ints/sec.  the siv120d does
-    # variable frame rates, depending on light level -- i've seen
-    # as low as 10 ints/sec.  so we set the threshold to 2/sec.
-    if [ $(( (new_camera_activity - camera_activity) > BUSYCHECK * 2 )) = 1 ]
-    then
-        trace camera busy
-        return 0
-    fi
+    check_camera_activity finish && return 0
 
     return 1
 }
 
 
 # unused for now, because too many sound apps leave the
-# device open:  the tamtams, record (after playing), browse
-# and firefox (after playing)
+# device open:  the TamTams, Record (after playing), Browse
+# and Firefox (after playing)
 #audio_busy()
 #{
 #    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && trace audio busy
@@ -2956,62 +3034,6 @@ configure_pwrlog()
             trace pwrlog unconfigured, or unavailable
         }
     fi
-}
-
-netactivity_snapshot()
-{
-    iptables --list netactivity --verbose --exact --numeric
-}
-
-init_netactivity_tracking()
-{
-    local iface oface
-
-    monitor_network_activity=;
-
-    if ! yes_or_true "$config_MONITOR_NETWORK_ACTIVITY" || \
-        ! test -x /sbin/iptables
-    then
-        return
-    fi
-    monitor_network_activity=true
-
-    iface="! --in-interface lo"
-    oface="! --out-interface lo"
-
-    # this initialization may interfere with other future
-    # uses of iptables.  but for now it's the right thing.
-    iptables --flush INPUT
-    iptables --policy INPUT ACCEPT
-    iptables --flush OUTPUT
-    iptables --policy OUTPUT ACCEPT
-
-
-    iptables --flush netactivity        2>/dev/null
-    iptables --delete-chain netactivity 2>/dev/null
-    iptables --new-chain netactivity  # (re)create the chain
-
-    # count incoming pings
-    iptables --insert INPUT -p icmp $iface -j netactivity
-
-    # count incoming, already-connected tcp
-    iptables --insert INPUT -p tcp ! --syn $iface -j netactivity
-
-    # count outgoing already-connected tcp
-    # redundant with next rule
-    #iptables --insert OUTPUT -p tcp ! --syn $oface -j netactivity
-
-    # count all outgoing packets _except_ mdns
-    iptables --insert OUTPUT -p tcp ! --dport mdns $oface -j netactivity
-    iptables --insert OUTPUT -p udp ! --dport mdns $oface -j netactivity
-
-    ## count all incoming packets _except_ mdns
-    #iptables --insert INPUT -p tcp ! --dport mdns $iface -j netactivity
-    #iptables --insert INPUT -p udp ! --dport mdns $iface -j netactivity
-
-    # this is the null "rule" that aggregates the above counts,
-    iptables --insert netactivity 
-
 }
 
 # powerd runs "set -u".  variables that aren't initialized
