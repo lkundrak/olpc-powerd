@@ -1424,7 +1424,6 @@ then  # OLPC legacy:  /sys/power/wakeup_events/*
 
     set_wakeupevents()
     {
-
         # this routine was simpler when only the XO-1 was around -- all
         # it dealt with was the nodes in /sys/power/wakeup_events.
         # note that /sys/power/wakeup_events isn't just masking wakeups --
@@ -1867,12 +1866,6 @@ snooze()
             break
             ;;
 
-        "wlanpacket")
-            # just loop.  if it's traffic we're interested in
-            # staying awake for, we'll catch it just before we sleep
-            # again.
-            ;;
-
         "rtcalarm")
             trace rtcalarm during $until
             case $until in
@@ -1938,7 +1931,7 @@ snooze()
             esac
             ;;
 
-        "lid"|"emptysci") # "empty sci" comes from lid (kernel bug on XO-1).
+        "lid")
             if [ "$wake_on_open" ]
             then
                 am_ebook=;
@@ -1949,16 +1942,20 @@ snooze()
             fi
             ;;
 
-        ambientlight|battery*)
-            # all we do is loop around and sleep again
-            ;;
-
         keypress)
             selfinject fake_useractive $lastwakeup "$wakeupsource"
             break
             ;;
 
-        *)  # "ebook"|"unknown")  # just loop and sleep
+        *)  # ebook|ambientlight|battery*|unknown|wlanpacket|...)
+            #
+            # in most case, all we do here is loop around and
+            # sleep again -- we do battery and ambient light
+            # checks on every loop anyway, so there's no special
+            # handling for those.  in the wlan case (which may
+            # appear as "unknown" on 1.75), if it's traffic we're
+            # interested in staying awake for, we'll catch it
+            # just before we sleep again.
             ;;
 
         esac
