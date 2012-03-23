@@ -565,27 +565,33 @@ then
         echo $1 > /sys/power/wake-on-lid
     }
 
-elif [ -e /sys/power/wake-on-close ]  # XO-1.5 (wake-on-open is via acpi)
+elif [ -e /proc/acpi/button/lid/LID ]  # XO-1.5 (wake-on-open is via acpi)
 then
 
+    if [ -e /sys/power/wake-on-close ]
+    then
+        LID_WAKE_ON_CLOSE=/sys/power/wake-on-close
+    else
+        LID_WAKE_ON_CLOSE=/sys/devices/LNXSYSTM:00/device:00/PNP0A03:00/XO15EC:00/lid_wake_on_close
+    fi
     wake_on_lid()
     {
         # "never", "open", "close", "always"
         case "$1" in
         never)
-            echo 0 > /sys/power/wake-on-close
+            echo 0 > $LID_WAKE_ON_CLOSE
             set_acpi_wakeupevents LID disable
             ;;
         open)
-            echo 0 > /sys/power/wake-on-close
+            echo 0 > $LID_WAKE_ON_CLOSE
             set_acpi_wakeupevents LID enable
             ;;
         close)
-            echo 1 > /sys/power/wake-on-close
+            echo 1 > $LID_WAKE_ON_CLOSE
             set_acpi_wakeupevents LID disable
             ;;
         always)
-            echo 1 > /sys/power/wake-on-close
+            echo 1 > $LID_WAKE_ON_CLOSE
             set_acpi_wakeupevents LID enable
             ;;
         esac
@@ -790,6 +796,11 @@ choose_xo_model()
         
 choose_xo_model
 
+# driver_list is the subset of full_driver_list for which we
+# can (or want to) actually control wakeups using .../power/wakeup
+full_driver_list=;
+driver_list=;
+
 # XO-1.75 and/or XO-3
 case $XO in
 1|1.5)
@@ -799,13 +810,24 @@ case $XO in
         WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
         WAKEUP_SOURCE=/sys/power/wakeup-source # most recent wakeup source.
     else
-        WAKEUP_EVENTS=;
-        WAKEUP_SOURCE=;
-        # new kernels on XO-1/XO-1.5
-        : todo: assign pathnames for post-3.0 xo-1/xo-1.5 kernels
+        KBD_DRIVER=$(egrep -li 'keyboard' \
+            /sys/devices/platform/i8042/serio*/input/input*/name |
+                sed 's;/input/input.*/name$;;')
+        TPAD_DRIVER=$(egrep -li 'pad' \
+            /sys/devices/platform/i8042/serio*/input/input*/name |
+                sed 's;/input/input.*/name$;;')
+        BATT_DRIVER=/sys/devices/0.battery/power_supply/olpc-ac
+        AC_DRIVER=/sys/devices/0.battery/power_supply/olpc-battery
+        EBOOK_DRIVER=/sys/devices/LNXSYSTM:00/device:00/PNP0A03:00/XO15EBK:00
+        PWRBTN_DRIVER=/sys/devices/LNXSYSTM:00/LNXPWRBN:00
+        RTC_DRIVER=/sys/class/rtc/rtc0/device
+
+        TSCREEN_DRIVER=;    # no touchscreen on 1.5
+        OLS_DRIVER=;        # no outdoor light sensor on 1.5
+
+        driver_list="BATT AC KBD TPAD EBOOK"
+        full_driver_list="PWRBTN RTC TSCREEN $driver_list"
     fi
-    driver_list=;
-    full_driver_list=;
     ;;
 1.75|3)
     SWITCH_DRIVER=/sys/devices/platform/olpc-switch.0
@@ -815,12 +837,14 @@ case $XO in
     BATT_DRIVER=/sys/devices/platform/olpc-battery.0/power_supply/olpc-battery
     AC_DRIVER=/sys/devices/platform/olpc-battery.0/power_supply/olpc-ac
     KBD_DRIVER=/sys/devices/platform/olpc-kbd.0
-    TPAD_DRIVER=;  # shares with KBD_DRIVER
     TSCREEN_DRIVER=$(egrep -l 'raydium_ts|eeti_ts' \
             /sys/devices/platform/pxa2xx-i2c*/i2c-*/*/name | sed 's;/name$;;')
 
-    driver_list="OLS BATT AC KBD TPAD ${TSCREEN_DRIVER:+TSCREEN}"
-    full_driver_list="PWRBTN RTC SWITCH $driver_list"
+    TPAD_DRIVER=;    # no separate tpad driver, shares with KBD_DRIVER
+    EBOOK_DRIVER=;   # no separate ebook driver
+
+    driver_list="OLS BATT AC KBD ${TSCREEN_DRIVER:+TSCREEN}"
+    full_driver_list="PWRBTN RTC SWITCH EBOOK TPAD $driver_list"
     ;;
 esac
 
@@ -1581,6 +1605,7 @@ else
         batt_wake_count=$(< $BATT_WAKE_COUNT)
         ac_wake_count=$(< $AC_WAKE_COUNT)
         tscreen_wake_count=$(< $TSCREEN_WAKE_COUNT)
+        ebook_wake_count=$(< $TSCREEN_WAKE_COUNT)
         ols_wake_count=$(< $OLS_WAKE_COUNT)
         rtc_wake_count=$(< $RTC_WAKE_COUNT)
     }
@@ -1599,6 +1624,9 @@ else
         elif [ "$kbd_wake_count" != "$(< $KBD_WAKE_COUNT)" ]
         then
             wakeupsource=keypress
+        elif [ "$ebook_wake_count" != "$(< $EBOOK_WAKE_COUNT)" ]
+        then
+            wakeupsource=ebook
         elif [ "$tpad_wake_count" != "$(< $TPAD_WAKE_COUNT)" ]
         then
             wakeupsource=keypress
