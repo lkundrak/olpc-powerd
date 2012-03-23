@@ -1874,14 +1874,21 @@ snooze()
         xo1_led_workaround
 
         # prepare for the default case of simply re-sleeping for
-        # the remaining time.  may be overridden.  note that this
-        # also protects against a) sleeping for less than a second,
-        # which is buggy in the kernel, and b) trying to sleep for
-        # 0 seconds, which might happen if we wake up due to an AC
-        # event at just the same time that rtcwake should have expired.
+        # the remaining time.  may be overridden.
         lastwakeup=$(seconds)
         rtctime=$(( rtctime - ( lastwakeup - sleep_started ) ))
-        rtctime=$(( (rtctime <= 1) ? 2 : rtctime ))
+
+        # this protects against a) sleeping for less than a
+        # second, which is buggy in the kernel, and b) trying to
+        # sleep for 0 seconds, which might happen if we wake up
+        # due to an AC event at just the same time that rtcwake
+        # should have expired.
+        probably_rtcalarm=;
+        if [ $rtctime -le 1 ]
+        then
+            rtctime=2
+            probably_rtcalarm=1
+        fi
 
         # we want to toss extra events that happened long ago, as
         # we were sleeping, but not those that happened as we
@@ -1906,6 +1913,15 @@ snooze()
                 slept $(( lastwakeup - sleep_started ))
 
         pwrlog_take_reading resume-$wakeupsource
+
+        # if we don't know what woke us, and it was very close
+        # to the alarm time, treat it as such.  (useful esp. during
+        # development, when rtc driver doesn't yet support wakeup
+        # counters, and so shows up as "unknown".)
+        if [ $wakeupsource = unknown -a "$probably_rtcalarm" ]
+        then
+            wakeupsource="rtcalarm"
+        fi
 
         case $wakeupsource in
         "powerbutton")
