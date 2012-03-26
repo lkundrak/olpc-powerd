@@ -1782,7 +1782,7 @@ snooze()
                 inhibited_by_files && break 2
 
                 # recheck network packets.
-                check_network_activity finish && break
+                check_network_activity finish && break 2
             fi
 
             # the kernel will do a sync, but if it's going to stall
