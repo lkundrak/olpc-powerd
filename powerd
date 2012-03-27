@@ -438,8 +438,9 @@
 
 XO=;
 CONFIGDIR=/etc/powerd
+DATADIR=$CONFIGDIR
 
-VERSIONFILE=$CONFIGDIR/version
+VERSIONFILE=$DATADIR/version
 CONFIGFILE=$CONFIGDIR/powerd.conf
 CONFIGFLAGS=$CONFIGDIR/flags
 
@@ -455,9 +456,9 @@ INHIBITDIR=/var/run/powerd-inhibit-suspend
 INHIBIT_BY_TOUCH=$INHIBITDIR/.fake_activity
 
 # the splash screen images
-CONFIRMSPLASH=$CONFIGDIR/pleaseconfirm.pgm
-SHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
-BATTSHUTSPLASH=$CONFIGDIR/shuttingdown.pgm
+CONFIRMSPLASH=$DATADIR/pleaseconfirm.pgm
+SHUTSPLASH=$DATADIR/shuttingdown.pgm
+BATTSHUTSPLASH=$DATADIR/shuttingdown.pgm
 
 # our incoming event fifo
 EVENTFIFO=/var/run/powerevents
