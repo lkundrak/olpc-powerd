@@ -899,7 +899,7 @@ fi
 # pull the (first) wlan interface name from the output of iwconfig
 # if we find none, wlan may be rfkilled, in which case choose eth0
 WLANIFACE=$(iwconfig 2>/dev/null |
-    sed -n -e 's/^\(eth[0-9]\+\).*/\1/p' | sed 1q)
+    sed -n -e 's/^\(eth\|wlan\)\([0-9]\+\).*/\1\2/p' | sed 1q)
 : ${WLANIFACE:=eth0}
 
 
