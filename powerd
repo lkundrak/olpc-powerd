@@ -153,7 +153,7 @@
 # Power logging
 #
 # powerd can optionally perform detailed power usage logging
-# (requires the olpc-pwr-log.sh helper script).  powerd must be
+# (requires the power-logger helper script).  powerd must be
 # restarted for any changes to the following config_PWRLOG_*
 # settings to take effect:
 #
@@ -389,7 +389,7 @@
 #   the subsequent sleep.
 #
 #   Another exception is the (optional) inclusion of
-#   olpc-pwr-log.sh, which is heavily dependent on non-POSIX
+#   power-logger, which is heavily dependent on non-POSIX
 #   features.
 #
 #
@@ -2940,7 +2940,7 @@ event_loop()
         timer)
             # olpc-switchd will emit a "timer" event periodically
             # if asked to.  the only purpose is to make sure
-            # olpc-pwr-log.sh has a reason to log once in a while.
+            # power-logger has a reason to log once in a while.
             test "$debug" && : $(seconds)
             ;;
 
@@ -3014,7 +3014,7 @@ event_loop()
 configure_pwrlog()
 {
     if [ $config_PWRLOG_INTERVAL -gt 30 -a \
-            -s $LIBEXECDIR/olpc-pwr-log.sh \
+            -s $LIBEXECDIR/power-logger \
             -a -z "$no_battery" ]
     then
         pwrlog_inside_powerd=yes
@@ -3022,7 +3022,7 @@ configure_pwrlog()
         mkdir -p $config_PWRLOG_DIR
         chown olpc:olpc $config_PWRLOG_DIR
 
-        . $LIBEXECDIR/olpc-pwr-log.sh
+        . $LIBEXECDIR/power-logger
         pwrlog_init $config_PWRLOG_INTERVAL $config_PWRLOG_DIR \
             $config_PWRLOG_LOGSIZE $config_PWRLOG_LOGDIRSIZE
 
