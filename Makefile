@@ -120,7 +120,7 @@ mock: version $(SRPM)
 	$(MOCK) -v --no-clean --rebuild $(SRPM)
 
 clean:
-	rm -f *.o $(PROGS)
+	rm -f *.o $(PROGS) version
 	-$(RM) $(SRPM) $(TARBALL)
 	-$(RM) -rf $(MOCKDIR)
 	make -C powerd-dbus clean

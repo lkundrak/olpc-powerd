@@ -20,5 +20,5 @@ ohm-keystore-glue.h: ohm-keystore.xml
 	dbus-binding-tool --prefix=ohm_keystore --mode=glib-server $< --output=$@
 
 clean:
-	rm -f powerd-dbus ohm-keystore-glue.h
+	rm -f powerd-dbus ohm-keystore-glue.h null.c null.o
 
