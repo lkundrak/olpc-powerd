@@ -439,6 +439,7 @@
 XO=;
 CONFIGDIR=/etc/powerd
 DATADIR=$CONFIGDIR
+LIBEXECDIR=/usr/libexec/powerd
 
 VERSIONFILE=$DATADIR/version
 CONFIGFILE=$CONFIGDIR/powerd.conf
@@ -922,7 +923,7 @@ splash()
         ;;
     esac
 
-    pnmto565fb -d -f $FRAMEBUFFER -s 9999999 $args &
+    $LIBEXECDIR/pnmto565fb -d -f $FRAMEBUFFER -s 9999999 $args &
     splashpid=$!
 }
 
@@ -3013,7 +3014,7 @@ event_loop()
 configure_pwrlog()
 {
     if [ $config_PWRLOG_INTERVAL -gt 30 -a \
-            -s $CONFIGDIR/olpc-pwr-log.sh \
+            -s $LIBEXECDIR/olpc-pwr-log.sh \
             -a -z "$no_battery" ]
     then
         pwrlog_inside_powerd=yes
@@ -3021,7 +3022,7 @@ configure_pwrlog()
         mkdir -p $config_PWRLOG_DIR
         chown olpc:olpc $config_PWRLOG_DIR
 
-        . $CONFIGDIR/olpc-pwr-log.sh
+        . $LIBEXECDIR/olpc-pwr-log.sh
         pwrlog_init $config_PWRLOG_INTERVAL $config_PWRLOG_DIR \
             $config_PWRLOG_LOGSIZE $config_PWRLOG_LOGDIRSIZE
 
@@ -3097,9 +3098,9 @@ test "$no_brightness" || chmod a+w $BRIGHTNESS
 set_acpi_wakeupevents EC enable
 set_wakeupevents all_sci
 
-if [ -x /usr/libexec/powerd-dbus ]
+if [ -x $LIBEXECDIR/powerd-dbus ]
 then
-    /usr/libexec/powerd-dbus &
+    $LIBEXECDIR/powerd-dbus &
     powerd_dbus_pid=$!
 fi
 
