@@ -321,7 +321,7 @@ main()
         echo "${0##*/}: the 'dialog' program isn't available, quitting."
         echo "  Use a text editor to edit profiles under $CONFIGDIR,"
         echo "  and (re)activate them with: '${0##*/} profilename'"
-        echo "  (Or use 'sudo yum install dialog' to install the package.)"
+        echo "  (Or install the 'dialog' package.)"
         ) >&2
         exit 1
     fi
