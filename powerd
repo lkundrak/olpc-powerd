@@ -1742,6 +1742,13 @@ snooze()
         ;;  
     esac
 
+    if [ $orig_rtctime -gt $shutdowntime ]
+    then
+        trace converting $until to until_shutdown
+        orig_rtctime=$shutdowntime
+        until=until_shutdown
+    fi
+
     rtctime=$orig_rtctime
 
     while : snooze loop
