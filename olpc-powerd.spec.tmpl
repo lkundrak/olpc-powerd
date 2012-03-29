@@ -21,9 +21,10 @@ Requires(preun): initscripts
 ExclusiveArch: %{ix86} %{arm}
 
 %description
-The powerd daemon can function as an easily customizable replacement for ohmd,
-which is independent of X, dbus, and hald.  This package provides the powerd
-and olpc-switchd daemons, and related utilities.
+powerd is the user-level power management daemon for the XO family of
+laptops.  It is independent of X, and moderately independent of dbus.  This
+package provides the powerd and olpc-switchd daemons, and related
+utilities.
 
 %package dbus
 Summary: D-Bus interface to powerd
