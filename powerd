@@ -863,25 +863,6 @@ do
     fi
 done
 
-if [ "$XO" = 1 ]
-then
-    # a long-standing bug in the XO-1 EC firmware (#10440) was
-    # exposed by changes to the kernel used in the 10.1.x
-    # releases.  the laptop can suspend while leaving its power LED
-    # on, which is incredibly confusing.  the correct fix is in
-    # the EC firmware, of course, but this works around it.
-    xo1_led_workaround()
-    {
-        echo -ne '\xdf' |
-            dd bs=1 count=1 seek=102 of=/dev/port status=noxfer 2>/dev/null
-    }
-else
-    xo1_led_workaround()
-    {
-        :
-    }
-fi
-
 # the trace file will collect stderr, regardless of whether debug is on
 exec 2>>$LOGFILE
 exec 1>&2   # capture stdout, too. (prevents console spew)
@@ -1877,8 +1858,6 @@ snooze()
         # we need SCI events, because they do more than just
         # provide wakeup -- they drive input events as well.
         set_wakeupevents all_sci
-
-        xo1_led_workaround
 
         # prepare for the default case of simply re-sleeping for
         # the remaining time.  may be overridden.
