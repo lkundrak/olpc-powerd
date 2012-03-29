@@ -12,12 +12,6 @@ BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 BuildRequires: kernel-headers
 Requires: olpc-kbdshim, upstart, ethtool, evtest, inotify-tools
 
-# these are all for the manipulation of ohmd -- powerd doesn't need them.
-Requires(post): chkconfig
-Requires(preun): chkconfig
-Requires(post): initscripts
-Requires(preun): initscripts
-
 ExclusiveArch: %{ix86} %{arm}
 
 %description
@@ -105,10 +99,6 @@ rm -rf $RPM_BUILD_ROOT
 %post
 # Only on install
 if [ $1 = 1 ] ; then
-    if test -e /etc/init.d/ohmd ; then
-        service ohmd stop >/dev/null 2>&1
-        chkconfig ohmd off 
-    fi
     initctl -q start powerd
     initctl -q start olpc-switchd
 fi
@@ -119,11 +109,6 @@ exit 0
 if [ $1 = 0 ] ; then
     initctl stop -q olpc-switchd
     initctl stop -q powerd
-    if test -e /etc/init.d/ohmd
-    then
-        /sbin/service ohmd start >/dev/null 2>&1
-        /sbin/chkconfig ohmd on
-    fi
 fi
 exit 0
 
