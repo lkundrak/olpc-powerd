@@ -123,6 +123,14 @@ fi
 exit 0
 
 %changelog
+* Thu Mar 29 2012 Paul Fox <pgf@laptop.org>
+- 100-1
+- first release for 12.1.0
+- initial support for 3.3 kernels on x86 laptops
+- use inotify to catch config and inhibit changes
+- better support for debian packaging, including installing
+    powerd-exclusive binaries to powerd's own libexec dir.
+
 * Mon Mar 26 2012 Paul Fox <pgf@laptop.org>
 - 47-1
 - fix system behavior after wake-on-lan event
