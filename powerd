@@ -526,6 +526,7 @@ fi
 TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
 
 # XO-1 only
+# FIXME: where this is on 3.0+ kernels?
 WLAN_ENABLED=/sys/power/wlan-enabled
 
 
@@ -557,12 +558,28 @@ then
     have_olpc_brightness=true
 fi
 
-if [ -e /sys/power/wake-on-lid ]   # recent XO-1 kernels
+if [ -e /sys/power/wake-on-lid ]   # 2.6.3x vintage XO-1 kernels
 then
     wake_on_lid()
     {
         # "never", "open", "close", "always"
         echo $1 > /sys/power/wake-on-lid
+    }
+
+elif [ -e /sys/devices/pci0000:00/0000:00:0f.0/olpc-xo1-sci-acpi/input/input2 ]
+then
+    LID_DEVICE=/sys/devices/pci0000:00/0000:00:0f.0/olpc-xo1-sci-acpi/input/input2
+    wake_on_lid()
+    {
+        case "$1" in
+        never)
+            echo disabled > $LID_DEVICE/power/wakeup
+            ;;
+        *) # "open", "close", "always"
+            echo enabled > $LID_DEVICE/power/wakeup
+            echo -n $1 > $LID_DEVICE/lid_wake_mode
+            ;;
+        esac
     }
 
 elif [ -e /proc/acpi/button/lid/LID ]  # XO-1.5 (wake-on-open is via acpi)
@@ -650,7 +667,7 @@ fi
 if [ -e /proc/acpi/button/lid/LID/state ]  # XO-1.5
 then
     LID_STATE=/proc/acpi/button/lid/LID/state 
-elif [ -e /sys/power/lid-state ]  # XO-1
+elif [ -e /sys/power/lid-state ]  # older XO-1
 then
     LID_STATE=/sys/power/lid-state 
 elif [ -x /usr/bin/evtest ]  # XO-1.75, and others, with later kernels
@@ -663,7 +680,7 @@ fi
 if [ -e /proc/acpi/olpc-switch/ebook/EBK/state ]  # XO-1.5
 then
     EBOOK_STATE=/proc/acpi/olpc-switch/ebook/EBK/state 
-elif [ -e /sys/power/ebook-state ]  # XO-1
+elif [ -e /sys/power/ebook-state ]  # older XO-1
 then
     EBOOK_STATE=/sys/power/ebook-state 
 elif [ -x /usr/bin/evtest ]  # XO-1.75, and others, with later kernels
@@ -801,34 +818,54 @@ choose_xo_model
 full_driver_list=;
 driver_list=;
 
-# XO-1.75 and/or XO-3
+# legacy XO-1 and XO-1.5 -- won't exist on 3.0 and later kernels
+WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
+WAKEUP_SOURCE=/sys/power/wakeup-source # most recent wakeup source.
+
 case $XO in
-1|1.5)
-    if [ -e /sys/power/wakeup_events  ]
-    then
-        # legacy XO-1 and XO-1.5
-        WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
-        WAKEUP_SOURCE=/sys/power/wakeup-source # most recent wakeup source.
-    else
-        KBD_DRIVER=$(egrep -li 'keyboard' \
-            /sys/devices/platform/i8042/serio*/input/input*/name |
-                sed 's;/input/input.*/name$;;')
-        TPAD_DRIVER=$(egrep -li 'pad' \
-            /sys/devices/platform/i8042/serio*/input/input*/name |
-                sed 's;/input/input.*/name$;;')
-        BATT_DRIVER=/sys/devices/0.battery/power_supply/olpc-ac
-        AC_DRIVER=/sys/devices/0.battery/power_supply/olpc-battery
-        EBOOK_DRIVER=/sys/devices/LNXSYSTM:00/device:00/PNP0A03:00/XO15EBK:00
-        PWRBTN_DRIVER=/sys/devices/LNXSYSTM:00/LNXPWRBN:00
-        RTC_DRIVER=/sys/class/rtc/rtc0/device
+1)
+    KBD_DRIVER=$(egrep -li 'keyboard' \
+        /sys/devices/platform/i8042/serio*/input/input*/name |
+            sed 's;/input/input.*/name$;;')
+    TPAD_DRIVER=$(egrep -li 'pad|hgpk' \
+        /sys/devices/platform/i8042/serio*/input/input*/name |
+            sed 's;/input/input.*/name$;;')
+    EBOOK_DRIVER=$(egrep -li 'ebook' \
+        /sys/class/input/input*/name | sed 's;/name$;;')
 
-        TSCREEN_DRIVER=;    # no touchscreen on 1.5
-        OLS_DRIVER=;        # no outdoor light sensor on 1.5
+    BATT_DRIVER=/sys/devices/0.battery/power_supply/olpc-ac
+    AC_DRIVER=/sys/devices/0.battery/power_supply/olpc-battery
+    RTC_DRIVER=/sys/class/rtc/rtc0/device
 
-        driver_list="BATT AC KBD TPAD EBOOK"
-        full_driver_list="PWRBTN RTC TSCREEN $driver_list"
-    fi
+    PWRBTN_DRIVER=/sys/class/input/input0
+
+    TSCREEN_DRIVER=;    # no touchscreen on 1.5
+    OLS_DRIVER=;        # no outdoor light sensor on 1.5
+
+    driver_list="BATT AC KBD TPAD EBOOK"
+    full_driver_list="PWRBTN RTC TSCREEN $driver_list"
     ;;
+
+1.5)
+    KBD_DRIVER=$(egrep -li 'keyboard' \
+        /sys/devices/platform/i8042/serio*/input/input*/name |
+            sed 's;/input/input.*/name$;;')
+    TPAD_DRIVER=$(egrep -li 'pad|hgpk' \
+        /sys/devices/platform/i8042/serio*/input/input*/name |
+            sed 's;/input/input.*/name$;;')
+    BATT_DRIVER=/sys/devices/0.battery/power_supply/olpc-ac
+    AC_DRIVER=/sys/devices/0.battery/power_supply/olpc-battery
+    EBOOK_DRIVER=/sys/devices/LNXSYSTM:00/device:00/PNP0A03:00/XO15EBK:00
+    PWRBTN_DRIVER=/sys/devices/LNXSYSTM:00/LNXPWRBN:00
+    RTC_DRIVER=/sys/class/rtc/rtc0/device
+
+    TSCREEN_DRIVER=;    # no touchscreen on 1.5
+    OLS_DRIVER=;        # no outdoor light sensor on 1.5
+
+    driver_list="BATT AC KBD TPAD EBOOK"
+    full_driver_list="PWRBTN RTC TSCREEN $driver_list"
+    ;;
+
 1.75|3)
     SWITCH_DRIVER=/sys/devices/platform/olpc-switch.0
     PWRBTN_DRIVER=/sys/devices/platform/olpc-ec-1.75.0
@@ -1586,7 +1623,7 @@ else
         batt_wake_count=$(< $BATT_WAKE_COUNT)
         ac_wake_count=$(< $AC_WAKE_COUNT)
         tscreen_wake_count=$(< $TSCREEN_WAKE_COUNT)
-        ebook_wake_count=$(< $TSCREEN_WAKE_COUNT)
+        ebook_wake_count=$(< $EBOOK_WAKE_COUNT)
         ols_wake_count=$(< $OLS_WAKE_COUNT)
         rtc_wake_count=$(< $RTC_WAKE_COUNT)
     }
