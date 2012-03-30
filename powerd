@@ -2726,7 +2726,7 @@ sched_powertimer()
 {
     # we can't cancel timers, so give them sequence numbers
     : $((timerseqno += 1))
-    (sleep $1; shift 1; selfinject powertimerdone $(seconds) $timerseqno $*) &
+    (sleep $1; shift 1; selfinject powertimerdone - $timerseqno $*) &
 }
 
 sched_unfreezetimer()
@@ -2736,7 +2736,7 @@ sched_unfreezetimer()
     # unfreezes if the system crashes in unpredictable ways
     (
         sleep $config_UNFREEZE_SECONDS
-        selfinject unfreeze_dcon $(seconds) from_timer
+        selfinject unfreeze_dcon - from_timer
     ) &
 }
 
