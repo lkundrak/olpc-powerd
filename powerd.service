@@ -1,0 +1,8 @@
+[Unit]
+Description=OLPC XO power daemon
+
+[Service]
+ExecStart=/usr/sbin/powerd
+
+[Install]
+WantedBy=multi-user.target
