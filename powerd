@@ -908,6 +908,8 @@ log powerd $powerd_version startup at $(date), on XO-$XO
 log $(< /proc/version)
 log olpc build: $(< /boot/olpc_build)
 
+# we want "ls foo*" to return nothing if foo* doesn't exist
+shopt -s nullglob
 
 yes_or_true()
 {
@@ -1234,16 +1236,12 @@ inhibit_files_present()
     # check for pid files.  remove any non-pid files
     for f in $INHIBITDIR_PREFIX-$action/*
     do
-        case $f in
-        *[0-9]) # verify we're not looking at the literal foo-*/* pattern
-            if kill -0 ${f##*/} 2>/dev/null
-            then
-                trace found $f
-                return 0
-            fi
-            rm -f $f
-            ;;
-        esac
+        if kill -0 ${f##*/} 2>/dev/null
+        then
+            trace found $f
+            return 0
+        fi
+        rm -f $f
     done
 
     return 1
@@ -1263,11 +1261,7 @@ reap_inhibitors()
         live=;
         for f in $d/*
         do
-            case $f in
-            *[0-9]) # reject the literal 'foo/*' pattern
-                kill -0 ${f##*/} 2>/dev/null || rm -f $f
-                ;;
-            esac
+            kill -0 ${f##*/} 2>/dev/null || rm -f $f
         done
     done
 }
@@ -1430,7 +1424,7 @@ runparts()
     for rc_script in *
     do
         case $rc_script in
-        *~|'*') continue;;  # skip ~ backup files, and literal '*'
+        *~) continue;;  # skip ~ backup files
         esac
 
         if [ -x $rc_script ]
