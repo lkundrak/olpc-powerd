@@ -908,7 +908,7 @@ log powerd $powerd_version startup at $(date), on XO-$XO
 log $(< /proc/version)
 log olpc build: $(< /boot/olpc_build)
 
-# we want "ls foo*" to return nothing if foo* doesn't exist
+# make a file pattern match of "foo*" to return nothing if foo* doesn't exist
 shopt -s nullglob
 
 yes_or_true()
@@ -1233,7 +1233,8 @@ inhibit_files_present()
         return 0
     fi
 
-    # check for pid files.  remove any non-pid files
+    # check for pid files, return if any live ones found.
+    # remove any stale, or non-pid files
     for f in $INHIBITDIR_PREFIX-$action/*
     do
         if kill -0 ${f##*/} 2>/dev/null
@@ -1248,17 +1249,14 @@ inhibit_files_present()
 }
 
 # return success if removal of a stale pid file may have caused
-# a change in our behavior.  (i.e., if there are two inhibitors,
-# and one goes stale and is removed, nothing has really changed.
+# a change in our behavior.
 reap_inhibitors()
 {
     local f
 
-    # check for and remove dead pid files
+    # check for and remove all dead pid files
     for d in $INHIBITDIR_PREFIX-*
     do
-        stale=;
-        live=;
         for f in $d/*
         do
             kill -0 ${f##*/} 2>/dev/null || rm -f $f
@@ -1312,6 +1310,14 @@ usb_inhibit()
     test "$gotusb" && trace usb busy: $gotusb
 }
 
+ttyusb_inhibit()
+{
+    # inhibit suspend if a USB serial adapter is in use, because
+    # it will likely change names after suspend/resume.
+    # note:  assumes nullglob is set
+    test "$(echo -n /var/lock/LCK..ttyUSB* )" && trace ttyUSB in use
+}
+
 general_inhibit()
 {
     trace general inhibit: $no_suspend
@@ -1320,7 +1326,7 @@ general_inhibit()
 
 laptop_busy()
 {
-    general_inhibit || usb_inhibit || cpu_or_network_busy
+    general_inhibit || usb_inhibit || ttyusb_inhibit || cpu_or_network_busy
 }
 
 if [ -e $TPAD_RECAL ]
