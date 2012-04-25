@@ -1697,6 +1697,12 @@ event_fifo_lookahead()
         # it would have woken us if it had arrived just a little
         # later, break out.  otherwise discard it.
         trace s_event-type is $s_event-$type
+
+        # we don't honor lidopen events unless $wake_on_open is set.
+        case $s_event in
+         lidopen) test "$wake_on_open" && s_event=lidopenwake ;;
+        esac
+
         case $s_event-$type in
 
          ambient-bright-*) amb_adj=bright ;;
@@ -1704,7 +1710,7 @@ event_fifo_lookahead()
 
          powerbutton-*|\
          fake_powerbutton-*|\
-         lidopen-*|lidclose-soft|\
+         lidopenwake-*|lidclose-soft|\
          inhibit-suspend-soft|\
          check_inhibits-soft|\
          ebook*-soft|ac-*-soft|useractive-soft|\
