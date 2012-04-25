@@ -822,48 +822,43 @@ driver_list=;
 WAKEUP_EVENTS=/sys/power/wakeup_events # directory of mask bits
 WAKEUP_SOURCE=/sys/power/wakeup-source # most recent wakeup source.
 
-case $XO in
-1)
-    KBD_DRIVER=$(egrep -li 'keyboard' \
-        /sys/devices/platform/i8042/serio*/input/input*/name |
-            sed 's;/input/input.*/name$;;')
-    TPAD_DRIVER=$(egrep -li 'pad|hgpk' \
-        /sys/devices/platform/i8042/serio*/input/input*/name |
-            sed 's;/input/input.*/name$;;')
-    EBOOK_DRIVER=$(egrep -li 'ebook' \
-        /sys/class/input/input*/name | sed 's;/name$;;')
+setup_common_xo1_xo15_device_paths()
+{
+    # actual wakeup control occurs here, for both keyboard and
+    # touchpad...
+    KBD_DRIVER=/sys/devices/platform/i8042
+    TPAD_DRIVER=;
+
+    # ...but the serio driver checks one level further down to
+    # see if wakeups are enabled, in order to suppress device
+    # reinitialization across suspend.
+    echo enabled >$KBD_DRIVER/serio0/power/wakeup
+    echo enabled >$KBD_DRIVER/serio1/power/wakeup
 
     BATT_DRIVER=/sys/devices/0.battery/power_supply/olpc-ac
     AC_DRIVER=/sys/devices/0.battery/power_supply/olpc-battery
     RTC_DRIVER=/sys/class/rtc/rtc0/device
-
-    PWRBTN_DRIVER=/sys/class/input/input0
 
     TSCREEN_DRIVER=;    # no touchscreen on 1.5
     OLS_DRIVER=;        # no outdoor light sensor on 1.5
 
     driver_list="BATT AC KBD TPAD EBOOK"
     full_driver_list="PWRBTN RTC TSCREEN $driver_list"
+}
+
+case $XO in
+1)
+    setup_common_xo1_xo15_device_paths
+    EBOOK_DRIVER=$(egrep -li 'ebook' \
+        /sys/class/input/input*/name | sed 's;/name$;;')
+    PWRBTN_DRIVER=/sys/class/input/input0
+
     ;;
 
 1.5)
-    KBD_DRIVER=$(egrep -li 'keyboard' \
-        /sys/devices/platform/i8042/serio*/input/input*/name |
-            sed 's;/input/input.*/name$;;')
-    TPAD_DRIVER=$(egrep -li 'pad|hgpk' \
-        /sys/devices/platform/i8042/serio*/input/input*/name |
-            sed 's;/input/input.*/name$;;')
-    BATT_DRIVER=/sys/devices/0.battery/power_supply/olpc-ac
-    AC_DRIVER=/sys/devices/0.battery/power_supply/olpc-battery
+    setup_common_xo1_xo15_device_paths
     EBOOK_DRIVER=/sys/devices/LNXSYSTM:00/device:00/PNP0A03:00/XO15EBK:00
     PWRBTN_DRIVER=/sys/devices/LNXSYSTM:00/LNXPWRBN:00
-    RTC_DRIVER=/sys/class/rtc/rtc0/device
-
-    TSCREEN_DRIVER=;    # no touchscreen on 1.5
-    OLS_DRIVER=;        # no outdoor light sensor on 1.5
-
-    driver_list="BATT AC KBD TPAD EBOOK"
-    full_driver_list="PWRBTN RTC TSCREEN $driver_list"
     ;;
 
 1.75|3)
@@ -874,10 +869,14 @@ case $XO in
     BATT_DRIVER=/sys/devices/platform/olpc-battery.0/power_supply/olpc-battery
     AC_DRIVER=/sys/devices/platform/olpc-battery.0/power_supply/olpc-ac
     KBD_DRIVER=/sys/devices/platform/olpc-kbd.0
+    TPAD_DRIVER=;    # no separate tpad driver, shares with KBD_DRIVER
+
+    # enable these, to suppress serio's reinit across suspend
+    echo enabled >$KBD_DRIVER/serio0/power/wakeup
+    echo enabled >$KBD_DRIVER/serio1/power/wakeup
     TSCREEN_DRIVER=$(egrep -l 'raydium_ts|eeti_ts' \
             /sys/devices/platform/pxa2xx-i2c*/i2c-*/*/name | sed 's;/name$;;')
 
-    TPAD_DRIVER=;    # no separate tpad driver, shares with KBD_DRIVER
     EBOOK_DRIVER=;   # no separate ebook driver
 
     driver_list="OLS BATT AC KBD ${TSCREEN_DRIVER:+TSCREEN}"
