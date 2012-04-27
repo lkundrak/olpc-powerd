@@ -36,7 +36,7 @@ OPT_FLAGS ?= -O2 -g
 
 #####
 
-PROGS = olpc-switchd pnmto565fb
+PROGS = olpc-switchd pnmto565fb usblist
 
 export CFLAGS = -Wall $(OPT_FLAGS) -DVERSION=$(VERSION)
 
@@ -53,6 +53,10 @@ olpc-switchd: olpc-switchd.c
 
 pnmto565fb: pnmto565fb.c
 	$(CC) $(CFLAGS) -fwhole-program $^ -o $@
+
+usblist: usblist.c
+	$(CC) $(CFLAGS) -fwhole-program $^ -o $@ -lusb-1.0
+
 
 # testing targets
 tarball:  $(TARBALL)

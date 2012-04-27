@@ -1,4 +1,9 @@
-# inhibit suspend when using USB input devices -- USB devices
-# can't wake the laptop.  you can also list just specific devices
-# here, instead, if you wish.  use "vendor:id", both in hex, without "0x".
-hid
+# permitted syntax:
+#   id=vendor:id  (where vendor and id are each 4 digit hex, without "0x".
+#   class=classcode  (where classcode is 2-digit hex, or one of:
+#	"audio", "commc", "hid", "pid", "still", "print", "stor.", "hub",
+#	"data", "scard", "c-sec", "video", "perhc", "diagd", "wlcon", "misc",
+#	"app.", "vend.")   (class may be either device or interface class)
+# 
+# no suspend when using input devices, since they can't wake us up.
+class=hid

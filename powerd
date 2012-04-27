@@ -1291,19 +1291,14 @@ usb_inhibit()
     usbconf=$CONFIGFLAGS/usb-inhibits
 
     test -e $usbconf || return 1
+    test -x $LIBEXECDIR/usblist || return 1
 
-    # pull out all USB class, vendor, and vendor:id values, and
-    # make them available for comparison, one per line, against
+    # check all USB class, vendor, and vendor:id values against
     # the user-supplied strings.
-    gotusb=$(sed -n -e 's/^.*Cls=\([[:xdigit:]]\{2\}\)(\([^ )]\+\).*/\1\
-\2/p' \
-        -e 's/^.*Vendor=\([[:xdigit:]]\{4\}\).*ProdID=\([[:xdigit:]]\{4\}\).*/\1:\2\
-\1/p' \
-            /proc/bus/usb/devices |
-        grep -ixf $usbconf )
+    gotusb=$( $LIBEXECDIR/usblist | grep -ilxf $usbconf )
 
     # implicit return value
-    test "$gotusb" && trace usb busy: $gotusb
+    test "$gotusb" && trace usb busy
 }
 
 ttyusb_inhibit()
