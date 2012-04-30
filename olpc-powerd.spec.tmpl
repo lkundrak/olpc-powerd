@@ -125,6 +125,13 @@ fi
 exit 0
 
 %changelog
+* Mon Apr 30 2012 Paul Fox <pgf@laptop.org>
+- 101-1
+- removed dependence on /proc/bus/usb
+- reimplemented XO-1 wlan power control
+- inhibit suspend when any ttyUSBn is in use
+- systemd control files from fedora upstream now bundled
+
 * Thu Mar 29 2012 Paul Fox <pgf@laptop.org>
 - 100-1
 - first release for 12.1.0
