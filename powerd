@@ -27,8 +27,7 @@
 #
 # Major config variables are documented below.  powerd reads
 # its configuration from /etc/powerd/powerd.conf once at startup,
-# and again only when it receives a "reconfig" event on its
-# event fifo.  (short answer:  "sudo powerd-config =restart")
+# and again any time that file is modified.
 #
 # If /etc/powerd/powerd.conf is a symlink to another file, then
 # powerd-config can be used to easily manage a set of
@@ -185,11 +184,12 @@
 # Ambient light sensor
 #
 # "config_AMBIENT_BRIGHT" and "config_AMBIENT_NORMAL" set the
-# hysteresis limits for the light sensor (on XO-1.75).  Smaller sensor
-# readings imply brighter light, so the BRIGHT limit should be lower
-# than the NORMAL limit.  The backlight will be turned off at the
-# BRIGHT limit, and turned back on at the NORMAL limit.  Setting
-# either limit to 0 will disable light sensor events.
+# hysteresis limits for the light sensor (currently only XO-1.75
+# has such a sensor).  Smaller sensor readings imply brighter
+# light, so the BRIGHT limit should be lower than the NORMAL
+# limit.  The backlight will be turned off at the BRIGHT limit,
+# and turned back on at the NORMAL limit.  Setting either limit
+# to 0 will disable light sensor events.
 #
 #
 ######
@@ -211,6 +211,14 @@
 #   common case of inhibiting suspend while a given program is
 #   running, the "olpc-nosleep" wrapper is provided.  e.g.,
 #       $ olpc-nosleep wget http://veryslow.downloads.com/bigfile
+#
+#   When suspend is inhibited in this fashion, powerd internally
+#   pretends that suspend has been rescheduled a very long time in
+#   the future.  Dimming and blanking will still occur at their
+#   normally scheduled intervals.  To inhibit dimming and blanking,
+#   create a file in
+#     /var/run/powerd-inhibit-dim
+#   as instead, or in addition.
 #
 #   The above pid-based flags aren't persistent.  To inhibit suspend
 #   in a persistent way (i.e., across reboots), create the file:
@@ -392,6 +400,16 @@
 #   power-logger, which is heavily dependent on non-POSIX
 #   features.
 #
+# - Configuration monitoring
+#
+#   powerd makes use of an inotify partner process to keep track
+#   of changes to its configuration.  powerd will learn immediately
+#   about any changes to the configuration file:
+#       /etc/powerd/powerd.conf
+#   or to the contents of these directories:
+#       /etc/powerd/flags/
+#       /var/run/powerd-inhibit-suspend/
+#       /var/run/powerd-inhibit-dim/
 #
 ######
 #
@@ -399,7 +417,7 @@
 #
 # -----------------------------------------------
 #
-# Copyright (C) 2009,2010,2012, Paul G Fox
+# Copyright (C) 2009,2010,2011,2012, Paul G Fox
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License as
