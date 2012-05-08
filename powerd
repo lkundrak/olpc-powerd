@@ -3223,6 +3223,11 @@ reevaluate all
 test "$no_dcon" || chmod a+w $MONO_MODE
 test "$no_brightness" || chmod a+w $BRIGHTNESS
 
+set_acpi_wakeupevents USB1 disable
+set_acpi_wakeupevents USB2 disable
+set_acpi_wakeupevents USB3 disable
+set_acpi_wakeupevents EHCI disable
+
 set_acpi_wakeupevents EC enable
 set_wakeupevents all_sci
 
