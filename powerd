@@ -841,14 +841,9 @@ setup_common_xo1_xo15_device_paths()
 {
     # actual wakeup control occurs here, for both keyboard and
     # touchpad...
-    KBD_DRIVER=/sys/devices/platform/i8042
-    TPAD_DRIVER=;
-
-    # ...but the serio driver checks one level further down to
-    # see if wakeups are enabled, in order to suppress device
-    # reinitialization across suspend.
-    echo enabled >$KBD_DRIVER/serio0/power/wakeup
-    echo enabled >$KBD_DRIVER/serio1/power/wakeup
+    KBD_MASTER_DRIVER=/sys/devices/platform/i8042
+    KBD_DRIVER=$KBD_MASTER_DRIVER/serio0
+    TPAD_DRIVER=$KBD_MASTER_DRIVER/serio1
 
     BATT_DRIVER=/sys/devices/0.battery/power_supply/olpc-ac
     AC_DRIVER=/sys/devices/0.battery/power_supply/olpc-battery
@@ -857,7 +852,7 @@ setup_common_xo1_xo15_device_paths()
     TSCREEN_DRIVER=;    # no touchscreen on 1.5
     OLS_DRIVER=;        # no outdoor light sensor on 1.5
 
-    driver_list="BATT AC KBD TPAD EBOOK"
+    driver_list="BATT AC KBD_MASTER KBD TPAD EBOOK"
     full_driver_list="PWRBTN RTC TSCREEN $driver_list"
 }
 
@@ -886,9 +881,6 @@ case $XO in
     KBD_DRIVER=/sys/devices/platform/olpc-kbd.0
     TPAD_DRIVER=;    # no separate tpad driver, shares with KBD_DRIVER
 
-    # enable these, to suppress serio's reinit across suspend
-    echo enabled >$KBD_DRIVER/serio0/power/wakeup
-    echo enabled >$KBD_DRIVER/serio1/power/wakeup
     TSCREEN_DRIVER=$(egrep -l 'raydium_ts|eeti_ts' \
             /sys/devices/platform/pxa2xx-i2c*/i2c-*/*/name | sed 's;/name$;;')
 
