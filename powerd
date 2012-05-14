@@ -2989,7 +2989,7 @@ event_loop()
             do_lid_closed
             ;;
 
-        lidopen)
+        lidopen|lidopenwake)
             lid_device=$arg2
             if [ "$wake_on_open" ]
             then
