@@ -2466,6 +2466,7 @@ set_config_defaults()
 
     config_PWRLOG_INTERVAL=0
     config_PWRLOG_DIR=/home/olpc/power-logs
+    config_PWRLOG_OWNER=olpc:olpc
     config_PWRLOG_LOGSIZE=50            # Kbytes
     config_PWRLOG_LOGDIRSIZE=1000       # Kbytes
 
@@ -3157,10 +3158,11 @@ configure_pwrlog()
         pwrlog_inside_powerd=yes
 
         mkdir -p $config_PWRLOG_DIR
-        chown olpc:olpc $config_PWRLOG_DIR
+        chown $config_PWRLOG_OWNER $config_PWRLOG_DIR
 
         . $LIBEXECDIR/power-logger
         pwrlog_init $config_PWRLOG_INTERVAL $config_PWRLOG_DIR \
+            $config_PWRLOG_OWNER \
             $config_PWRLOG_LOGSIZE $config_PWRLOG_LOGDIRSIZE
 
     else

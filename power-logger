@@ -76,6 +76,8 @@ EOF
     # MFG_SER: $(pwrlog_read_battery_eeprom 64 5)
 
     pwr_LASTBATTSTAT=;
+
+    chown $pwr_LOG_OWNER $pwr_PWRLOG_LOGFILE 
 }
 
 # convert a number into 2's complement
@@ -245,8 +247,9 @@ pwrlog_init()
 
     pwr_LOG_INTERVAL=${1:-60}
     pwr_LOG_DIR=${2:-}
-    pwr_MAX_LOG_SIZE=${3:-50}             # Kbytes
-    pwr_MAX_LOGDIR_SIZE=${4:-5120}        # Kbytes
+    pwr_LOG_OWNER=${3:-"olpc:olpc"}
+    pwr_MAX_LOG_SIZE=${4:-50}             # Kbytes
+    pwr_MAX_LOGDIR_SIZE=${5:-5120}        # Kbytes
 
     pwr_LOGCOPY_MINUTES=30
 
@@ -300,7 +303,7 @@ pwrlog_logcopy()
     test "$(echo /var/log/pwr-*.csv 2>/dev/null)" || return 0
 
     # copy any likely logs out of /var
-    cp /var/log/pwr-*.csv $pwr_LOG_DIR || return 0
+    cp -a /var/log/pwr-*.csv $pwr_LOG_DIR || return 0
 
     # assume that the most recently written log is still active, and
     # that others have been copied, and can be removed from /var.
@@ -335,12 +338,6 @@ pwrlog_logcopy()
 if [ ! "$pwrlog_inside_powerd" ]
 then
 
-    if [ "${1:-}" = logcopy ]
-    then
-        pwrlog_logcopy
-        exit
-    fi
-
     # for standalone testing
     if [ -e /sys/class/dmi/id/product_version ]
     then
@@ -366,12 +363,19 @@ then
 
     DELAY=20
     SECONDS=$(date +%s)
-    LOGDIR="/home/olpc/olpc-pwr-logs"
+    LOGDIR="/home/olpc/power-logs"
+    OWNER="olpc:olpc"
 
     mkdir -p $LOGDIR
-    chown olpc:olpc $LOGDIR
+    chown $OWNER $LOGDIR
 
-    pwrlog_init $DELAY $LOGDIR
+    pwrlog_init $DELAY $LOGDIR $OWNER
+
+    if [ "${1:-}" = logcopy ]
+    then
+        pwrlog_logcopy
+        exit
+    fi
 
     pwrlog_loop
 
