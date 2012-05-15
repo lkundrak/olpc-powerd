@@ -764,13 +764,15 @@ trace()
     fi
 }
 
-# use $SECONDS for timing when possible
-if [ "${SECONDS:-}" ]
+# don't call out to 'date' if we don't need to
+if printf '%(%s)T\n' -1 >/dev/null
 then
-    SECONDS=$(date +%s)
+    # we used to use $SECONDS, but it doesn't track clock
+    # changes.  this matters because we sometimes compare the
+    # output of seconds() against external timestamps.
     seconds()
     {
-        echo $SECONDS
+        printf '%(%s)T\n' -1
     }
 else
     seconds()
@@ -1220,6 +1222,7 @@ filetimes_busy()
     now=$(seconds)
     for touched in $(stat -c '%Y' $touchfiles 2>/dev/null )
     do
+        # NB: a date change could screw this up.
         test $(( touched > now - timer )) = 1 && \
                 trace touchfile busy && return 0
     done
@@ -1689,6 +1692,9 @@ event_fifo_lookahead()
     # well miss an event that would normally wake us (or
     # keep us from sleeping).  there's no way to close this
     # race completely, but this is way better than nothing.
+
+    # guard against date change into the past
+    test "$eventcutoff" -gt $(seconds) && eventcutoff=0
 
     while read -t 1 s_event s_tstamp s_arg2 s_arg3 s_more
     do
@@ -2731,7 +2737,7 @@ sched_powertimer()
 {
     # we can't cancel timers, so give them sequence numbers
     : $((timerseqno += 1))
-    (sleep $1; shift 1; selfinject powertimerdone - $timerseqno $*) &
+    (sleep $1; shift 1; selfinject powertimerdone $(seconds) $timerseqno $*) &
 }
 
 sched_unfreezetimer()
@@ -2741,7 +2747,7 @@ sched_unfreezetimer()
     # unfreezes if the system crashes in unpredictable ways
     (
         sleep $config_UNFREEZE_SECONDS
-        selfinject unfreeze_dcon - from_timer
+        selfinject unfreeze_dcon $(seconds) from_timer
     ) &
 }
 
@@ -2898,6 +2904,9 @@ event_loop()
 
         : -------------------------
         trace got event: $event, $tstamp, $arg2, $arg3, $more.
+
+        # guard against date change into the past
+        test "$eventcutoff" -gt $(seconds) && eventcutoff=0
 
         if [ "$tstamp" -a "$tstamp" != '-' ] && [ "$tstamp" -lt "$eventcutoff" ]
         then
