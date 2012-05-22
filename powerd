@@ -786,6 +786,8 @@ test "$tracing" && set_tracing on
 
 read_hwinfo()
 {
+    hwversion=;
+
     if [ -x /usr/bin/olpc-hwinfo ]
     then
         hwvendor=OLPC
@@ -793,6 +795,23 @@ read_hwinfo()
         hwversion=$(olpc-hwinfo model)
         return
     fi
+
+    if [ -r /proc/device-tree/banner-name ]
+    then
+        case "$(</proc/device-tree/banner-name)" in
+        OLPC\ [BC][0-9])    hwversion=1 ;;
+        OLPC\ D[0-9])       hwversion=1.5 ;;
+        OLPC\ 1[ABC][0-9])  hwversion=1.75 ;;
+        OLPC\ 2[ABC][0-9])  hwversion=3 ;;
+        esac
+        if [ "$hwversion" ]
+        then
+            hwvendor=OLPC
+            hwname=XO
+            return;
+        fi
+    fi
+
     read hwvendor < /sys/class/dmi/id/sys_vendor ||
         hwvendor="n/a"
     read hwname < /sys/class/dmi/id/product_name ||
