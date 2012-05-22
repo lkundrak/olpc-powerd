@@ -110,7 +110,7 @@ static void monitor_interface(const gchar *path)
 		0, NULL,
 		WPAS_SERVICE, path, WPAS_INTERFACE_IFACE,
 		NULL, &error);
-	if (!wpas_obj) {
+	if (!proxy) {
 		g_warning("Error creating wpas interface proxy: %s\n", error->message);
 		g_error_free(error);
 		return;
