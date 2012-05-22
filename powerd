@@ -243,8 +243,8 @@
 #   various system conditions:  CPU utilizations, network activity, VT
 #   console usage, camera and audio usage, and usb device presence. 
 #   Network and CPU activity are monitored for 5 seconds before
-#   sleep should occur.  These conditions are all checked from the
-#   "laptop_busy" function, so look there for details.
+#   sleep should occur.  These conditions are checked from the
+#   "laptop_busy" and "snooze" functions, so look there for details.
 #
 #   For USB device presence, if the file /etc/powerd/flags/usb-inhibits
 #   is present, it will be consulted for matches against USB device
@@ -1217,15 +1217,11 @@ cpu_or_network_busy()
     return 1
 }
 
-
-# unused for now, because too many sound apps leave the
-# device open:  the TamTams, Record (after playing), Browse
-# and Firefox (after playing)
-#audio_busy()
-#{
-#    grep -q RUNNING /proc/asound/card0/pcm0?/sub0/status && trace audio busy
-#}
-
+audio_busy()
+{
+    egrep -q 'RUNNING|DRAINING' \
+        /proc/asound/card0/pcm0?/sub0/status && trace audio busy
+}
 
 # see if there's been activity during the recent idle period --
 # check all interesting files with one stat command.
@@ -1349,7 +1345,8 @@ general_inhibit()
 
 laptop_busy()
 {
-    general_inhibit || usb_inhibit || ttyusb_inhibit || cpu_or_network_busy
+    general_inhibit || usb_inhibit || ttyusb_inhibit ||
+        audio_busy || cpu_or_network_busy
 }
 
 if [ -e $TPAD_RECAL ]
@@ -1872,14 +1869,14 @@ snooze()
 
         reset_idlecounters
 
-        # this loop accomplishes nothing interesting on 2.6.35 and earlier
-        # kernels -- there's no global wakeup counter.  on 3.0 and later,
-        # that counter helps make sure we deal with recent wakeup events
-        # (i.e., those that have arrived but we might not have noticed)
-        # properly.  see: http://lwn.net/Articles/393314/ and/or
-        # http://lkml.indiana.edu/hypermail/linux/kernel/1006.3/00777.html
         while :
         do
+            # on 3.0 and later, the wake counter helps make sure we
+            # deal with recent wakeup events (i.e., those that have arrived
+            # but we might not have noticed) properly.  see: 
+            # http://lwn.net/Articles/393314/ and/or
+            # http://lkml.indiana.edu/hypermail/linux/kernel/1006.3/00777.html
+            # on earlier kernels, this loop will only run once.
             grab_global_wake_count
 
             ambient_force
@@ -1897,6 +1894,9 @@ snooze()
 
                 # recheck network packets.
                 check_network_activity finish && break 2
+
+                # check for audio again
+                audio_busy && break 2
             fi
 
             # the kernel will do a sync, but if it's going to stall
@@ -3284,3 +3284,7 @@ fi
 is_lid_closed   # sets $am_closed
 
 event_loop
+
+#
+# vile:noti:sw=4
+#
