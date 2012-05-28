@@ -1817,15 +1817,6 @@ snooze()
                 set_wakeupevents none
             fi
 
-            # note:  it's tempting to allow AC wakeups here, but in
-            # practice a) there's no advantage -- we won't do anything
-            # differently if we wake and then go back to sleep, and b) it's
-            # tricky, when woken for one reason, for which we might
-            # simply sleep again (i.e., AC), to know that we shouldn't
-            # also have awoken for another reason (i.e., LID) without
-            # draining the event queue.  far simpler to not take AC
-            # and LID wakeups at the same time.
-
             # we want to wake up periodically to see if we still have
             # enough juice when discharging.  we used to only enable
             # this below a certain threshold, but that's too fallible.
