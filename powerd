@@ -546,7 +546,7 @@ TPAD_RECAL=/sys/devices/platform/i8042/serio1/recalibrate
 
 
 
-# XO-1.75 has two RTC clocks, but only one of them has alarm capabilities.
+# XO-1.75/XO-4 has two RTC clocks, but only one of them has alarm capabilities.
 # the /dev/rtcalarm symlink makes this explicit (though the default rtc0
 # would probably be correct in any case -- it's the one internal to the SoC.
 # (rtcwake can't use the symlink directly, because it parses it
@@ -628,7 +628,7 @@ then
             ;;
         esac
     }
-elif [ -d $SWITCH_DRIVER ] # XO-1.75
+elif [ -d $SWITCH_DRIVER ] # XO-1.75, XO-4
 then
     wake_on_lid()
     {
@@ -800,9 +800,11 @@ read_hwinfo()
     then
         case "$(</proc/device-tree/banner-name)" in
         OLPC\ [BC][0-9])    hwversion=1 ;;
-        OLPC\ D[0-9])       hwversion=1.5 ;;
-        OLPC\ 1[ABC][0-9])  hwversion=1.75 ;;
-        OLPC\ 2[ABC][0-9])  hwversion=3 ;;
+        OLPC\ D[0-9A-Z])       hwversion=1.5 ;;
+        OLPC\ 1[ABC][0-9A-Z])  hwversion=1.75 ;;
+        OLPC\ 2[ABC][0-9A-Z])  hwversion=3 ;;
+        OLPC\ 3[ABC][0-9A-Z])  hwversion=1.75 ;; # CL4-A1
+        OLPC\ 4[ABC][0-9A-Z])  hwversion=4 ;;
         esac
         if [ "$hwversion" ]
         then
@@ -825,10 +827,7 @@ choose_xo_model()
     read_hwinfo
 
     case $hwvendor-$hwname-$hwversion in
-    OLPC-XO-)   # FIXME!!!
-        XO=3
-        ;;
-    OLPC-XO-1|OLPC-XO-1.5|OLPC-XO-1.75|OLPC-XO-3)
+    OLPC-XO-*)
         XO=$hwversion
         ;;
     *)  # pre-F11 releases didn't have the /sys/class/dmi tree, so we
@@ -910,6 +909,24 @@ case $XO in
     driver_list="OLS BATT AC KBD ${TSCREEN_DRIVER:+TSCREEN}"
     full_driver_list="PWRBTN RTC SWITCH EBOOK TPAD $driver_list"
     ;;
+4)
+    SWITCH_DRIVER=/sys/devices/0.switches
+    PWRBTN_DRIVER=/sys/devices/d4037000.ec-spi/input/input1
+    RTC_DRIVER=/sys/devices/d4010000.rtc
+    OLS_DRIVER=/sys/devices/ols.3
+    BATT_DRIVER=/sys/class/power_supply/olpc-battery
+    AC_DRIVER=/sys/class/power_supply/olpc-ac
+    KBD_DRIVER=/sys/devices/d4290000.ap-sp
+    TPAD_DRIVER=;    # no separate tpad driver, shares with KBD_DRIVER
+
+    TSCREEN_DRIVER=/sys/devices/d4033000.i2c
+
+    EBOOK_DRIVER=;   # no separate ebook driver
+
+    driver_list="OLS BATT AC KBD ${TSCREEN_DRIVER:+TSCREEN}"
+    full_driver_list="PWRBTN RTC SWITCH EBOOK TPAD $driver_list"
+    ;;
+
 esac
 
 # using contents of $full_driver_list, create appropriate values of
@@ -1037,7 +1054,7 @@ then
                 '/ 11:.*cafe-ccic/s/ *11: *\([[:digit:]]\+\).*/\1/p' \
                     /proc/interrupts
         }
-    elif grep -q mmp-camera /proc/interrupts   # XO-1.75 and XO-3
+    elif grep -q mmp-camera /proc/interrupts   # XO-1.75/XO-3/XO-4
     then
         camera_interrupts()
         {
@@ -1619,14 +1636,13 @@ then
     }
 
 else
-    # XO-1.75, running a 3.0 kernel, doesn't get told a specific
-    # wakeup source, but does get counters on most of the
-    # possible wakeup generators.  (some counters are missing
+    # XO-1.75/XO-3/XO-4, running a 3.0 kernel, doesn't get told a
+    # specific wakeup source, but does get counters on most of
+    # the possible wakeup generators.  (some counters are missing
     # (e.g., battery wakeups, light sensor wakeups) because we
     # don't care about them currently, and the drivers aren't
-    # instrumented properly.)
-    # those counters are used to find the most important source, and
-    # to deal with that first.
+    # instrumented properly.) those counters are used to find the
+    # most important source, and to deal with that first.
 
     # note!  these counters return nothing at all if the corresponding
     # wakeup events aren't enabled.  so be prepared for nulls.
