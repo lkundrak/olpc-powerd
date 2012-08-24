@@ -2528,7 +2528,7 @@ read_config()
 
     if [ "$prevent_sleep" ]
     then
-        log suppressing sleep configurations on 1.75
+        log suppressing sleep configurations
         config_BATTERY_TIME_SLEEP=0
         config_EBOOK_TIME_SLEEP=0
         config_PLUGGED_TIME_SLEEP=0
@@ -3289,6 +3289,11 @@ then
 fi
 
 is_lid_closed   # sets $am_closed
+
+if [ "$XO" = 4 ]  # FIXME
+then
+    prevent_sleep=true
+fi
 
 event_loop
 
