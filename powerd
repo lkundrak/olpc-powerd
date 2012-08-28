@@ -1784,6 +1784,8 @@ snooze()
     local sleep_type cur_sleep_type until 
     local prev_xo1_wlan_power sleep_started
 
+    test "$prevent_sleep" && return
+
     trace "snoozing: $@"
 
     prev_xo1_wlan_power=;
@@ -2973,12 +2975,9 @@ event_loop()
             else
                 if [ $config_CONFIRM_SECONDS = 0 ]
                 then
-                    if [ ! "$prevent_sleep" ]
-                    then
-                            backlight off
-                            # hard sleep until it's time to shut down
-                            snooze until_shutdown "$shutdowntimer" hard
-                    fi
+                    backlight off
+                    # hard sleep until it's time to shut down
+                    snooze until_shutdown "$shutdowntimer" hard
                 else
                     if [ "$powerseqno" != "$timerseqno" ]
                     then # first press
@@ -3006,13 +3005,10 @@ event_loop()
             ;;
 
         gotosleep)
-            if [ ! "$prevent_sleep" ]
-            then
-                invalidate_powertimer
-                backlight off
-                # hard sleep until it's time to shut down
-                snooze until_shutdown "$shutdowntimer" hard
-            fi
+            invalidate_powertimer
+            backlight off
+            # hard sleep until it's time to shut down
+            snooze until_shutdown "$shutdowntimer" hard
             ;;
 
         lidcheck)
@@ -3229,7 +3225,12 @@ powerseqno=0;
 eventcutoff=0;
 dcon_thawed=;
 no_suspend=0;
+
 prevent_sleep=;
+if [ "$XO" = 4 ]  # FIXME
+then
+    prevent_sleep=true
+fi
 
 
 log starting
@@ -3299,11 +3300,6 @@ then
 fi
 
 is_lid_closed   # sets $am_closed
-
-if [ "$XO" = 4 ]  # FIXME
-then
-    prevent_sleep=true
-fi
 
 event_loop
 
