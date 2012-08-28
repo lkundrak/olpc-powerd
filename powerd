@@ -876,6 +876,7 @@ setup_common_xo1_xo15_device_paths()
     full_driver_list="PWRBTN RTC TSCREEN $driver_list"
 }
 
+# don't set nullglob above here!
 case $XO in
 1)
     setup_common_xo1_xo15_device_paths
@@ -1236,6 +1237,9 @@ cpu_or_network_busy()
 
 audio_busy()
 {
+    # defend against nullglob
+    test -d /proc/asound/card0 || return 1
+
     egrep -q 'RUNNING|DRAINING' \
         /proc/asound/card0/pcm0?/sub0/status && trace audio busy
 }
