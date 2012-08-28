@@ -1064,6 +1064,12 @@ then
                 '/ 42:.*mmp-camera/s/ *42: *\([[:digit:]]\+\).*/\1/p' \
                     /proc/interrupts
         }
+    else
+        # in case of no camera driver
+        camera_interrupts()
+        {
+            echo 1
+        }
     fi
 
     check_camera_activity()
