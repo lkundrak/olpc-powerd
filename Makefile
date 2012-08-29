@@ -11,17 +11,17 @@ VERSION=105
 SPEC=$(PACKAGE).spec
 
 DATETAG=$(shell date +%Y%m%d)
-GITHEAD=git$(shell test -d .git && git rev-parse --short HEAD )
+GITHASH=$(shell test -d .git && git rev-parse --short HEAD )
 
 ifeq ($(do_rel),)
-    SNAP=.$(DATETAG)$(GITHEAD)
+    SNAP=.$(DATETAG)git$(GITHASH)
 endif
 
 
 RELEASE=$(shell cat .spec_release 2>/dev/null || echo error)
 SRELEASE=$(RELEASE)$(SNAP)
 
-TARBALL=$(PKGVER)-$(GITHEAD).tar.gz
+TARBALL=$(PKGVER)-git$(GITHASH).tar.gz
 SRPM=$(PKGVER)-$(SRELEASE).src.rpm
 
 MOCK=./mock-wrapper -r fedora-14-i386 --resultdir=$(MOCKDIR)
@@ -65,15 +65,22 @@ srpm: $(SRPM)
 version: Makefile
 	@echo "powerd_version='version $(VERSION)'" >version
 
-src_distribute: $(TARBALL) $(SRPM)
-	scp $(TARBALL) $(SRPM)  \
-		crank:public_html/rpms/srpms
+publish: $(TARBALL)
+	scp $(TARBALL) crank:public_html/tarballs
+	@echo version $(VERSION) and hash $(GITHASH)
+	@echo published http://dev.laptop.org/~pgf/tarballs/$(TARBALL)
+	@echo
+	@echo "Did you tag it?  ( eg tag v$(VERSION) $(GITHASH) )"
+
+#src_distribute: $(TARBALL) $(SRPM)
+#	scp $(TARBALL) $(SRPM)  \
+#		crank:public_html/rpms/srpms
 #	scp $(SPEC) \
 #		crank:public_html/rpms/srpms/$(SPEC)-$(VERSION)-$(SRELEASE)
-distribute: src_distribute rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm
-	scp rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm \
-		rpms/$(PKGVERDBUS)-$(SRELEASE).fc11.i586.rpm \
-		crank:public_html/rpms
+#distribute: src_distribute rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm
+#	scp rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm \
+#		rpms/$(PKGVERDBUS)-$(SRELEASE).fc11.i586.rpm \
+#		crank:public_html/rpms
 
 privdist:
 	scp rpms/$(PKGVER)-$(SRELEASE).fc11.i586.rpm \
