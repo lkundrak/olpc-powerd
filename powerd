@@ -1855,13 +1855,7 @@ snooze()
             then
                 prev_xo1_wlan_power=$(set_xo1_wlan_power 0)
             else
-                # the next test looks wrong, but it's not:  we only
-                # need to disable wake-on-wlan if it might have
-                # been enabled in the first place.
-                if [ "$wake_on_wlan" ]
-                then
-                    set_wake_on_wlan no
-                fi
+                set_wake_on_wlan no
             fi
             ;;
         *)
@@ -1871,16 +1865,18 @@ snooze()
 
             if [ "$wake_on_wlan" ]
             then
-
-                # wake on wlan if we're only waiting for dim or
-                # blank.  else we're already blank, so w-o-l if we've
-                # been asked to and we're currently associated with
-                # something.
-                if [ "$until" != until_shutdown ] || \
-                    ( yes_or_true $config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP && \
-                        wlan_associated )
-                then
+                if [ "$until" != until_shutdown ]
+                then # wake on wlan if we're only waiting for dim or blank.
                     set_wake_on_wlan yes
+                else # the screen is blank
+                    # wake-on-wlan if we've been asked to, and we're associated
+                    if yes_or_true $config_WLAN_WAKE_FROM_BLANK_IDLE_SLEEP && \
+                            wlan_associated
+                    then
+                        set_wake_on_wlan yes
+                    else
+                        set_wake_on_wlan no
+                    fi
                 fi
             fi
             ;;
