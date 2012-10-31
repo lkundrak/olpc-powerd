@@ -914,7 +914,7 @@ case $XO in
     SWITCH_DRIVER=/sys/devices/0.switches
     PWRBTN_DRIVER=/sys/devices/d4037000.ec-spi/input/input1
     RTC_DRIVER=/sys/devices/d4010000.rtc
-    OLS_DRIVER=/sys/devices/ols.3
+    OLS_DRIVER=/sys/devices/0.ols
     BATT_DRIVER=/sys/class/power_supply/olpc-battery
     AC_DRIVER=/sys/class/power_supply/olpc-ac
     KBD_DRIVER=/sys/devices/d4290000.ap-sp
