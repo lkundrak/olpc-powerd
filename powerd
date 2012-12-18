@@ -912,7 +912,7 @@ case $XO in
     ;;
 4)
     SWITCH_DRIVER=/sys/devices/0.switches
-    PWRBTN_DRIVER=/sys/devices/d4037000.ec-spi/input/input1
+    PWRBTN_DRIVER=/sys/devices/d4037000.ec-spi
     RTC_DRIVER=/sys/devices/d4010000.rtc
     OLS_DRIVER=/sys/devices/0.ols
     BATT_DRIVER=/sys/class/power_supply/olpc-battery
@@ -920,7 +920,8 @@ case $XO in
     KBD_DRIVER=/sys/devices/d4290000.ap-sp
     TPAD_DRIVER=;    # no separate tpad driver, shares with KBD_DRIVER
 
-    TSCREEN_DRIVER=/sys/devices/d4033000.i2c
+    TSCREEN_DRIVER=$(egrep -l 'zforce' \
+	    /sys/devices/*.i2c/i2c*/*/name | sed 's;/name$;;')
 
     EBOOK_DRIVER=;   # no separate ebook driver
 
