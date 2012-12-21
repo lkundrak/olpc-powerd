@@ -921,7 +921,7 @@ case $XO in
     TPAD_DRIVER=;    # no separate tpad driver, shares with KBD_DRIVER
 
     TSCREEN_DRIVER=$(egrep -l 'zforce' \
-	    /sys/devices/*.i2c/i2c*/*/name | sed 's;/name$;;')
+            /sys/devices/*.i2c/i2c*/*/name | sed 's;/name$;;')
 
     EBOOK_DRIVER=;   # no separate ebook driver
 
@@ -1785,7 +1785,7 @@ snooze()
     local sleep_type cur_sleep_type until 
     local prev_xo1_wlan_power sleep_started
 
-    test "$prevent_sleep" && return
+    yes_or_true "$config_NEVER_SLEEP" && return
 
     trace "snoozing: $@"
 
@@ -2507,6 +2507,7 @@ set_config_defaults()
 
     config_AMBIENT_BRIGHT=50    # low OLS sensor trigger level, for sunshine
     config_AMBIENT_NORMAL=80    # high trigger level, for shade or indoors
+    config_NEVER_SLEEP=false
 }
 
 read_config()
@@ -2535,7 +2536,7 @@ read_config()
         keypress_sleep=hard
     fi
 
-    if [ "$prevent_sleep" ]
+    if yes_or_true "$config_NEVER_SLEEP"
     then
         log suppressing sleep configurations
         config_BATTERY_TIME_SLEEP=0
@@ -3222,12 +3223,6 @@ powerseqno=0;
 eventcutoff=0;
 dcon_thawed=;
 no_suspend=0;
-
-prevent_sleep=;
-if [ "$XO" = 4 ]  # FIXME
-then
-    prevent_sleep=true
-fi
 
 
 log starting
