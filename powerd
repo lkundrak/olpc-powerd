@@ -2322,7 +2322,7 @@ then
 SW_BRIGHT_SUN=SW_CAMERA_LENS_COVER
     ambient_force()
     {
-        test "$ols_device" || return
+        test "${ols_device:-}" || return
 
         evtest --query $ols_device EV_SW $SW_BRIGHT_SUN
         case $? in
