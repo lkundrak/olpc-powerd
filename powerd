@@ -1425,7 +1425,8 @@ set_wake_on_wlan()
     yes)
         # detect telepathy/salut, and wake on multicast if present.
         # "netstat -l --inet -n | grep -q ':5298 '"
-        if grep -qi ": 00000000:14B2" /proc/net/tcp
+        # (0x14b2 == port 5298)
+        if egrep -qi ": 00000000+:14B2" /proc/net/tcp /proc/net/tcp6
         then
             ethtool -s $WLANIFACE wol um;
         else
