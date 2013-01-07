@@ -913,7 +913,7 @@ case $XO in
 4)
     SWITCH_DRIVER=/sys/devices/0.switches
     PWRBTN_DRIVER=/sys/devices/d4037000.ec-spi
-    RTC_DRIVER=/sys/devices/d4010000.rtc
+    RTC_DRIVER=/sys/devices/d4010000.wakeup-rtc
     OLS_DRIVER=/sys/devices/0.ols
     BATT_DRIVER=/sys/class/power_supply/olpc-battery
     AC_DRIVER=/sys/class/power_supply/olpc-ac
