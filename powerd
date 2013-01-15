@@ -1668,7 +1668,7 @@ else
         batt_wake_count=$(< $BATT_WAKE_COUNT)
         ac_wake_count=$(< $AC_WAKE_COUNT)
         tscreen_wake_count=$(< $TSCREEN_WAKE_COUNT)
-        ebook_wake_count=$(< $EBOOK_WAKE_COUNT)
+        switch_wake_count=$(< $SWITCH_WAKE_COUNT)
         ols_wake_count=$(< $OLS_WAKE_COUNT)
         rtc_wake_count=$(< $RTC_WAKE_COUNT)
     }
@@ -1681,15 +1681,12 @@ else
         if [ "$power_wake_count" != "$(< $PWRBTN_WAKE_COUNT)" ]
         then
             wakeupsource=powerbutton
-        elif [ "$lid_was_closed" ] && ! is_lid_closed && [ "$wake_on_open" ]
+        elif [ "$switch_wake_count" != "$(< $SWITCH_WAKE_COUNT)" ]
         then
-            wakeupsource=lid
+            wakeupsource=lid_or_ebook
         elif [ "$kbd_wake_count" != "$(< $KBD_WAKE_COUNT)" ]
         then
             wakeupsource=keypress
-        elif [ "$ebook_wake_count" != "$(< $EBOOK_WAKE_COUNT)" ]
-        then
-            wakeupsource=ebook
         elif [ "$tpad_wake_count" != "$(< $TPAD_WAKE_COUNT)" ]
         then
             wakeupsource=keypress
@@ -2076,9 +2073,13 @@ snooze()
             esac
             ;;
 
-        "lid")
-            if [ "$wake_on_open" ]
+        lid|lid_or_ebook)  # we don't care much about ebook
+            if is_lid_closed
             then
+                am_ebook=;
+                break
+            elif [ "$lid_was_closed" -a "$wake_on_open" ]
+            then # assume this didn't happen due to ebook
                 am_ebook=;
                 selfinject fake_useractive $lastwakeup "$wakeupsource"
                 touchpad_recalibrate
