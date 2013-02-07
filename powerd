@@ -241,10 +241,11 @@
 #
 # 3) Finally, powerd will try and keep the laptop awake based on
 #   various system conditions:  CPU utilizations, network activity, VT
-#   console usage, camera and audio usage, and usb device presence. 
-#   Network and CPU activity are monitored for 5 seconds before
-#   sleep should occur.  These conditions are checked from the
-#   "laptop_busy" and "snooze" functions, so look there for details.
+#   console usage, camera and audio usage, HDMI connection (on
+#   XO-4) and usb device presence.  Network and CPU activity are
+#   monitored for 5 seconds before sleep should occur.  These
+#   conditions are checked from the "laptop_busy" and "snooze"
+#   functions, so look there for details.
 #
 #   For USB device presence, if the file /etc/powerd/flags/usb-inhibits
 #   is present, it will be consulted for matches against USB device
@@ -927,6 +928,8 @@ case $XO in
 
     driver_list="OLS BATT AC KBD ${TSCREEN_DRIVER:+TSCREEN}"
     full_driver_list="PWRBTN RTC SWITCH EBOOK TPAD $driver_list"
+
+    HDMI_INSERT_CHECK=/sys/devices/d420b000.display/pxa168fb_gfx.1/hpd
     ;;
 
 esac
@@ -1357,6 +1360,21 @@ usb_inhibit()
     test "$gotusb" && trace usb busy
 }
 
+if [ "${HDMI_INSERT_CHECK:-}" -a -e "${HDMI_INSERT_CHECK:-}" ]
+then
+    hdmi_inhibit()
+    {
+        # sysfs node shows 1 when monitor connected, 0 otherwise
+        hdmi=$(< $HDMI_INSERT_CHECK )
+        test "$hdmi" = 1 && trace hdmi busy
+    }
+else
+    hdmi_inhibit()
+    {
+        return 1
+    }
+fi
+
 ttyusb_inhibit()
 {
     # inhibit suspend if a USB serial adapter is in use, because
@@ -1373,7 +1391,7 @@ general_inhibit()
 
 laptop_busy()
 {
-    general_inhibit || usb_inhibit || ttyusb_inhibit ||
+    general_inhibit || usb_inhibit || ttyusb_inhibit || hdmi_inhibit ||
         audio_busy || cpu_or_network_busy
 }
 
