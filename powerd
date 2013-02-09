@@ -874,7 +874,7 @@ setup_common_xo1_xo15_device_paths()
     OLS_DRIVER=;        # no outdoor light sensor on 1.5
 
     driver_list="BATT AC KBD_MASTER KBD TPAD EBOOK"
-    full_driver_list="PWRBTN RTC TSCREEN $driver_list"
+    full_driver_list="PWRBTN RTC TSCREEN SWITCH $driver_list"
 }
 
 # don't set nullglob above here!
@@ -883,17 +883,19 @@ case $XO in
     setup_common_xo1_xo15_device_paths
     EBOOK_DRIVER=$(egrep -li 'ebook' \
         /sys/class/input/input*/name | sed 's;/name$;;')
+    SWITCH_DRIVER=;
     PWRBTN_DRIVER=/sys/class/input/input0
-
     ;;
 
 1.5)
     setup_common_xo1_xo15_device_paths
     EBOOK_DRIVER=/sys/devices/LNXSYSTM:00/device:00/PNP0A03:00/XO15EBK:00
+    SWITCH_DRIVER=;
     PWRBTN_DRIVER=/sys/devices/LNXSYSTM:00/LNXPWRBN:00
     ;;
 
 1.75|3)
+    EBOOK_DRIVER=;   # no separate ebook driver
     SWITCH_DRIVER=/sys/devices/platform/olpc-switch.0
     PWRBTN_DRIVER=/sys/devices/platform/olpc-ec-1.75.0
     RTC_DRIVER=/sys/devices/platform/mmp-rtc
@@ -906,12 +908,12 @@ case $XO in
     TSCREEN_DRIVER=$(egrep -l 'raydium_ts|eeti_ts' \
             /sys/devices/platform/pxa2xx-i2c*/i2c-*/*/name | sed 's;/name$;;')
 
-    EBOOK_DRIVER=;   # no separate ebook driver
 
     driver_list="OLS BATT AC KBD ${TSCREEN_DRIVER:+TSCREEN}"
     full_driver_list="PWRBTN RTC SWITCH EBOOK TPAD $driver_list"
     ;;
 4)
+    EBOOK_DRIVER=;   # no separate ebook driver
     SWITCH_DRIVER=/sys/devices/0.switches
     PWRBTN_DRIVER=/sys/devices/d4037000.ec-spi
     RTC_DRIVER=/sys/devices/d4010000.wakeup-rtc
@@ -1686,6 +1688,7 @@ else
         batt_wake_count=$(< $BATT_WAKE_COUNT)
         ac_wake_count=$(< $AC_WAKE_COUNT)
         tscreen_wake_count=$(< $TSCREEN_WAKE_COUNT)
+        ebook_wake_count=$(< $EBOOK_WAKE_COUNT)
         switch_wake_count=$(< $SWITCH_WAKE_COUNT)
         ols_wake_count=$(< $OLS_WAKE_COUNT)
         rtc_wake_count=$(< $RTC_WAKE_COUNT)
@@ -1699,6 +1702,14 @@ else
         if [ "$power_wake_count" != "$(< $PWRBTN_WAKE_COUNT)" ]
         then
             wakeupsource=powerbutton
+            return
+        fi
+
+        is_lid_closed   # sets $am_closed
+
+        if [ "$lid_was_closed" != "$am_closed" ]
+        then
+            wakeupsource=lid
         elif [ "$switch_wake_count" != "$(< $SWITCH_WAKE_COUNT)" ]
         then
             wakeupsource=lid_or_ebook
@@ -2091,8 +2102,8 @@ snooze()
             esac
             ;;
 
-        lid|lid_or_ebook)  # we don't care much about ebook
-            if is_lid_closed
+        lid|lid_or_ebook)  # we don't actually care much about ebook here
+            if [ "$am_closed" ]
             then
                 am_ebook=;
                 break
