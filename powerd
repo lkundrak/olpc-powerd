@@ -1214,7 +1214,7 @@ check_cpu_activity()
         idle=$(( (100 * ( idlejifs2 - idlejifs1 ) / ( jifs2 - jifs1 ) ) ))
         if [ $idle -lt $config_CPU_IDLE_LIMIT ]
         then
-            trace cpu busy
+            trace "cpu busy (${idle}% idle)"
             return 0
         fi
         ;;
