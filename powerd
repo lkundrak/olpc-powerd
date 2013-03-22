@@ -1379,10 +1379,17 @@ fi
 
 ttyusb_inhibit()
 {
-    # inhibit suspend if a USB serial adapter is in use, because
-    # it will likely change names after suspend/resume.
+    # inhibit suspend if a USB serial adapter is in use, because it will
+    # likely change names after suspend/resume.
+    # minicom does tty locking in /var/lock/lockdev
+    # picocom does tty locking in /var/lock/picocom
+    # pppd does tty locking in /var/lock/pppd
+    # screen does no locking whatever.  smart choice.
+    # why can't we all just get along?  bah.
+    #
     # note:  assumes nullglob is set
-    test "$(echo -n /var/lock/LCK..ttyUSB* )" && trace ttyUSB in use
+    test "$(echo -n /var/lock/LCK..tty{USB,ACM}* /var/lock/*/LCK..tty{USB,ACM}* )" &&
+        trace ttyUSB in use
 }
 
 general_inhibit()
