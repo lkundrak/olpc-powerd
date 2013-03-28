@@ -489,6 +489,14 @@ USER_ACTIVITY_CMDS=/var/run/olpc-kbdshim_command
 # see if it's really okay to sleep.  units are seconds. 
 BUSYCHECK=5   
 
+# it's actually possible for date(1) to return a negative number
+# of seconds since the epoch, if someone manages to set the date
+# prior to 1970.  (this can be done in some cases by setting a
+# date prior to 2000, forcing it into the RTC, then rebooting.)
+# make sure our "failsafe" could-never-happen date is very very
+# long ago.
+WAY_DISTANT_PAST=-2147480000
+
 # note re: battery capacity:
 # i'd use /sys/.../capacity_level here, but we won't get
 # "critical" -- the EC and kernel can only currently indicate
@@ -1771,7 +1779,7 @@ event_fifo_lookahead()
     # race completely, but this is way better than nothing.
 
     # guard against date change into the past
-    test "$eventcutoff" -gt $(seconds) && eventcutoff=0
+    test "$eventcutoff" -gt $(seconds) && eventcutoff=$WAY_DISTANT_PAST
 
     while read -t 1 s_event s_tstamp s_arg2 s_arg3 s_more
     do
@@ -2981,7 +2989,7 @@ event_loop()
         trace got event: $event, $tstamp, $arg2, $arg3, $more.
 
         # guard against date change into the past
-        test "$eventcutoff" -gt $(seconds) && eventcutoff=0
+        test "$eventcutoff" -gt $(seconds) && eventcutoff=$WAY_DISTANT_PAST
 
         if [ "$tstamp" -a "$tstamp" != '-' ] && [ "$tstamp" -lt "$eventcutoff" ]
         then
@@ -3258,7 +3266,7 @@ ambient=;
 last_t_values=;
 timerseqno=1;
 powerseqno=0;
-eventcutoff=0;
+eventcutoff=$WAY_DISTANT_PAST;
 dcon_thawed=;
 no_suspend=0;
 
