@@ -125,6 +125,11 @@ fi
 exit 0
 
 %changelog
+* Thu May 23 2013 Paul Fox <pgf@laptop.org>
+- 110-1
+- protect against negative seconds since the epoch (#12621)
+- do a better job of detecting tty lockfiles (#11286)
+
 * Sat Feb  9 2013 Paul Fox <pgf@laptop.org>
 - 109-1
 - inhibit suspend when HDMI is connected
