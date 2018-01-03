@@ -1,9 +1,6 @@
-/* Compatible with NetworkManager-0.8 and NetworkManager-0.9 */
-
 #include <errno.h>
 #include <glib.h>
-#include <nm-client.h>
-#include <nm-device-wifi.h>
+#include <NetworkManager.h>
 #include "powerd-dbus.h"
 
 static NMClient *client;
@@ -95,7 +92,7 @@ int nm_monitor_init(void)
 	const GPtrArray *devices;
 	monitored_devices = g_hash_table_new(NULL, NULL);
 
-	client = nm_client_new();
+	client = nm_client_new(NULL, NULL);
 	if (!client)
 		return -EINVAL;
 
